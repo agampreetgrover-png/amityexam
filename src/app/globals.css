@@ -1,26 +1,114 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Light dashboard palette: white cards on a cool off-white page, near-black ink, grey secondary text,
+  and indigo for actions and progress. The highlighter still only marks "needs you today".
+  The app is light-only, so there is no dark-scheme override.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --bg: #f7f8fc;
+  --surface: #ffffff;
+  --surface-2: #f1f3f8;
+  --border: #e6e8f0;
+  --text: #111827;
+  --muted: #6b7280;
+  --accent: #4f46e5;
+  --accent-ink: #ffffff;
+  --accent-soft: #eef0ff;
+  --mark: #ffe45c;
+  --mark-soft: #fff4d6;
+  --mark-ink: #111827;
+  --good: #10b981;
+  --warn: #ea580c;
+  --bad: #dc2626;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-mark: var(--mark);
+  --color-mark-soft: var(--mark-soft);
+  --color-mark-ink: var(--mark-ink);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Menlo, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  font-optical-sizing: auto;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-feature-settings: "ss01", "tnum";
+}
+
+:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* Highlighter stroke behind a short run of text. */
+.mark {
+  background: linear-gradient(transparent 12%, var(--mark) 12%, var(--mark) 88%, transparent 88%);
+  color: var(--mark-ink);
+  padding: 0 0.15em;
+  border-radius: 0.15em;
+  box-decoration-break: clone;
+}
+
+/* On big numerals the highlighter is a stroke through the lower half, as if marked by hand. */
+.numeral.mark {
+  background: linear-gradient(transparent 52%, var(--mark) 52%, var(--mark) 90%, transparent 90%);
+  color: inherit;
+  padding: 0 0.06em;
+}
+
+/* Condensed display numerals for countdowns. */
+.numeral {
+  font-stretch: 75%;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* Rendered AI markdown */
+.prose-ai { max-width: 70ch; }
+.prose-ai h1, .prose-ai h2, .prose-ai h3 { font-weight: 650; margin: 1.2em 0 0.4em; line-height: 1.25; }
+.prose-ai h1 { font-size: 1.3rem; }
+.prose-ai h2 { font-size: 1.12rem; }
+.prose-ai h3 { font-size: 1rem; }
+.prose-ai p { margin: 0.55em 0; line-height: 1.65; }
+.prose-ai ul { list-style: disc; padding-left: 1.25rem; margin: 0.4em 0; }
+.prose-ai ol { list-style: decimal; padding-left: 1.25rem; margin: 0.4em 0; }
+.prose-ai li { margin: 0.25em 0; line-height: 1.6; }
+.prose-ai code { font-family: var(--font-mono); background: var(--surface-2); padding: 0 0.25em; border-radius: 4px; font-size: 0.88em; }
+.prose-ai pre { background: var(--surface-2); padding: 0.75em; border-radius: 8px; overflow-x: auto; }
+.prose-ai pre code { background: none; padding: 0; }
+.prose-ai strong { font-weight: 650; }
+.prose-ai table { border-collapse: collapse; margin: 0.6em 0; display: block; overflow-x: auto; }
+.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.4em 0.75em 0.4em 0; text-align: left; }
+.prose-ai th { font-weight: 600; }
+
+@media print {
+  nav, .no-print { display: none !important; }
+  body { background: white; color: black; }
 }

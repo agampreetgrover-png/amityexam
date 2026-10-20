@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Amity Exams
 
-## Getting Started
+A personal exam planner and AI study helper. It covers everything from adding your date sheet to exam morning. It installs as an app (PWA) on your phone and laptop. Your data stays on the device. AI runs on the free Gemini API, with Groq as an automatic backup.
 
-First, run the development server:
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then paste your API key(s), see below
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The service worker (offline mode and install) only runs in production builds:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build && npm start
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Local only by default.** `dev` and `start` listen on `127.0.0.1`, so other people on the same Wi-Fi (college or hostel network) can't reach the app or use up your AI keys. To open it from your phone for a while, run `npx next dev` (without `-H 127.0.0.1`), visit `http://<your-laptop-IP>:3000`, and stop it when you're done.
 
-## Learn More
+Deploying (for example to Vercel) is optional. If you do, anyone with the URL can use your AI keys, so keep the URL private.
 
-To learn more about Next.js, take a look at the following resources:
+## Getting API keys
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Both keys are free and both are optional; set at least one in `.env.local`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Gemini** (primary): create a key at https://aistudio.google.com/apikey. A Gemini app subscription (Google AI Pro) is **not** needed and doesn't add API quota. Gemini also reads scanned PDFs and photos of notes.
+- **Groq** (backup): create a key at https://console.groq.com/keys. Very fast, but the free tier allows only ~8K tokens/minute, so long notes are trimmed.
 
-## Deploy on Vercel
+If Gemini hits a limit, times out or fails, the app switches to Groq on its own. **Settings** shows which keys are set and which provider answered last. Never commit `.env.local`; it's already in `.gitignore`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Workflow
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Subjects**: add each subject, then **Syllabus → Import with AI** (paste text, or upload the syllabus PDF or a photo of it).
+2. **Exams**: add the date sheet (date, time, venue, seat, and which topics are examined).
+3. **Planner → Generate plan**: builds a day-by-day schedule using your daily hours, days off and the revision days before each exam. Missed sessions? Press **Rebalance**.
+4. Study with the **Pomodoro** timer and tick sessions off.
+5. **Subject → Materials**: upload notes and previous-year papers (PDF, text, or photos/scans, which are read by Gemini). Then use:
+   - **Notes**: short notes or one-page cheat sheets per topic
+   - **Flashcards**: auto-generated and reviewed with spaced repetition in **Revise**
+   - **Quiz**: MCQ and short-answer practice. AI grades short answers, and low scores mark topics as weak so the planner gives them more time
+   - **PYQ Predict**: repeated questions, weightage and likely questions
+   - **Doubt Chat**: answers based on your own notes
+6. **Progress**: coverage, study hours, streak, quiz trend and weak topics.
+7. **Exam → Kit**: checklist, night-before tips, cheat sheet, weak topics and your hardest flashcards. Printable.
+8. **Planner → Export .ics**: import it into Google Calendar to get phone reminders even when the app is closed.
+
+Back up from **Settings → Export backup**. Use the same file to move data between devices.
+
+## Tech
+
+Next.js 15 · TypeScript · Tailwind v4 · Dexie (IndexedDB) · Serwist (PWA) · Gemini via `@google/genai` (`gemini-3.5-flash`, `gemini-3.5-flash-lite`) with Groq fallback (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`); override with `GEMINI_MODEL`, `GEMINI_FAST_MODEL`, `GROQ_MODEL`, `GROQ_FAST_MODEL` · pdf.js · Recharts · Vitest.
+
+`npm test` runs the planner, spaced-repetition and calendar unit tests.
