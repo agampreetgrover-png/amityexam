@@ -1,5 +1,6 @@
 import { addDay, daysBetween, weekday } from "./dates";
-import type { Exam, ISODay, Settings, StudySession, Topic } from "./types";
+import { examInMode, examTypeMode, topicsInScope } from "./mode";
+import type { Exam, ExamMode, ISODay, Settings, StudySession, Topic, Unit } from "./types";
 
 interface PlanInput {
   start: ISODay;
@@ -8,6 +9,9 @@ interface PlanInput {
   /** Sessions already completed; their minutes count towards a topic's need. */
   done: StudySession[];
   settings: Pick<Settings, "dailyMinutes" | "offDays" | "revisionDays" | "sessionMins">;
+  /** Only plan for this season's exams; whole-subject exams cover that season's own syllabus (its units). */
+  mode?: ExamMode;
+  units?: Unit[];
 }
 
 export interface PlanResult {
@@ -37,20 +41,33 @@ export function examTopics(exam: Exam, topics: Topic[]): Topic[] {
 }
 
 /**
+ * Topics an exam covers when each season has its own syllabus: ticked topics as given, otherwise
+ * the subject's topics in the exam's season (from its type; "other" follows `mode`, or everything).
+ */
+export function examSyllabus(exam: Exam, topics: Topic[], units: Unit[], mode?: ExamMode): Topic[] {
+  if (exam.topicIds.length) return examTopics(exam, topics);
+  const season = examTypeMode(exam.type) ?? mode;
+  return examTopics(exam, season ? topicsInScope(topics, units, season) : topics);
+}
+
+/**
  * Earliest-deadline-first scheduler. Exams are handled in date order; each topic is packed
  * into the earliest free study days before that exam's revision window. Work that doesn't fit
  * is reported against that exam and carried over to the next exam covering the same topic.
  * Re-running it from today is the "rebalance": missed sessions simply re-enter the pool.
  */
-export function generatePlan({ start, exams, topics, done, settings }: PlanInput): PlanResult {
+export function generatePlan({ start, exams, topics: allTopics, done, settings, mode, units = [] }: PlanInput): PlanResult {
   // Guard against bad settings: a zero block length would never make progress.
   const daily = Math.max(0, Number(settings.dailyMinutes) || 0);
   const block = Math.max(15, Number(settings.sessionMins) || 60);
   const revisionDays = Math.max(0, Math.floor(Number(settings.revisionDays) || 0));
 
   const upcoming = exams
-    .filter((e) => e.id != null && daysBetween(start, e.date) >= 0)
+    .filter((e) => e.id != null && daysBetween(start, e.date) >= 0 && examInMode(e, mode))
     .sort((a, b) => a.date.localeCompare(b.date) || a.id! - b.id!);
+
+  // With a mode, whole-subject exams cover that season's own syllabus; without one, everything (as before modes).
+  const examTopicsInMode = (exam: Exam) => (mode ? examSyllabus(exam, allTopics, units, mode) : examTopics(exam, allTopics));
 
   const doneMins = new Map<number, number>();
   for (const s of done) {
@@ -75,7 +92,7 @@ export function generatePlan({ start, exams, topics, done, settings }: PlanInput
 
   // Revision blocks first, so study never eats an exam's last days.
   for (const exam of upcoming) {
-    const covered = examTopics(exam, topics);
+    const covered = examTopicsInMode(exam);
     if (!covered.length) continue;
     const want = Math.min(daily, Math.max(60, covered.length * 15));
     for (let i = 1; i <= revisionDays; i++) {
@@ -90,7 +107,7 @@ export function generatePlan({ start, exams, topics, done, settings }: PlanInput
 
   for (const exam of upcoming) {
     const lastStudyDay = addDay(exam.date, -(revisionDays + 1));
-    const pool = examTopics(exam, topics)
+    const pool = examTopicsInMode(exam)
       .filter((t) => need(t) > 0)
       // Hardest first so they land earliest, when there's most slack.
       .sort((a, b) => need(b) - need(a) || a.id! - b.id!);

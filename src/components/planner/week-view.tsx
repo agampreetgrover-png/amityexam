@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Button, Section, cn } from "@/components/ui";
+import { Button, Card, cn } from "@/components/ui";
 import { addDay, prettyDay, today, weekday } from "@/lib/dates";
 import { fmtMins } from "@/lib/stats";
 import type { Exam, StudySession } from "@/lib/types";
@@ -22,7 +22,7 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
   const t = today();
 
   return (
-    <Section
+    <Card
       title={`${prettyDay(days[0])} to ${prettyDay(days[6])}`}
       action={
         <div className="flex gap-1">
@@ -32,16 +32,16 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
         </div>
       }
     >
-      <div className="-mx-4 overflow-x-auto px-4 pb-2 md:-mx-10 md:px-10">
-        <div className="grid min-w-[840px] grid-cols-7 gap-px overflow-hidden rounded-2xl border border-border bg-border">
+      <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
+        <div className="grid min-w-[840px] grid-cols-7 gap-px overflow-hidden rounded-xl border border-border bg-border">
           {days.map((d) => {
             const list = sessions.filter((s) => s.date === d);
             const total = list.reduce((a, s) => a + s.plannedMins, 0);
             const examsToday = exams.filter((e) => e.date === d);
             const isToday = d === t;
             return (
-              <div key={d} className="min-h-40 bg-surface p-2.5">
-                <p className="text-[13px] font-semibold">
+              <div key={d} className={cn("min-h-40 p-2.5", isToday ? "bg-accent-soft/60" : "bg-surface")}>
+                <p className={cn("text-[13px] font-semibold", isToday && "text-accent")}>
                   <span className={cn(isToday && "mark")}>{prettyDay(d)}</span>
                 </p>
                 <p className={cn("mb-2.5 text-xs tabular-nums", total > dailyMinutes ? "text-bad" : "text-muted")}>
@@ -49,7 +49,7 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
                 </p>
                 <ul className="space-y-1.5">
                   {examsToday.map((e) => (
-                    <li key={`e${e.id}`} className="rounded-md border border-text px-1.5 py-1 text-xs font-semibold">
+                    <li key={`e${e.id}`} className="rounded-lg border border-accent/25 bg-accent-soft px-1.5 py-1 text-xs font-semibold text-accent">
                       {lookup.subjects.get(e.subjectId)?.name ?? "Exam"} exam
                       {e.time && <span className="block font-normal text-muted">{e.time}</span>}
                     </li>
@@ -59,7 +59,7 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
                     return (
                       <li
                         key={s.id}
-                        className={cn("border-l-2 py-0.5 pl-2 text-xs leading-snug", s.done && "text-muted line-through")}
+                        className={cn("rounded-md border-l-[3px] bg-surface-2/70 py-1 pl-2 pr-1 text-xs leading-snug", s.done && "text-muted line-through")}
                         style={{ borderColor: subject?.color ?? "var(--muted)" }}
                         title={title}
                       >
@@ -74,6 +74,6 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
           })}
         </div>
       </div>
-    </Section>
+    </Card>
   );
 }

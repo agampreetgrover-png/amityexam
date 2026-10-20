@@ -1,0 +1,191 @@
+"use client";
+
+import { useLiveQuery } from "dexie-react-hooks";
+import { Cloud, ExternalLink, Link2, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { db, getSettings } from "@/lib/db";
+import { runDriveSync, useDriveSync } from "@/lib/drive/client";
+import { DEFAULT_DRIVE_SOURCES, folderIdFromLink } from "@/lib/drive/sources";
+import type { Settings } from "@/lib/types";
+import { Button, Field, Input, Modal, Section, Select } from "./ui";
+
+const folderUrl = (id: string) => `https://drive.google.com/drive/folders/${id}`;
+
+/** Settings card: which Drive folders are synced, sync status, and manual subject ↔ folder links. */
+export function DriveSettings() {
+  const settings = useLiveQuery(getSettings);
+  const counts = useLiveQuery(async () => ({
+    imported: await db.driveFiles.where({ status: "imported" }).count(),
+    skipped: await db.driveFiles.where({ status: "skipped" }).count(),
+  }));
+  const sync = useDriveSync();
+  const [link, setLink] = useState("");
+  const [linkError, setLinkError] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
+  if (!settings) return null;
+
+  const sources = settings.driveSources?.length ? settings.driveSources : DEFAULT_DRIVE_SOURCES;
+  const save = async (patch: Partial<Settings>) => db.settings.put({ ...(await getSettings()), ...patch });
+
+  const addSource = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const id = folderIdFromLink(link.trim());
+    if (!id) return setLinkError("Paste a Google Drive folder link (drive.google.com/drive/folders/…).");
+    if (sources.some((s) => s.id === id)) return setLinkError("That folder is already in the list.");
+    await save({ driveSources: [...sources, { id, label: `Folder ${sources.length + 1}` }] });
+    setLink("");
+    setLinkError("");
+  };
+
+  return (
+    <Section title="Google Drive">
+      <p className="mb-4 max-w-prose text-sm text-muted">
+        Notes, slides and past papers for your subjects are pulled from these shared folders. New files are fetched when you open the app.
+        Past papers are tagged mid-sem or major from their names, and scanned ones are read by Gemini, up to 10 per open to save your AI quota.
+      </p>
+
+      <ul className="mb-3 divide-y divide-border rounded-xl border border-border bg-surface">
+        {sources.map((s) => (
+          <li key={s.id} className="flex items-center gap-3 px-3 py-2.5">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Cloud size={16} /></span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.label}</span>
+            <a href={folderUrl(s.id)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${s.label} in Drive`} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text">
+              <ExternalLink size={14} />
+            </a>
+            <button
+              type="button"
+              aria-label={`Remove ${s.label}`}
+              onClick={() => confirm(`Stop syncing "${s.label}"? Files already imported stay.`) && save({ driveSources: sources.filter((x) => x.id !== s.id) })}
+              className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-bad"
+            >
+              <X size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <form onSubmit={addSource} className="mb-1 flex max-w-xl gap-2">
+        <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste another shared Drive folder link" aria-label="Drive folder link" />
+        <Button type="submit" variant="secondary" disabled={!link.trim()}><Plus size={16} /> Add</Button>
+      </form>
+      {linkError && <p className="text-sm text-bad">{linkError}</p>}
+      {settings.driveSources && (
+        <button type="button" className="text-xs text-muted underline-offset-2 hover:underline" onClick={() => save({ driveSources: undefined })}>
+          Reset to the default folders
+        </button>
+      )}
+
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Button onClick={() => runDriveSync()} disabled={sync.running}>
+          {sync.running ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {sync.running ? "Syncing…" : "Sync now"}
+        </Button>
+        <Button variant="secondary" onClick={() => setLinking(true)}><Link2 size={16} /> Link a folder to a subject</Button>
+        <label className="ml-1 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={settings.driveSync !== false} onChange={(e) => save({ driveSync: e.target.checked })} />
+          Sync when the app opens
+        </label>
+      </div>
+
+      <div className="mt-3 space-y-1 text-sm" role="status">
+        {sync.message && <p className={sync.running ? "truncate font-medium" : ""}>{sync.message}</p>}
+        <p className="text-muted">
+          {counts?.imported ?? 0} files imported{counts?.skipped ? ` · ${counts.skipped} skipped (books, labs, unsupported or too large)` : ""}
+          {settings.lastDriveSync ? ` · last synced ${new Date(settings.lastDriveSync).toLocaleString()}` : ""}
+        </p>
+        {sync.remaining > 0 && !sync.running && <p className="text-warn">{sync.remaining} more files found. They&apos;ll come in on the next sync.</p>}
+        {sync.errors.length > 0 && (
+          <div>
+            <button type="button" className="text-warn underline-offset-2 hover:underline" onClick={() => setShowErrors((v) => !v)}>
+              {sync.errors.length} file{sync.errors.length === 1 ? "" : "s"} couldn&apos;t be fetched (retried next time)
+            </button>
+            {showErrors && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted">{sync.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
+          </div>
+        )}
+      </div>
+
+      <Modal open={linking} onClose={() => setLinking(false)} title="Link a Drive folder to a subject">
+        <LinkFolder onDone={() => setLinking(false)} />
+      </Modal>
+    </Section>
+  );
+}
+
+/** For folders whose names don't match a subject on their own (e.g. "EN", "SKE"). */
+function LinkFolder({ onDone }: { onDone: () => void }) {
+  const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
+  const [groups, setGroups] = useState<{ label: string; folders: { id: string; name: string }[] }[] | "error" | null>(null);
+  const [subjectId, setSubjectId] = useState<number | "">("");
+  const [folderId, setFolderId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const sources = (await getSettings()).driveSources;
+      const qs = sources?.length ? "?" + sources.map((s) => `source=${encodeURIComponent(s.id)}`).join("&") : "";
+      try {
+        const r = await fetch(`/api/drive/folders${qs}`);
+        if (!r.ok) throw new Error();
+        setGroups(await r.json());
+      } catch {
+        setGroups("error");
+      }
+    })();
+  }, []);
+
+  const sid = subjectId || subjects?.[0]?.id;
+  const subject = subjects?.find((s) => s.id === sid);
+  const linked = new Set(subject?.driveFolderIds ?? []);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subject || !folderId || saving) return;
+    setSaving(true);
+    await db.subjects.update(subject.id!, { driveFolderIds: [...linked, folderId] });
+    onDone();
+    runDriveSync();
+  };
+
+  if (!subjects?.length) return <p className="text-sm text-muted">Add a subject first.</p>;
+  return (
+    <form onSubmit={save} className="space-y-4">
+      <Field label="Subject">
+        <Select value={sid ?? ""} onChange={(e) => { setSubjectId(Number(e.target.value)); setFolderId(""); }}>
+          {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </Select>
+      </Field>
+      <Field label="Drive folder">
+        {groups === null ? (
+          <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Loading folders…</p>
+        ) : groups === "error" ? (
+          <p className="text-sm text-bad">Couldn&apos;t load the Drive folders. Check your connection.</p>
+        ) : (
+          <Select value={folderId} onChange={(e) => setFolderId(e.target.value)} required>
+            <option value="">Choose a folder…</option>
+            {groups.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.folders.map((f) => <option key={f.id} value={f.id} disabled={linked.has(f.id)}>{f.name}{linked.has(f.id) ? " (linked)" : ""}</option>)}
+              </optgroup>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {linked.size > 0 && (
+        <div className="text-sm">
+          <p className="mb-1 font-medium">Already linked</p>
+          <ul className="space-y-1">
+            {[...linked].map((id) => (
+              <li key={id} className="flex items-center justify-between gap-2 text-muted">
+                <span className="truncate">{(groups !== "error" && groups?.flatMap((g) => g.folders).find((f) => f.id === id)?.name) || id}</span>
+                <button type="button" className="text-xs hover:text-bad" onClick={() => db.subjects.update(subject!.id!, { driveFolderIds: [...linked].filter((x) => x !== id) })}>
+                  Unlink
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <div className="flex justify-end"><Button type="submit" disabled={!folderId || saving}>Link and sync</Button></div>
+    </form>
+  );
+}

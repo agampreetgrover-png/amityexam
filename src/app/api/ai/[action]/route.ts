@@ -3,7 +3,7 @@ import { buildJsonPrompt, buildTextPrompt } from "@/lib/ai/prompts";
 import { errorResponse, NO_KEYS, readJsonBody } from "@/lib/ai/errors";
 import { AiProviderError, getProviders, runWithFallback, type ProviderName } from "@/lib/ai/providers";
 import {
-  AiRequestSchema, FlashcardsSchema, GradeSchema, JSON_ACTIONS, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
+  AiRequestSchema, GradeSchema, JSON_ACTIONS, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
   type AiRequest, type JsonAction, type TextAction,
 } from "@/lib/ai/schemas";
 
@@ -14,7 +14,6 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024; // Vercel caps bodies at ~4.5MB anyway
 
 const schemas: Record<JsonAction, z.ZodTypeAny> = {
   syllabus: SyllabusSchema,
-  flashcards: FlashcardsSchema,
   quiz: QuizSchema,
   grade: GradeSchema,
 };

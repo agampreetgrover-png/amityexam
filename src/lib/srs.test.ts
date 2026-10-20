@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { NEW_SRS, review } from "./srs";
+import { review } from "./srs";
+
+const NEW_SRS = { ease: 2.5, interval: 0, reps: 0 };
 
 describe("SM-2 review", () => {
   it("grows intervals 1 → 6 → ~15 on good answers", () => {

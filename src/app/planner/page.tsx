@@ -9,7 +9,7 @@ import { Pomodoro } from "@/components/planner/pomodoro";
 import { TimelineView } from "@/components/planner/timeline-view";
 import { TodayView } from "@/components/planner/today-view";
 import { WeekView } from "@/components/planner/week-view";
-import { Button, Empty, List, PageHeader, Section, Tabs, cn } from "@/components/ui";
+import { Button, Card, Empty, List, PageHeader, Tabs, cn } from "@/components/ui";
 import { buildIcs } from "@/lib/calendar";
 import { downloadText } from "@/lib/download";
 import { db } from "@/lib/db";
@@ -87,9 +87,9 @@ export default function PlannerPage() {
       <>
         <PageHeader title="Planner" />
         <Empty title="Add your subjects and exams first">
-          The planner needs {!data.topics.length && <Link href="/subjects" className="font-medium text-text underline underline-offset-2">subjects with topics</Link>}
+          The planner needs {!data.topics.length && <Link href="/subjects" className="font-medium text-accent underline underline-offset-2">subjects with topics</Link>}
           {!data.topics.length && !data.exams.length && " and "}
-          {!data.exams.length && <Link href="/exams" className="font-medium text-text underline underline-offset-2">exam dates</Link>} to build a schedule.
+          {!data.exams.length && <Link href="/exams" className="font-medium text-accent underline underline-offset-2">exam dates</Link>} to build a schedule.
         </Empty>
       </>
     );
@@ -110,11 +110,13 @@ export default function PlannerPage() {
         }
       />
 
-      <div className="space-y-8">
-        {message && <p className="text-sm text-muted" role="status">{message}</p>}
+      <div className="space-y-6">
+        {message && (
+          <p className="rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-muted shadow-[0_1px_3px_rgb(17_24_39/0.04)]" role="status">{message}</p>
+        )}
 
         {missed.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-mark-soft px-4 py-3 text-[15px]">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-amber-200 bg-mark-soft px-5 py-3.5 text-[15px]">
             <span>
               <span className="font-semibold">{missed.length} missed session{missed.length > 1 ? "s" : ""}.</span>{" "}
               Rebalance to fit that work into the days you have left.
@@ -124,8 +126,8 @@ export default function PlannerPage() {
         )}
 
         {unscheduled && unscheduled.length > 0 && (
-          <Section title={<span className="text-warn">Not everything fits</span>}>
-            <List className="mb-3">
+          <Card title={<span className="text-warn">Not everything fits</span>}>
+            <List className="mb-3 border-y-0">
               {unscheduled.map((u) => {
                 const topic = lookup.topics.get(u.topicId);
                 const exam = lookup.exams.get(u.examId);
@@ -141,9 +143,9 @@ export default function PlannerPage() {
               })}
             </List>
             <p className="text-xs text-muted">
-              Add study hours in <Link href="/settings" className="underline underline-offset-2">Settings</Link>, mark topics you already know as studied, or lower their difficulty.
+              Add study hours in <Link href="/settings" className="font-medium text-accent underline underline-offset-2">Settings</Link>, mark topics you already know as studied, or lower their difficulty.
             </p>
-          </Section>
+          </Card>
         )}
 
         {!data.sessions.length && hasUpcoming && (
@@ -151,7 +153,7 @@ export default function PlannerPage() {
         )}
 
         <div>
-          <Tabs label="Planner view" value={view} onChange={setView} options={VIEWS} className="mb-6" />
+          <Tabs label="Planner view" value={view} onChange={setView} options={VIEWS} className="mb-5" />
 
           {view === "today" && (
             <TodayView

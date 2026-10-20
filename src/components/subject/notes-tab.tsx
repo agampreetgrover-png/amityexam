@@ -4,17 +4,18 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { FileText, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
+import { aiModeFields, modeShort } from "@/lib/mode";
 import { retrieve } from "@/lib/retrieve";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Markdown } from "../markdown";
-import { Button, Card, Empty, Field, Section, Select } from "../ui";
+import { Button, Card, Empty, Field, Select } from "../ui";
 import { DocList, DocViewer, saveDoc, StopButton, useStreamDoc } from "./docs";
 import { MAX_CONTEXT, MAX_TOPICS, noteTexts, OfflineHint, topicQuery, TopicSelect, useMaterials, useOnline, type TabProps } from "./shared";
 
 type NoteKind = "summary" | "cheatsheet";
 
-export function NotesTab({ subject, units, topics }: TabProps) {
+export function NotesTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
   const online = useOnline();
   const [topicId, setTopicId] = useState("");
@@ -36,20 +37,24 @@ export function NotesTab({ subject, units, topics }: TabProps) {
     const topic = topics.find((t) => String(t.id) === topicId);
     const texts = noteTexts(materials);
     const context = topic ? retrieve(texts, topicQuery(topic, units), 15_000) : texts.join("\n\n").slice(0, MAX_CONTEXT);
+    // Topics are already the current mode's syllabus (scoped by the subject page).
     const topicNames = topic ? [topic.title] : topics.slice(0, MAX_TOPICS).map((t) => t.title);
-    const content = await gen.run(kind, { subject: subject.name, topics: topicNames, context });
+    const content = await gen.run(kind, { subject: subject.name, topics: topicNames, context, ...aiModeFields(mode, units) });
     if (!content?.trim()) return;
     const label = kind === "summary" ? "Notes" : "Cheat sheet";
-    const doc = await saveDoc({ subjectId, topicId: topic?.id, kind, content, title: `${label}: ${topic?.title ?? subject.name}` });
+    const scope = !topic && mode ? ` (${modeShort(mode).toLowerCase()})` : "";
+    const doc = await saveDoc({ subjectId, topicId: topic?.id, kind, content, title: `${label}: ${topic?.title ?? subject.name}${scope}` });
     gen.reset();
     setViewing(doc);
   };
 
   return (
-    <div className="space-y-8">
-      <Card className="no-print">
+    <div className="space-y-6">
+      <Card className="no-print" title="Write notes">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-          <Field label="Topic"><TopicSelect units={units} topics={topics} value={topicId} onChange={setTopicId} /></Field>
+          <Field label="Topic">
+            <TopicSelect units={units} topics={topics} value={topicId} onChange={setTopicId} allLabel={mode ? `Whole ${modeShort(mode).toLowerCase()} syllabus` : undefined} />
+          </Field>
           <Field label="Type">
             <Select value={kind} onChange={(e) => setKind(e.target.value as NoteKind)}>
               <option value="summary">Short notes</option>
@@ -74,7 +79,7 @@ export function NotesTab({ subject, units, topics }: TabProps) {
 
       {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
 
-      <Section
+      <Card
         className="no-print"
         title="Saved notes"
         action={<TopicSelect units={units} topics={topics} value={filter === "all" ? "" : filter} onChange={(v) => setFilter(v || "all")} className="h-8 w-auto max-w-[60%] text-xs" />}
@@ -84,7 +89,7 @@ export function NotesTab({ subject, units, topics }: TabProps) {
         ) : (
           <Empty icon={<FileText />} title="Nothing saved yet">Write short notes or a cheat sheet above.</Empty>
         )}
-      </Section>
+      </Card>
     </div>
   );
 }

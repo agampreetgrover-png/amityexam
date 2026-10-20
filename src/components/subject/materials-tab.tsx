@@ -2,8 +2,9 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { Eye, FileText, Plus, Trash2, Upload } from "lucide-react";
+import { Cloud, ExternalLink, Eye, FileText, Plus, Trash2, Upload } from "lucide-react";
 import { db } from "@/lib/db";
+import { modeShort } from "@/lib/mode";
 import { extractAny } from "@/lib/pdf";
 import type { Material, MaterialKind } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
@@ -74,21 +75,43 @@ export function MaterialsTab({ subject }: TabProps) {
       </Card>
 
       {materials.length === 0 ? (
-        <Empty icon={<FileText />} title="No material yet">Upload notes, slides (as PDF) and previous year papers. Every AI tool for this subject uses them.</Empty>
+        <Empty icon={<FileText />} title="No material yet">
+          Notes, slides and past papers from your Google Drive folders appear here automatically after a sync (Settings → Google Drive). You can also upload your own.
+          Every AI tool for this subject uses them.
+        </Empty>
       ) : (
         <Section title={`${materials.length} file${materials.length === 1 ? "" : "s"}`}>
           <List>
             {materials.map((m) => (
               <li key={m.id} className="flex items-center gap-3 py-3">
-                <FileText size={18} className="shrink-0 text-muted" />
+                {m.source ? (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent" title="Synced from Google Drive">
+                    <Cloud size={16} />
+                  </span>
+                ) : (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center"><FileText size={18} className="text-muted" /></span>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-medium">{m.fileName}</p>
-                  <p className="flex gap-3 text-xs text-muted">
+                  <p className="flex flex-wrap gap-x-3 text-xs text-muted">
+                    {m.source && <span className="truncate">Drive{m.source.path.length ? ` · ${m.source.path.at(-1)}` : ""}{m.source.ocr ? " · read by AI" : ""}</span>}
                     <span>{m.text.length.toLocaleString()} characters</span>
                     <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                   </p>
                 </div>
-                <Badge className="hidden sm:inline-flex">{KINDS.find((k) => k.value === m.kind)?.label ?? m.kind}</Badge>
+                {m.pyqExam && <Badge className="bg-accent-soft text-accent">{modeShort(m.pyqExam)}</Badge>}
+                <Badge className="hidden sm:inline-flex">{m.source?.format === "ppt" ? "Slides" : KINDS.find((k) => k.value === m.kind)?.label ?? m.kind}</Badge>
+                {m.source && (
+                  <a
+                    href={m.source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open in Google Drive"
+                    className="inline-flex h-8 items-center justify-center rounded-lg px-2.5 text-muted hover:bg-surface-2 hover:text-text"
+                  >
+                    <ExternalLink size={14} />
+                  </a>
+                )}
                 <Button variant="ghost" size="sm" onClick={() => setPreview(m)} aria-label="Preview"><Eye size={14} /></Button>
                 <Button
                   variant="danger"

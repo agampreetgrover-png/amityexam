@@ -3,7 +3,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { X } from "lucide-react";
-import { useEffect, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 export const cn = (...c: ClassValue[]) => twMerge(clsx(c));
 
@@ -29,7 +29,7 @@ export function Button({ variant = "primary", size = "md", className, ...p }: Bu
   );
 }
 
-/** A boxed surface for a self-contained object (a form, a flashcard, a dialog body). */
+/** A boxed surface for a self-contained object (a form, a dialog body). */
 export function Card({ className, children, title, action }: { className?: string; children: ReactNode; title?: ReactNode; action?: ReactNode }) {
   return (
     <section className={cn("rounded-2xl border border-border bg-surface p-4 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:p-6", className)}>
@@ -120,11 +120,15 @@ export function Tabs<T extends string>({ value, onChange, options, className, la
 
 export function Modal({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
+  // Children mount only once the dialog is showing, so their autoFocus lands inside it
+  // instead of showModal() moving focus to the close button.
+  const [shown, setShown] = useState(false);
+  useLayoutEffect(() => {
     const d = ref.current;
     if (!d) return;
     if (open && !d.open) d.showModal();
     if (!open && d.open) d.close();
+    setShown(open);
   }, [open]);
   return (
     <dialog
@@ -136,7 +140,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close" className="-mr-2"><X size={18} /></Button>
       </div>
-      <div className="max-h-[75vh] overflow-y-auto px-5 pb-5 pt-2">{open && children}</div>
+      <div className="max-h-[75vh] overflow-y-auto px-5 pb-5 pt-2">{open && shown && children}</div>
     </dialog>
   );
 }

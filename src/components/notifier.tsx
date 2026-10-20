@@ -33,15 +33,11 @@ export function Notifier() {
         if (!settings.notifications || Notification.permission !== "granted" || localStorage.getItem(KEY) === d) return;
         // Claim the day first so overlapping checks or a failing notification can't repeat it.
         localStorage.setItem(KEY, d);
-        const [sessions, cards, examsTomorrow] = await Promise.all([
+        const [sessions, examsTomorrow] = await Promise.all([
           db.sessions.where("date").equals(d).and((s) => !s.done).count(),
-          db.flashcards.where("due").belowOrEqual(d).count(),
           db.exams.where("date").equals(addDay(d, 1)).toArray(),
         ]);
-        const parts = [];
-        if (sessions) parts.push(`${sessions} study session${sessions > 1 ? "s" : ""} planned`);
-        if (cards) parts.push(`${cards} flashcard${cards > 1 ? "s" : ""} due`);
-        if (parts.length) await notify("Today's plan", parts.join(" · "), `digest-${d}`);
+        if (sessions) await notify("Today's plan", `${sessions} study session${sessions > 1 ? "s" : ""} planned`, `digest-${d}`);
         for (const e of examsTomorrow) {
           const s = await db.subjects.get(e.subjectId);
           await notify("Exam tomorrow", `${s?.name ?? "Exam"}${e.time ? ` at ${e.time}` : ""}. Open the exam-day kit.`, `exam-${e.id}-${d}`);

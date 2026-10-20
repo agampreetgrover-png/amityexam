@@ -9,7 +9,9 @@ import { downloadText } from "@/lib/download";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/types";
 import { notify } from "@/components/notifier";
 import { getLastProvider } from "@/lib/ai/client";
-import { Button, Field, Input, PageHeader, Section, cn } from "@/components/ui";
+import { MODES, modeLabel } from "@/lib/mode";
+import { DriveSettings } from "@/components/drive-settings";
+import { Button, Field, Input, PageHeader, Section, Tabs, cn } from "@/components/ui";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -84,6 +86,19 @@ export default function SettingsPage() {
     <>
       <PageHeader title="Settings" />
       <div className="divide-y divide-border [&>section]:py-8 [&>section:first-child]:pt-0">
+        <Section title="Exam mode">
+          <p className="mb-4 max-w-prose text-sm text-muted">
+            The dashboard, exams list, planner and AI tools follow this. Mid-sem and major each have their own syllabus: upload each one on a subject&apos;s Syllabus tab while in that mode.
+          </p>
+          <Tabs
+            label="Exam mode"
+            value={settings.examMode ?? "end-term"}
+            onChange={(examMode) => set({ examMode })}
+            options={MODES.map((m) => ({ value: m, label: modeLabel(m) }))}
+          />
+          <p className="mt-3 text-xs text-muted">After switching, open the Planner and press Rebalance.</p>
+        </Section>
+
         <Section title="Study plan">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Study time per day (minutes)" hint={`${(settings.dailyMinutes / 60).toFixed(1)} hours`}>
@@ -137,6 +152,8 @@ export default function SettingsPage() {
         </Section>
 
         <AiStatus />
+
+        <DriveSettings />
 
         <Section title="Your data">
           <p className="mb-4 max-w-prose text-sm text-muted">

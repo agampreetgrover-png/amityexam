@@ -8,30 +8,36 @@ import { useState } from "react";
 import { db, getSettings } from "@/lib/db";
 import { daysBetween, fromDay, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
+import { examInMode, modeShort, topicsInScope, useExamMode } from "@/lib/mode";
 import { replan } from "@/lib/replan";
 import { coverage, fmtMins } from "@/lib/stats";
 import { completeSession, undoSession } from "@/components/planner/actions";
 import { StatTile } from "@/components/progress/stat-tile";
+import { ModePill } from "@/components/mode-pill";
 import { Button, Card, List, Progress, Tick, cn } from "@/components/ui";
 
 export default function TodayPage() {
   const t = today();
   const data = useLiveQuery(async () => {
-    const [subjects, topics, exams, sessions, cardsDue, examCount, settings] = await Promise.all([
+    const [subjects, topics, exams, sessions, examCount, settings] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
       db.exams.where("date").aboveOrEqual(t).sortBy("date"),
       db.sessions.toArray(),
-      db.flashcards.where("due").belowOrEqual(t).count(),
       db.exams.count(),
       getSettings(),
     ]);
-    return { subjects, topics, exams, sessions, cardsDue, examCount, settings };
+    return { subjects, topics, exams, sessions, examCount, settings };
   }, [t]);
   const [busy, setBusy] = useState(false);
-  if (!data) return null;
+  const mode = useExamMode();
+  const units = useLiveQuery(() => db.units.toArray());
+  if (!data || !units) return null;
 
-  const { subjects, topics, exams, sessions, cardsDue, examCount } = data;
+  const { subjects, topics, exams, sessions, examCount } = data;
+  // Countdown, stats, coverage and setup follow the chosen exam mode and its own syllabus.
+  const scoped = topicsInScope(topics, units, mode);
+  const modeName = mode === "mid-term" ? "mid-sem" : mode === "end-term" ? "major" : "";
   const subject = (id?: number) => subjects.find((s) => s.id === id);
   const topic = (id?: number) => topics.find((x) => x.id === id);
   const todays = sessions.filter((s) => s.date === t);
@@ -40,18 +46,24 @@ export default function TodayPage() {
   const doneMins = todays.filter((s) => s.done).reduce((a, s) => a + s.actualMins, 0);
   const planned = todays.reduce((a, s) => a + s.plannedMins, 0);
   const pct = planned ? Math.round((doneMins / planned) * 100) : 0;
-  const topicsDue = topics.filter((x) => x.nextReview && x.nextReview <= t).length;
+  // Same rule as the Revise page: due by schedule, or studied and never revised.
+  const topicsDue = scoped.filter((x) => (x.nextReview ? x.nextReview <= t : x.status === "studied")).length;
 
   const steps = [
     { done: subjects.length > 0, label: "Add your subjects", href: "/subjects" },
-    { done: topics.length > 0, label: "Import each syllabus (AI reads it from a PDF)", href: subjects[0] ? `/subjects/${subjects[0].id}` : "/subjects" },
+    {
+      done: scoped.length > 0,
+      label: `Import your ${modeName ? `${modeName} ` : ""}syllabus (AI reads it from a PDF)`,
+      href: subjects[0] ? `/subjects/${subjects[0].id}` : "/subjects",
+    },
     { done: examCount > 0, label: "Add your exam date sheet", href: "/exams" },
     { done: sessions.length > 0, label: "Generate your study plan", href: "/planner" },
     { done: data.settings.notifications, label: "Turn on reminders", href: "/settings" },
   ];
   const onboarding = steps.slice(0, 4).some((s) => !s.done);
 
-  const [next, ...later] = exams;
+  const modeExams = exams.filter((e) => examInMode(e, mode));
+  const [next, ...later] = modeExams;
   const nextSubject = subject(next?.subjectId);
   const nextDays = next ? daysBetween(t, next.date) : 0;
 
@@ -59,8 +71,11 @@ export default function TodayPage() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">Study Dashboard</h1>
+          <h1 className="text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">
+            {mode === "mid-term" ? "Mid-sem Dashboard" : mode === "end-term" ? "Major Exam Dashboard" : "Study Dashboard"}
+          </h1>
           <p className="mt-1 text-[15px] text-muted">{format(fromDay(t), "EEEE, MMMM d")}</p>
+          <ModePill className="mt-3 md:hidden" />
         </div>
         <div className="-mr-2 flex md:hidden">
           <Link href="/progress" className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Progress"><BarChart3 size={20} /></Link>
@@ -78,9 +93,9 @@ export default function TodayPage() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatTile tone="indigo" icon={<Clock />} label="Studied today" value={fmtMins(doneMins)} sub={planned ? `of ${fmtMins(planned)} planned` : "nothing planned"} />
-        <StatTile tone="emerald" icon={<TrendingUp />} label="Syllabus covered" value={`${coverage(topics)}%`} sub={`across ${topics.length} topic${topics.length === 1 ? "" : "s"}`} />
+        <StatTile tone="emerald" icon={<TrendingUp />} label="Syllabus covered" value={`${coverage(scoped)}%`} sub={`across ${scoped.length} ${modeName ? `${modeName} ` : ""}topic${scoped.length === 1 ? "" : "s"}`} />
         <StatTile tone="violet" icon={<Target />} label="Today's progress" value={`${todaysDone}/${todays.length}`} sub="sessions done" />
-        <StatTile tone="amber" icon={<BookOpen />} label="Subjects" value={subjects.length} sub={`${topics.length} topics total`} />
+        <StatTile tone="amber" icon={<BookOpen />} label="Subjects" value={subjects.length} sub={`${scoped.length} ${modeName ? `${modeName} ` : ""}topics`} />
       </div>
 
       {missed > 0 && (
@@ -210,9 +225,9 @@ export default function TodayPage() {
             </Card>
           ) : (
             <Card title="Next exam">
-              <p className="font-semibold">No exams on the calendar</p>
+              <p className="font-semibold">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams on the calendar</p>
               <p className="mt-1 text-sm text-muted">
-                {examCount ? "Every exam is behind you. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
+                {examCount ? "Nothing upcoming for this exam mode. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
               </p>
             </Card>
           )}
@@ -220,11 +235,7 @@ export default function TodayPage() {
           <Card title="Due to revise">
             <Link href="/revise" className="group flex items-end gap-6">
               <span className="flex flex-col">
-                <span className={cn("numeral text-5xl", cardsDue > 0 && "mark self-start")}>{cardsDue}</span>
-                <span className="mt-1.5 text-[13px] text-muted">flashcard{cardsDue === 1 ? "" : "s"}</span>
-              </span>
-              <span className="flex flex-col">
-                <span className="numeral text-5xl">{topicsDue}</span>
+                <span className={cn("numeral text-5xl", topicsDue > 0 && "mark self-start")}>{topicsDue}</span>
                 <span className="mt-1.5 text-[13px] text-muted">topic{topicsDue === 1 ? "" : "s"}</span>
               </span>
               <span className="mb-6 ml-auto text-sm font-medium text-accent underline-offset-2 group-hover:underline">Start</span>
@@ -237,7 +248,7 @@ export default function TodayPage() {
             ) : (
               <ul className="space-y-4">
                 {subjects.map((s) => {
-                  const c = coverage(topics.filter((x) => x.subjectId === s.id));
+                  const c = coverage(scoped.filter((x) => x.subjectId === s.id));
                   return (
                     <li key={s.id}>
                       <Link href={`/subjects/${s.id}`} className="block text-sm hover:underline hover:underline-offset-2">

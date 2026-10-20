@@ -6,6 +6,7 @@ import { MessageCircle, Send, Square, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { aiStream } from "@/lib/ai/client";
+import { aiModeFields } from "@/lib/mode";
 import { AiErrorBox } from "../ai-error";
 import { Markdown } from "../markdown";
 import { Button, Textarea, cn } from "../ui";
@@ -13,7 +14,7 @@ import { isAbort, MAX_TEXT, OfflineHint, useMaterials, useOnline, type TabProps 
 
 const MAX_HISTORY_CHARS = 20_000;
 
-export function ChatTab({ subject, topics }: TabProps) {
+export function ChatTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
   const online = useOnline();
   const [input, setInput] = useState("");
@@ -46,7 +47,10 @@ export function ChatTab({ subject, topics }: TabProps) {
       await db.messages.add({ subjectId, role: "user", content: text, createdAt: Date.now() });
       reply = await aiStream(
         "chat",
-        { subject: subject.name, topics: topics.map((t) => t.title).slice(0, 60), context, history, text: text.slice(0, MAX_TEXT) },
+        {
+          subject: subject.name, topics: topics.map((t) => t.title).slice(0, 60), context, history,
+          text: text.slice(0, MAX_TEXT), ...aiModeFields(mode, units),
+        },
         (full) => { reply = full; setStreaming(full); },
         ctrl.current.signal,
       );
@@ -75,10 +79,10 @@ export function ChatTab({ subject, topics }: TabProps) {
         {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear}><Trash2 size={13} /> Clear chat</Button>}
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-border bg-surface p-4">
+      <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-border bg-surface p-4 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:p-5">
         {messages.length === 0 && streaming === null ? (
           <div className="flex h-full flex-col items-start justify-center gap-2 px-1">
-            <MessageCircle className="text-muted" />
+            <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent"><MessageCircle size={20} /></span>
             <p className="font-semibold">Ask about anything in {subject.name}</p>
             <p className="max-w-prose text-sm text-muted">
               For example, &ldquo;Explain normalization with an example&rdquo; or &ldquo;Difference between TCP and UDP for 5 marks&rdquo;.
@@ -125,7 +129,7 @@ export function ChatTab({ subject, topics }: TabProps) {
 function Bubble({ role, content }: { role: "user" | "assistant"; content: string }) {
   return (
     <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
-      <div className={cn("max-w-[88%]", role === "user" ? "rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-accent-ink" : "px-0.5")}>
+      <div className={cn("max-w-[88%]", role === "user" ? "rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-accent-ink" : "rounded-2xl rounded-bl-md border border-border bg-bg px-3.5 py-1")}>
         {role === "user" ? <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p> : <Markdown>{content}</Markdown>}
       </div>
     </div>

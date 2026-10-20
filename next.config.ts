@@ -26,6 +26,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Drive sync parses PDFs on the server; pdf.js must load its worker from node_modules, not a bundle.
+  serverExternalPackages: ["pdfjs-dist", "mammoth", "jszip"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

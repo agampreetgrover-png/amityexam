@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Printer, Square, Trash2 } from "lucide-react";
+import { FileText, Printer, Square, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { aiStream } from "@/lib/ai/client";
 import type { AiRequest, TextAction } from "@/lib/ai/schemas";
@@ -53,7 +53,7 @@ const KIND_LABEL: Record<GeneratedDoc["kind"], string> = { summary: "Notes", che
 /** List of saved generated docs; clicking one opens it in the viewer. */
 export function DocList({ docs, selected, onSelect }: { docs: GeneratedDoc[]; selected?: number; onSelect: (d: GeneratedDoc) => void }) {
   return (
-    <ul className="no-print divide-y divide-border border-y border-border">
+    <ul className="no-print divide-y divide-border">
       {docs.map((d) => (
         <li key={d.id}>
           <button
@@ -61,9 +61,12 @@ export function DocList({ docs, selected, onSelect }: { docs: GeneratedDoc[]; se
             aria-current={selected === d.id ? "true" : undefined}
             className={cn(
               "-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-3 text-left text-[15px] transition-colors hover:bg-surface-2",
-              selected === d.id && "bg-accent-soft font-semibold",
+              selected === d.id && "bg-accent-soft font-semibold text-accent hover:bg-accent-soft",
             )}
           >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent" aria-hidden>
+              <FileText size={15} />
+            </span>
             <span className="min-w-0 flex-1 truncate">{d.title}</span>
             <Badge className="hidden sm:inline-flex">{KIND_LABEL[d.kind]}</Badge>
             <span className="shrink-0 text-xs font-normal text-muted">{new Date(d.createdAt).toLocaleDateString()}</span>

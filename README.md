@@ -37,12 +37,11 @@ If Gemini hits a limit, times out or fails, the app switches to Groq on its own.
 4. Study with the **Pomodoro** timer and tick sessions off.
 5. **Subject → Materials**: upload notes and previous-year papers (PDF, text, or photos/scans, which are read by Gemini). Then use:
    - **Notes**: short notes or one-page cheat sheets per topic
-   - **Flashcards**: auto-generated and reviewed with spaced repetition in **Revise**
    - **Quiz**: MCQ and short-answer practice. AI grades short answers, and low scores mark topics as weak so the planner gives them more time
    - **PYQ Predict**: repeated questions, weightage and likely questions
    - **Doubt Chat**: answers based on your own notes
 6. **Progress**: coverage, study hours, streak, quiz trend and weak topics.
-7. **Exam → Kit**: checklist, night-before tips, cheat sheet, weak topics and your hardest flashcards. Printable.
+7. **Exam → Kit**: checklist, night-before tips, cheat sheet and weak topics. Printable.
 8. **Planner → Export .ics**: import it into Google Calendar to get phone reminders even when the app is closed.
 
 Back up from **Settings → Export backup**. Use the same file to move data between devices.

@@ -7,8 +7,6 @@ interface SrsState {
   reps: number;
 }
 
-export const NEW_SRS: SrsState = { ease: 2.5, interval: 0, reps: 0 };
-
 /**
  * SM-2. `grade` is 0–5 (0 = blackout, 3 = correct with effort, 5 = perfect).
  * Returns the new state and the next due day.

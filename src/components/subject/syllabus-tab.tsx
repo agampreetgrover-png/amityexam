@@ -7,9 +7,9 @@ import { refreshWeak } from "@/lib/weak";
 import { extractAny } from "@/lib/pdf";
 import { aiJson } from "@/lib/ai/client";
 import type { SyllabusResult } from "@/lib/ai/schemas";
-import type { Topic, TopicStatus, Unit } from "@/lib/types";
+import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Badge, Button, Dots, Empty, Input, List, Modal, Section, Select, Textarea } from "../ui";
+import { Badge, Button, Card, Dots, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
 
 const newTopic = (subjectId: number, unitId: number, title: string, difficulty = 3): Topic => ({
@@ -21,12 +21,10 @@ const newTopic = (subjectId: number, unitId: number, title: string, difficulty =
  * Remove topics and everything pointing at them in one transaction.
  * Exams drop the ids from their syllabus; left behind, an exam listing only deleted
  * topics would cover nothing (an empty list means "whole subject" to the planner).
- * Flashcards are kept but unlinked.
  */
 async function deleteTopics(ids: number[], unitId?: number) {
-  await db.transaction("rw", [db.units, db.topics, db.sessions, db.flashcards, db.exams], async () => {
+  await db.transaction("rw", [db.units, db.topics, db.sessions, db.exams], async () => {
     await db.sessions.where("topicId").anyOf(ids).delete();
-    await db.flashcards.where("topicId").anyOf(ids).modify({ topicId: undefined });
     await db.exams
       .filter((e) => e.topicIds.some((id) => ids.includes(id)))
       .modify((e) => { e.topicIds = e.topicIds.filter((id) => !ids.includes(id)); });
@@ -35,34 +33,50 @@ async function deleteTopics(ids: number[], unitId?: number) {
   });
 }
 
-export function SyllabusTab({ subject, units, topics }: TabProps) {
+export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
   const [importOpen, setImportOpen] = useState(false);
   const [newUnit, setNewUnit] = useState("");
+  const mid = mode === "mid-term";
 
+  // New units join the current mode's syllabus; the other mode's syllabus is kept separately.
   const addUnit = async () => {
     if (!newUnit.trim()) return;
-    await db.units.add({ subjectId: subject.id!, title: newUnit.trim(), order: units.length });
+    await db.units.add({ subjectId: subject.id!, title: newUnit.trim(), order: units.length, exam: mode });
     setNewUnit("");
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap gap-2">
-        <form className="flex min-w-0 flex-1 basis-64 gap-2" onSubmit={(e) => { e.preventDefault(); addUnit(); }}>
-          <Input placeholder="New unit or module name" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
-          <Button type="submit" variant="secondary" className="shrink-0 whitespace-nowrap" disabled={!newUnit.trim()}><Plus size={16} /> Add unit</Button>
-        </form>
-        <Button onClick={() => setImportOpen(true)}><Sparkles size={16} /> Import with AI</Button>
-      </div>
+    <div className="space-y-6">
+      <Card>
+        <header className="mb-4">
+          <h2 className="text-lg font-semibold">{mid ? "Mid-sem syllabus" : "Major syllabus"}</h2>
+          <p className="text-[13px] text-muted">
+            {mid ? "Only what your mid-sem covers. Your major syllabus is kept separately." : "The full end-sem syllabus. Your mid-sem syllabus is kept separately."}
+          </p>
+        </header>
+
+        <div className="flex flex-wrap gap-2">
+          <form className="flex min-w-0 flex-1 basis-64 gap-2" onSubmit={(e) => { e.preventDefault(); addUnit(); }}>
+            <Input placeholder="New unit or module name" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
+            <Button type="submit" variant="secondary" className="shrink-0 whitespace-nowrap" disabled={!newUnit.trim()}><Plus size={16} /> Add unit</Button>
+          </form>
+          <Button onClick={() => setImportOpen(true)}><Sparkles size={16} /> Import with AI</Button>
+        </div>
+      </Card>
 
       {units.length === 0 ? (
-        <Empty title="No syllabus yet">Add units by hand, or import the syllabus from a PDF or pasted text with AI.</Empty>
+        <Empty icon={<Upload />} title={mid ? "Upload your mid-sem syllabus" : "Upload your major syllabus"}>
+          {mid
+            ? "The mid-sem has its own syllabus, separate from the major one. Import it from a PDF, photo or pasted text with AI, or add units by hand."
+            : "The major (end-sem) syllabus is separate from the mid-sem one. Import it from a PDF, photo or pasted text with AI, or add units by hand."}
+          <div className="mt-3"><Button size="sm" onClick={() => setImportOpen(true)}><Sparkles size={14} /> Import {mid ? "mid-sem" : "major"} syllabus</Button></div>
+        </Empty>
       ) : (
         units.map((u) => <UnitSection key={u.id} unit={u} topics={topics.filter((t) => t.unitId === u.id)} />)
       )}
 
-      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import syllabus with AI">
-        <ImportSyllabus subjectId={subject.id!} subjectName={subject.name} unitCount={units.length} onDone={() => setImportOpen(false)} />
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title={`Import ${mid ? "mid-sem" : "major"} syllabus with AI`}>
+        <ImportSyllabus subjectId={subject.id!} subjectName={subject.name} unitCount={units.length} mode={mode} onDone={() => setImportOpen(false)} />
       </Modal>
     </div>
   );
@@ -85,7 +99,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   };
 
   return (
-    <Section
+    <Card
       title={
         editing ? (
           <form
@@ -114,7 +128,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
       }
     >
       {topics.length > 0 && (
-        <List>
+        <List className="border-t-0">
           {topics.map((t) => <TopicRow key={t.id} topic={t} />)}
         </List>
       )}
@@ -130,7 +144,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
         <Input placeholder="Add a topic" value={newT} onChange={(e) => setNewT(e.target.value)} className="h-9" />
         <Button size="sm" variant="secondary" type="submit" className="h-9" disabled={!newT.trim()} aria-label="Add topic"><Plus size={14} /></Button>
       </form>
-    </Section>
+    </Card>
   );
 }
 
@@ -178,7 +192,10 @@ function TopicRow({ topic }: { topic: Topic }) {
         <Select
           value={topic.status}
           onChange={(e) => db.topics.update(id, { status: e.target.value as TopicStatus })}
-          className="h-8 w-auto py-0 text-xs"
+          className={cn(
+            "h-8 w-auto py-0 text-xs font-medium",
+            topic.status === "revised" ? "text-good" : topic.status === "studied" ? "text-accent" : "text-muted",
+          )}
           aria-label="Status"
         >
           <option value="not-started">Not started</option>
@@ -194,7 +211,13 @@ function TopicRow({ topic }: { topic: Topic }) {
   );
 }
 
-function ImportSyllabus({ subjectId, subjectName, unitCount, onDone }: { subjectId: number; subjectName: string; unitCount: number; onDone: () => void }) {
+function ImportSyllabus({ subjectId, subjectName, unitCount, mode, onDone }: {
+  subjectId: number;
+  subjectName: string;
+  unitCount: number;
+  mode: ExamMode; // imported units join this mode's syllabus
+  onDone: () => void;
+}) {
   const online = useOnline();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -240,7 +263,7 @@ function ImportSyllabus({ subjectId, subjectName, unitCount, onDone }: { subject
           // Skip units left with no named topics after review instead of creating empty ones.
           const named = u.topics.filter((t) => t.title.trim());
           if (!u.title.trim() || !named.length) continue;
-          const unitId = (await db.units.add({ subjectId, title: u.title.trim(), order: order++ })) as number;
+          const unitId = (await db.units.add({ subjectId, title: u.title.trim(), order: order++, exam: mode })) as number;
           await db.topics.bulkAdd(named.map((t) => newTopic(subjectId, unitId, t.title.trim(), t.difficulty)));
         }
       });
@@ -292,7 +315,7 @@ function ImportSyllabus({ subjectId, subjectName, unitCount, onDone }: { subject
 
   return (
     <div className="space-y-3">
-      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border p-5 text-sm text-muted transition-colors hover:bg-surface-2 hover:text-text">
+      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border p-5 text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent">
         <Upload size={16} /> Upload the syllabus as a PDF, photo or text file
         <input
           type="file"

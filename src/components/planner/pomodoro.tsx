@@ -141,18 +141,18 @@ export function Pomodoro({ sessionId, label, onClose }: { sessionId: number | nu
     <Modal open={sessionId != null} onClose={stop} title="Focus timer">
       <div className="flex flex-col items-center gap-5 py-2 text-center">
         <div>
-          <p className={cn("text-sm font-semibold", phase === "work" ? "text-text" : "text-good")}>
+          <p className={cn("text-sm font-semibold", phase === "work" ? "text-accent" : "text-good")}>
             {phase === "work" ? "Focus" : "Break"}
           </p>
           <p className="mt-0.5 max-w-xs text-sm text-muted">{label}</p>
         </div>
         <div className="relative grid h-52 w-52 place-items-center">
           <svg viewBox="0 0 100 100" className="absolute inset-0 -rotate-90" aria-hidden>
-            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border)" strokeWidth="2" />
+            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--surface-2)" strokeWidth="4" />
             <circle
               cx="50" cy="50" r="46" fill="none"
-              stroke={phase === "work" ? "var(--text)" : "var(--good)"}
-              strokeWidth="2.5" strokeLinecap="round"
+              stroke={phase === "work" ? "var(--accent)" : "var(--good)"}
+              strokeWidth="4" strokeLinecap="round"
               strokeDasharray={2 * Math.PI * 46}
               strokeDashoffset={2 * Math.PI * 46 * (1 - pct / 100)}
               className="transition-[stroke-dashoffset] duration-1000 ease-linear"

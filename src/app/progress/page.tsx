@@ -3,13 +3,14 @@
 import { format } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
 import Link from "next/link";
-import { BookOpen, Clock, Flame, Layers } from "lucide-react";
+import { AlertTriangle, BookOpen, Clock, Flame } from "lucide-react";
 import { useState } from "react";
 import { CoverageChart, MinutesChart, QuizTrendChart } from "@/components/progress/charts";
 import { StatTile } from "@/components/progress/stat-tile";
 import { Card, Empty, List, PageHeader, Select } from "@/components/ui";
 import { addDay, fromDay, today } from "@/lib/dates";
 import { db } from "@/lib/db";
+import { topicsInScope, useExamMode } from "@/lib/mode";
 import { coverage, fmtMins } from "@/lib/stats";
 
 /** Consecutive days (ending today, or yesterday if today has nothing yet) with completed study. */
@@ -30,18 +31,19 @@ export default function ProgressPage() {
   const [quizSubject, setQuizSubject] = useState<number | "all">("all");
   const t = today();
   const data = useLiveQuery(async () => {
-    const [subjects, topics, sessions, quizzes, cardsDue] = await Promise.all([
+    const [subjects, topics, sessions, quizzes] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
       db.sessions.filter((s) => s.done).toArray(),
       db.quizzes.orderBy("createdAt").toArray(),
-      db.flashcards.where("due").belowOrEqual(t).count(),
     ]);
-    return { subjects, topics, sessions, quizzes, cardsDue };
-  }, [t]);
+    return { subjects, topics, sessions, quizzes };
+  });
+  const mode = useExamMode();
+  const units = useLiveQuery(() => db.units.toArray());
 
-  if (!data) return <PageHeader title="Progress" sub="Loading…" />;
-  const { subjects, topics, sessions, quizzes, cardsDue } = data;
+  if (!data || !units) return <PageHeader title="Progress" sub="Loading…" />;
+  const { subjects, topics, sessions, quizzes } = data;
 
   if (!subjects.length) {
     return (
@@ -56,9 +58,11 @@ export default function ProgressPage() {
 
   const totalMins = sessions.reduce((a, s) => a + s.actualMins, 0);
   const studyDays = new Set(sessions.filter((s) => s.actualMins > 0).map((s) => s.date));
-  const revised = topics.filter((x) => x.status === "revised").length;
+  // Coverage, revised counts and weak topics only count what this exam mode examines.
+  const scoped = topicsInScope(topics, units, mode);
+  const revised = scoped.filter((x) => x.status === "revised").length;
 
-  const coverageData = subjects.map((s) => ({ name: s.name, value: coverage(topics.filter((x) => x.subjectId === s.id)) }));
+  const coverageData = subjects.map((s) => ({ name: s.name, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }));
 
   const minutesData = Array.from({ length: 14 }, (_, i) => {
     const d = addDay(t, i - 13);
@@ -74,7 +78,7 @@ export default function ProgressPage() {
       value: Math.round(q.score),
     }));
 
-  const weak = topics.filter((x) => x.weak);
+  const weak = scoped.filter((x) => x.weak);
   const subjectName = new Map(subjects.map((s) => [s.id!, s]));
   const days = streak(studyDays);
 
@@ -85,20 +89,22 @@ export default function ProgressPage() {
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatTile tone="indigo" icon={<Clock />} label="Time studied" value={fmtMins(totalMins)} sub={`over ${studyDays.size} day${studyDays.size === 1 ? "" : "s"}`} />
           <StatTile tone="emerald" icon={<Flame />} label="Day streak" value={days} sub={days === 1 ? "day in a row" : "days in a row"} />
-          <StatTile tone="violet" icon={<BookOpen />} label="Topics revised" value={`${revised}/${topics.length}`} sub={`${topics.filter((x) => x.status === "studied").length} studied, not yet revised`} />
+          <StatTile tone="violet" icon={<BookOpen />} label="Topics revised" value={`${revised}/${scoped.length}`} sub={`${scoped.filter((x) => x.status === "studied").length} studied, not yet revised`} />
           <StatTile
             tone="amber"
-            icon={<Layers />}
-            label="Cards due"
-            value={cardsDue}
-            sub={<Link href="/revise" className={link}>Review now</Link>}
+            icon={<AlertTriangle />}
+            label="Weak topics"
+            value={weak.length}
+            sub={<Link href="/revise" className={link}>Revise now</Link>}
           />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card title="Syllabus coverage">
             {topics.length ? <CoverageChart data={coverageData} /> : <Empty title="No topics yet">Add a syllabus to a subject.</Empty>}
-            <p className="mt-1 text-xs text-muted">Studied topics count half. Revised topics count in full.</p>
+            <p className="mt-1 text-xs text-muted">
+              {mode && `${mode === "mid-term" ? "Mid-sem" : "Major"} syllabus only. `}Studied topics count half. Revised topics count in full.
+            </p>
           </Card>
 
           <Card title="Study minutes, last 14 days">

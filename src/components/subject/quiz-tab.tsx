@@ -7,9 +7,10 @@ import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { refreshWeak } from "@/lib/weak";
 import { aiJson } from "@/lib/ai/client";
+import { aiModeFields } from "@/lib/mode";
 import type { QuizQuestion } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Badge, Button, Card, Empty, Field, List, Progress, Section, Select, Textarea, cn } from "../ui";
+import { Badge, Button, Card, Empty, Field, List, Progress, Select, Textarea, cn } from "../ui";
 import { matchOption, norm } from "./quiz-match";
 import { noteTexts, OfflineHint, useMaterials, useOnline, type TabProps } from "./shared";
 
@@ -18,7 +19,7 @@ interface Graded { score: number; feedback?: string }
 
 const scoreColor = (s: number) => (s >= 80 ? "text-good" : s >= 60 ? "text-warn" : "text-bad");
 
-export function QuizTab({ subject, units, topics }: TabProps) {
+export function QuizTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
   const online = useOnline();
   const [picked, setPicked] = useState<number[]>([]);
@@ -47,7 +48,7 @@ export function QuizTab({ subject, units, topics }: TabProps) {
       const chosen = topics.filter((t) => picked.includes(t.id!));
       if (!chosen.length) throw new Error("Pick at least one topic.");
       const context = retrieve(noteTexts(materials), chosen.map((t) => t.title).join(" "), 12_000);
-      const res = await aiJson("quiz", { subject: subject.name, topics: chosen.map((t) => t.title), context, count, difficulty });
+      const res = await aiJson("quiz", { subject: subject.name, topics: chosen.map((t) => t.title), context, count, difficulty, ...aiModeFields(mode, units) });
       // MCQs need options and an answer that is one of them; otherwise grade them as short answers instead.
       const qs: QuizQuestion[] = res.questions
         .filter((q) => q.question.trim())
@@ -105,34 +106,40 @@ export function QuizTab({ subject, units, topics }: TabProps) {
   if (questions && graded) {
     const score = Math.round((graded.reduce((a, r) => a + r.score, 0) / questions.length) * 100);
     return (
-      <div className="space-y-8">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className={cn("numeral text-7xl", scoreColor(score))}>{score}%</p>
-            <p className="mt-2 text-[15px] text-muted">
-              {score >= 80 ? "Strong. Move on to the next topic." : score >= 60 ? "Decent. Revise the ones you missed." : "Weak area. It's been flagged for extra study."}
-            </p>
-          </div>
-          <Button onClick={reset}>New quiz</Button>
-        </header>
-        <List>
-          {questions.map((q, i) => {
-            const g = graded[i];
-            const ok = g.score >= 0.99;
-            return (
-              <li key={i} className="flex gap-3 py-4">
-                {ok ? <CheckCircle2 className="mt-0.5 shrink-0 text-good" size={18} aria-label="Correct" /> : <XCircle className={cn("mt-0.5 shrink-0", g.score > 0 ? "text-warn" : "text-bad")} size={18} aria-label={g.score > 0 ? "Partly correct" : "Wrong"} />}
-                <div className="min-w-0 space-y-1.5 text-sm leading-relaxed">
-                  <p className="text-[15px] font-medium">{i + 1}. {q.question}</p>
-                  <p><span className="text-muted">Your answer:</span> {responses[i] || <em className="text-muted">left blank</em>}</p>
-                  {!ok && <p><span className="text-muted">Correct answer:</span> {q.answer}</p>}
-                  {q.type === "short" && <p className="text-muted">Scored {Math.round(g.score * 100)}%{g.feedback && `. ${g.feedback}`}</p>}
-                  {q.explanation && <p className="text-muted">{q.explanation}</p>}
-                </div>
-              </li>
-            );
-          })}
-        </List>
+      <div className="space-y-6">
+        <Card>
+          <header className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="mb-3 text-[15px] font-semibold">Quiz score</p>
+              <p className={cn("numeral text-7xl", scoreColor(score))}>{score}%</p>
+              <p className="mt-2 text-[15px] text-muted">
+                {score >= 80 ? "Strong. Move on to the next topic." : score >= 60 ? "Decent. Revise the ones you missed." : "Weak area. It's been flagged for extra study."}
+              </p>
+            </div>
+            <Button onClick={reset}>New quiz</Button>
+          </header>
+          <Progress value={score} className="mt-5" />
+        </Card>
+        <Card title="Answers">
+          <List className="border-y-0">
+            {questions.map((q, i) => {
+              const g = graded[i];
+              const ok = g.score >= 0.99;
+              return (
+                <li key={i} className="flex gap-3 py-4">
+                  {ok ? <CheckCircle2 className="mt-0.5 shrink-0 text-good" size={18} aria-label="Correct" /> : <XCircle className={cn("mt-0.5 shrink-0", g.score > 0 ? "text-warn" : "text-bad")} size={18} aria-label={g.score > 0 ? "Partly correct" : "Wrong"} />}
+                  <div className="min-w-0 space-y-1.5 text-sm leading-relaxed">
+                    <p className="text-[15px] font-medium">{i + 1}. {q.question}</p>
+                    <p><span className="text-muted">Your answer:</span> {responses[i] || <em className="text-muted">left blank</em>}</p>
+                    {!ok && <p><span className="text-muted">Correct answer:</span> {q.answer}</p>}
+                    {q.type === "short" && <p className="text-muted">Scored {Math.round(g.score * 100)}%{g.feedback && `. ${g.feedback}`}</p>}
+                    {q.explanation && <p className="text-muted">{q.explanation}</p>}
+                  </div>
+                </li>
+              );
+            })}
+          </List>
+        </Card>
       </div>
     );
   }
@@ -164,7 +171,7 @@ export function QuizTab({ subject, units, topics }: TabProps) {
                     responses[page] === o ? "border-accent bg-accent-soft font-medium" : "border-border hover:bg-surface-2",
                   )}
                 >
-                  <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} className="mt-1 accent-[var(--text)]" />
+                  <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} className="mt-1 accent-[var(--accent)]" />
                   {o}
                 </label>
               ))}
@@ -189,7 +196,7 @@ export function QuizTab({ subject, units, topics }: TabProps) {
 
   // ---- Setup
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Card title="New practice quiz">
         {topics.length === 0 ? (
           <p className="text-sm text-muted">Add topics in the Syllabus tab first.</p>
@@ -204,7 +211,7 @@ export function QuizTab({ subject, units, topics }: TabProps) {
                   <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
                     <input
                       type="checkbox"
-                      className="accent-[var(--text)]"
+                      className="accent-[var(--accent)]"
                       checked={all}
                       onChange={() => setPicked((p) => (all ? p.filter((x) => !ts.some((t) => t.id === x)) : [...new Set([...p, ...ts.map((t) => t.id!)])]))}
                     />
@@ -252,11 +259,11 @@ export function QuizTab({ subject, units, topics }: TabProps) {
         <div className="mt-2 space-y-2"><OfflineHint online={online} /><AiErrorBox error={error} /></div>
       </Card>
 
-      <Section title="Past attempts">
+      <Card title="Past attempts">
         {attempts.length === 0 ? (
           <Empty icon={<ClipboardList />} title="No quizzes taken yet" />
         ) : (
-          <List>
+          <List className="border-y-0">
             {attempts.map((a) => (
               <li key={a.id} className="flex items-center gap-4 py-3 text-sm">
                 <span className={cn("w-12 text-[17px] font-semibold tabular-nums", scoreColor(a.score))}>{a.score}%</span>
@@ -268,7 +275,7 @@ export function QuizTab({ subject, units, topics }: TabProps) {
             ))}
           </List>
         )}
-      </Section>
+      </Card>
     </div>
   );
 }

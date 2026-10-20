@@ -8,9 +8,10 @@ import { useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
-import { examTopics } from "@/lib/planner";
+import { useExamMode } from "@/lib/mode";
+import { examSyllabus } from "@/lib/planner";
 import { Markdown } from "@/components/markdown";
-import { Button, Empty, Input, List, Section, Tick } from "@/components/ui";
+import { Button, Card, Empty, Input, List, Tick, cn } from "@/components/ui";
 
 export default function ExamKitPage() {
   const id = Number(useParams<{ id: string }>().id);
@@ -18,32 +19,25 @@ export default function ExamKitPage() {
   const exam = useLiveQuery(async () => (Number.isFinite(id) ? ((await db.exams.get(id)) ?? null) : null), [id]);
   const subject = useLiveQuery(() => (exam ? db.subjects.get(exam.subjectId) : undefined), [exam?.subjectId]);
   const topics = useLiveQuery(() => (exam ? db.topics.where({ subjectId: exam.subjectId }).toArray() : []), [exam?.subjectId]);
+  const units = useLiveQuery(() => (exam ? db.units.where({ subjectId: exam.subjectId }).toArray() : []), [exam?.subjectId]);
+  const mode = useExamMode();
   const sheets = useLiveQuery(
     () => (exam ? db.docs.where({ subjectId: exam.subjectId }).filter((d) => d.kind === "cheatsheet").reverse().sortBy("createdAt") : []),
     [exam?.subjectId],
   );
-  // Hardest cards first: lowest ease = most often forgotten.
-  const hardCards = useLiveQuery(
-    async () =>
-      exam
-        ? (await db.flashcards.where({ subjectId: exam.subjectId }).filter((c) => c.ease < 2.4 || c.reps === 0).sortBy("ease")).slice(0, 30)
-        : [],
-    [exam?.subjectId],
-  );
   const [newItem, setNewItem] = useState("");
   const [sheetIdx, setSheetIdx] = useState(0);
-  const [reveal, setReveal] = useState<Set<number>>(new Set());
 
   if (exam === undefined) return null;
   if (exam === null) {
     return (
       <Empty title="Exam not found">
-        It may have been deleted. <Link href="/exams" className="font-medium text-text underline underline-offset-2">Back to exams</Link>
+        It may have been deleted. <Link href="/exams" className="font-medium text-accent underline underline-offset-2">Back to exams</Link>
       </Empty>
     );
   }
 
-  const scope = examTopics(exam, topics ?? []);
+  const scope = examSyllabus(exam, topics ?? [], units ?? [], mode); // the exam's own season's syllabus
   const weak = scope.filter((t) => t.weak || t.confidence <= 2);
   const notDone = scope.filter((t) => t.status === "not-started");
   const days = daysBetween(today(), exam.date);
@@ -59,9 +53,9 @@ export default function ExamKitPage() {
 
   return (
     <>
-      <Link href="/exams" className="no-print mb-6 inline-flex items-center gap-1 text-sm text-muted hover:text-text"><ArrowLeft size={14} /> Exams</Link>
+      <Link href="/exams" className="no-print mb-6 inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-accent"><ArrowLeft size={14} /> Exams</Link>
 
-      <header className="mb-10 flex flex-wrap items-end justify-between gap-6">
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-6">
         <div className="flex items-end gap-5">
           <div>
             <div className="numeral text-[88px] md:text-[112px]" style={{ color: days > 3 ? subject?.color : undefined }}>
@@ -70,15 +64,15 @@ export default function ExamKitPage() {
             <p className="mt-2 text-sm text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
           </div>
           <div className="min-w-0 pb-6">
-            <h1 className="text-[26px] font-semibold leading-tight tracking-tight [font-stretch:90%] md:text-[32px]">{subject?.name ?? "Exam"}</h1>
+            <h1 className="text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">{subject?.name ?? "Exam"}</h1>
             <p className="mt-1 text-sm text-muted">{examTypeLabel(exam.type)}, {prettyDay(exam.date)}</p>
           </div>
         </div>
         <Button variant="secondary" className="no-print" onClick={() => window.print()}><Printer size={16} /> Print kit</Button>
       </header>
 
-      <div className="space-y-10">
-        <Section>
+      <div className="space-y-6">
+        <Card title="Exam details">
           <div className="space-y-1.5 text-[15px]">
             {exam.time && (
               <p className="flex items-center gap-2"><Clock size={15} className="text-muted" /> Starts {exam.time}{exam.durationMins ? `, ${exam.durationMins} min` : ""}</p>
@@ -90,23 +84,23 @@ export default function ExamKitPage() {
               {scope.length} topics in the syllabus. {notDone.length} not started, {weak.length} weak.
             </p>
           </div>
-          {exam.notes && <p className="mt-4 max-w-prose border-l-2 border-border pl-3 text-sm leading-relaxed">{exam.notes}</p>}
-        </Section>
+          {exam.notes && <p className="mt-4 max-w-prose border-l-2 border-accent/40 pl-3 text-sm leading-relaxed">{exam.notes}</p>}
+        </Card>
 
         {days <= 1 && days >= 0 && (
-          <Section title="The night before">
+          <Card title="The night before">
             <ul className="max-w-prose list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed">
-              <li>Don&apos;t start new topics. Skim the cheat sheet and the hard flashcards below.</li>
+              <li>Don&apos;t start new topics. Skim the cheat sheet and the weak topics below.</li>
               <li>Pack the checklist tonight and keep the admit card in your bag.</li>
               <li>Sleep 7–8 hours. Memory consolidates while you sleep.</li>
               <li>Set two alarms. Leave so you reach {exam.venue ?? "the venue"} 30–45 min early.</li>
               <li>In the hall, read the whole paper first and attempt your strongest questions first.</li>
             </ul>
-          </Section>
+          </Card>
         )}
 
-        <Section title="Checklist" action={<span className="text-sm text-muted">{packed} of {checklist.length} packed</span>}>
-          <List>
+        <Card title="Checklist" action={<span className={cn("text-sm tabular-nums", checklist.length && packed === checklist.length ? "font-semibold text-good" : "text-muted")}>{packed} of {checklist.length} packed</span>}>
+          <List className="border-t-0">
             {checklist.map((item, i) => (
               <li key={i} className="group flex items-center gap-3 py-2.5 text-[15px]">
                 <Tick
@@ -138,9 +132,9 @@ export default function ExamKitPage() {
             <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add an item" className="h-9" />
             <Button size="sm" type="submit" variant="secondary" className="h-9" aria-label="Add item"><Plus size={15} /></Button>
           </form>
-        </Section>
+        </Card>
 
-        <Section
+        <Card
           title="Last-minute cheat sheet"
           action={sheets && sheets.length > 1 && (
             <select
@@ -156,47 +150,26 @@ export default function ExamKitPage() {
           {sheet ? <Markdown>{sheet.content}</Markdown> : (
             <p className="text-sm text-muted">
               No cheat sheet yet. Generate one from{" "}
-              <Link className="font-medium text-text underline underline-offset-2" href={`/subjects/${exam.subjectId}`}>{subject?.name ?? "the subject"}, Notes tab</Link>.
+              <Link className="font-medium text-accent underline underline-offset-2" href={`/subjects/${exam.subjectId}`}>{subject?.name ?? "the subject"}, Notes tab</Link>.
             </p>
           )}
-        </Section>
+        </Card>
 
-        <div className="grid gap-10 md:grid-cols-2">
-          <Section title="Weak topics">
-            {weak.length ? (
-              <List>
-                {weak.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                    <span>{t.title}</span>
-                    <span className="shrink-0 text-xs text-warn">confidence {t.confidence}/5</span>
-                  </li>
-                ))}
-              </List>
-            ) : <p className="text-sm text-muted">No weak topics flagged.</p>}
-          </Section>
-
-          <Section
-            title="Hardest flashcards"
-            action={<Link className="no-print text-sm font-medium underline underline-offset-2" href="/revise">Review all</Link>}
-          >
-            {hardCards?.length ? (
-              <ul className="space-y-2 text-sm">
-                {hardCards.map((c) => (
-                  <li key={c.id}>
-                    <button
-                      className="w-full rounded-xl border border-border bg-surface p-3 text-left hover:bg-surface-2"
-                      onClick={() => setReveal((r) => new Set(r).add(c.id!))}
-                      aria-label={reveal.has(c.id!) ? undefined : `Reveal answer: ${c.front}`}
-                    >
-                      <span className="font-medium">{c.front}</span>
-                      <span className={`mt-1 block text-muted ${reveal.has(c.id!) ? "" : "blur-sm print:blur-none"}`}>{c.back}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="text-sm text-muted">No flashcards yet.</p>}
-          </Section>
-        </div>
+        <Card
+          title="Weak topics"
+          action={<Link className="no-print text-sm font-medium text-accent underline-offset-2 hover:underline" href="/revise">Revise</Link>}
+        >
+          {weak.length ? (
+            <List className="border-y-0">
+              {weak.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <span>{t.title}</span>
+                  <span className="shrink-0 text-xs text-warn">confidence {t.confidence}/5</span>
+                </li>
+              ))}
+            </List>
+          ) : <p className="text-sm text-muted">No weak topics flagged.</p>}
+        </Card>
       </div>
     </>
   );

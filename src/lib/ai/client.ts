@@ -1,6 +1,6 @@
 "use client";
 
-import type { AiRequest, FlashcardsResult, GradeResult, JsonAction, QuizResult, SyllabusResult, TextAction } from "./schemas";
+import type { AiRequest, GradeResult, JsonAction, QuizResult, SyllabusResult, TextAction } from "./schemas";
 
 export class AiError extends Error {
   constructor(message: string, public retryAfter?: number) {
@@ -96,7 +96,7 @@ export async function extractWithAi(file: File): Promise<string> {
   return text.trim();
 }
 
-type JsonResults = { syllabus: SyllabusResult; flashcards: FlashcardsResult; quiz: QuizResult; grade: GradeResult };
+type JsonResults = { syllabus: SyllabusResult; quiz: QuizResult; grade: GradeResult };
 
 export async function aiJson<A extends JsonAction>(action: A, body: AiRequest): Promise<JsonResults[A]> {
   return (await post(action, body)).json();

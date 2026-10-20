@@ -3,7 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { db } from "@/lib/db";
-import type { Material, Subject, Topic, Unit } from "@/lib/types";
+import type { ExamMode, Material, Subject, Topic, Unit } from "@/lib/types";
 import { Select } from "../ui";
 
 /** All uploaded materials for a subject (empty while loading). */
@@ -42,24 +42,27 @@ export function useOnline() {
 /** Props every tab receives from the subject page. */
 export interface TabProps {
   subject: Subject;
+  /** The current mode's own syllabus; units added in a tab are tagged with `mode`. */
   units: Unit[];
   topics: Topic[];
+  mode: ExamMode;
 }
 
 /** Topic picker grouped by unit; value "" means the whole subject (when allowed). */
 export function TopicSelect({
-  units, topics, value, onChange, allowAll = true, className,
+  units, topics, value, onChange, allowAll = true, allLabel = "Whole subject", className,
 }: {
   units: Unit[];
   topics: Topic[];
   value: string;
   onChange: (v: string) => void;
   allowAll?: boolean;
+  allLabel?: string;
   className?: string;
 }) {
   return (
     <Select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
-      {allowAll ? <option value="">Whole subject</option> : <option value="" disabled>Choose a topic…</option>}
+      {allowAll ? <option value="">{allLabel}</option> : <option value="" disabled>Choose a topic…</option>}
       {units.map((u) => (
         <optgroup key={u.id} label={u.title}>
           {topics.filter((t) => t.unitId === u.id).map((t) => (
@@ -72,6 +75,6 @@ export function TopicSelect({
 }
 
 export const OfflineHint = ({ online }: { online: boolean }) =>
-  online ? null : <p className="text-xs text-warn">You&apos;re offline. AI features are paused until you reconnect.</p>;
+  online ? null : <p className="rounded-lg bg-mark-soft px-3 py-2 text-xs font-medium text-warn">You&apos;re offline. AI features are paused until you reconnect.</p>;
 
 export const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";

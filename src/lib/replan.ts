@@ -9,19 +9,21 @@ import { generatePlan, type PlanResult } from "./planner";
  */
 export async function replan(): Promise<PlanResult> {
   const start = today();
-  return db.transaction("rw", [db.exams, db.topics, db.sessions, db.settings], async () => {
+  return db.transaction("rw", [db.exams, db.topics, db.units, db.sessions, db.settings], async () => {
     const unfinished = await db.sessions.filter((s) => !s.done).toArray();
     for (const s of unfinished) {
       if (s.actualMins > 0) await db.sessions.update(s.id!, { done: true, plannedMins: s.actualMins });
       else await db.sessions.delete(s.id!);
     }
-    const [exams, topics, done, settings] = await Promise.all([
+    const [exams, topics, units, done, settings] = await Promise.all([
       db.exams.toArray(),
       db.topics.toArray(),
+      db.units.toArray(),
       db.sessions.toArray(),
       getSettings(),
     ]);
-    const result = generatePlan({ start, exams, topics, done, settings });
+    // Plans only for the chosen season; the other season's future sessions are dropped above.
+    const result = generatePlan({ start, exams, topics, units, done, settings, mode: settings.examMode });
     await db.sessions.bulkAdd(result.sessions);
     return result;
   });

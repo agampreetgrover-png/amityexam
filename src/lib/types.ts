@@ -3,6 +3,8 @@ export type ISODay = string;
 
 export type TopicStatus = "not-started" | "studied" | "revised";
 export type ExamType = "internal" | "mid-term" | "end-term" | "practical" | "viva" | "other";
+/** Which exam season the app is tailored to, chosen on first launch. */
+export type ExamMode = "mid-term" | "end-term";
 
 export interface Subject {
   id?: number;
@@ -11,6 +13,7 @@ export interface Subject {
   credits?: number;
   color: string;
   createdAt: number;
+  driveFolderIds?: string[]; // Drive folders linked by hand, on top of the auto-matched ones
 }
 
 export interface Unit {
@@ -18,6 +21,7 @@ export interface Unit {
   subjectId: number;
   title: string;
   order: number;
+  exam?: ExamMode; // whose syllabus this unit belongs to; legacy units (unset) are the major syllabus
 }
 
 export interface Topic {
@@ -78,18 +82,31 @@ export interface Material {
   fileName: string;
   text: string;
   createdAt: number;
+  pyqExam?: ExamMode; // which exam a past paper was for, when its name says so
+  source?: DriveRef; // set when imported from Google Drive
 }
 
-export interface Flashcard {
-  id?: number;
+export interface DriveRef {
+  driveId: string;
+  url: string;
+  path: string[]; // folder names in Drive, e.g. ["CSE201 - Database Management Systems", "PYQs"]
+  format: "notes" | "ppt" | "pyq";
+  ocr: boolean; // read from a scan by AI
+}
+
+/** Every Drive file the sync has dealt with, so deleted or skipped files aren't fetched again. */
+export interface DriveFile {
+  driveId: string;
   subjectId: number;
-  topicId?: number;
-  front: string;
-  back: string;
-  ease: number;
-  interval: number;
-  reps: number;
-  due: ISODay;
+  name: string;
+  status: "imported" | "skipped";
+  reason?: string;
+  at: number;
+}
+
+export interface DriveSourceSetting {
+  id: string; // folder id
+  label: string;
 }
 
 export interface QuizQuestion {
@@ -139,6 +156,10 @@ export interface Settings {
   pomodoroWork: number;
   pomodoroBreak: number;
   notifications: boolean;
+  examMode?: ExamMode; // unset until chosen on the welcome screen
+  driveSources?: DriveSourceSetting[]; // unset = the built-in defaults
+  driveSync?: boolean; // sync Drive on open; unset = on
+  lastDriveSync?: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

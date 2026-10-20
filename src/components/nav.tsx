@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BookOpen, CalendarDays, GraduationCap, House, Layers, Settings } from "lucide-react";
+import { BarChart3, BookOpen, CalendarDays, GraduationCap, House, RotateCcw, Settings } from "lucide-react";
+import { ModePill } from "./mode-pill";
 import { cn } from "./ui";
 
 const primary = [
@@ -10,7 +11,7 @@ const primary = [
   { href: "/planner", label: "Planner", icon: CalendarDays },
   { href: "/subjects", label: "Subjects", icon: BookOpen },
   { href: "/exams", label: "Exams", icon: GraduationCap },
-  { href: "/revise", label: "Revise", icon: Layers },
+  { href: "/revise", label: "Revise", icon: RotateCcw },
 ];
 const secondary = [
   { href: "/progress", label: "Progress", icon: BarChart3 },
@@ -39,12 +40,13 @@ export function Nav() {
     <>
       {/* Desktop: white sidebar */}
       <nav className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-border bg-surface px-4 py-6 md:flex" aria-label="Main">
-        <Link href="/" className="mb-8 flex items-center gap-3 px-1">
+        <Link href="/" className="flex items-center gap-3 px-1">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-accent-ink shadow-sm">
             <GraduationCap size={21} />
           </span>
           <span className="text-lg font-bold tracking-tight">Amity Exams</span>
         </Link>
+        <ModePill className="mb-6 ml-1 mt-3 self-start" />
         <ul className="space-y-1">{primary.map(item)}</ul>
         <ul className="mt-auto space-y-1 border-t border-border pt-4">{secondary.map(item)}</ul>
       </nav>

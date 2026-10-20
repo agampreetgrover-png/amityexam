@@ -16,7 +16,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Today's plan", url: "/planner" },
-      { name: "Revise flashcards", url: "/revise" },
+      { name: "Revise topics", url: "/revise" },
     ],
   };
 }

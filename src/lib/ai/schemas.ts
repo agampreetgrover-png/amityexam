@@ -11,10 +11,6 @@ export const SyllabusSchema = z.object({
   ),
 });
 
-export const FlashcardsSchema = z.object({
-  cards: z.array(z.object({ front: z.string(), back: z.string() })),
-});
-
 export const QuizSchema = z.object({
   questions: z.array(
     z.object({
@@ -32,11 +28,10 @@ export const GradeSchema = z.object({
 });
 
 export type SyllabusResult = z.infer<typeof SyllabusSchema>;
-export type FlashcardsResult = z.infer<typeof FlashcardsSchema>;
 export type QuizResult = z.infer<typeof QuizSchema>;
 export type GradeResult = z.infer<typeof GradeSchema>;
 
-export const JSON_ACTIONS = ["syllabus", "flashcards", "quiz", "grade"] as const;
+export const JSON_ACTIONS = ["syllabus", "quiz", "grade"] as const;
 export const TEXT_ACTIONS = ["summary", "cheatsheet", "predict", "chat", "explain"] as const;
 export type JsonAction = (typeof JSON_ACTIONS)[number];
 export type TextAction = (typeof TEXT_ACTIONS)[number];
@@ -50,6 +45,9 @@ export const AiRequestSchema = z.object({
   text: z.string().transform((s) => s.slice(0, 100_000)).optional(), // free input (syllabus text, question)
   count: z.coerce.number().int().transform((n) => Math.min(30, Math.max(1, n))).optional(),
   difficulty: z.enum(["easy", "medium", "hard"]).optional(),
+  // Which exam the student is preparing for; mid-sem also names the units it covers.
+  examMode: z.enum(["mid-term", "end-term"]).optional(),
+  scopeUnits: z.array(z.string().max(300)).max(50).optional(),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(20_000) }))
     .max(20)

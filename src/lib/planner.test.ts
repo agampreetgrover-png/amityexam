@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generatePlan, topicMinutes } from "./planner";
-import type { Exam, StudySession, Topic } from "./types";
+import type { Exam, StudySession, Topic, Unit } from "./types";
 
 const settings = { dailyMinutes: 120, offDays: [], revisionDays: 1, sessionMins: 60 };
 
@@ -105,6 +105,25 @@ describe("generatePlan", () => {
       start: "2026-11-02", exams: [exam(1, 1, "2026-11-03")], topics: [topic(1)], done: [], settings: { ...settings, revisionDays: 3 },
     });
     expect(sessions.every((s) => s.date >= "2026-11-02" && s.date < "2026-11-03")).toBe(true);
+  });
+
+  it("plans only the chosen season's exams over that season's own syllabus", () => {
+    // Units 1–2 are the mid-sem syllabus, 3 the major one, 4 is legacy (untagged, so major).
+    const tags: (Unit["exam"])[] = ["mid-term", "mid-term", "end-term", undefined];
+    const units: Unit[] = tags.map((exam, i) => ({ id: i + 1, subjectId: 1, title: `U${i + 1}`, order: i, exam }));
+    const topics = [1, 2, 3, 4].map((id) => topic(id, 1, { unitId: id }));
+    const studied = (s: StudySession[]) => new Set(s.filter((x) => x.kind === "study").map((x) => x.topicId));
+    const mid = { ...exam(1, 1, "2026-11-10"), type: "mid-term" as const };
+    const end = exam(2, 1, "2026-12-10");
+    const midPlan = generatePlan({ start: "2026-11-01", exams: [mid, end], topics, units, done: [], settings, mode: "mid-term" });
+    expect(studied(midPlan.sessions)).toEqual(new Set([1, 2]));
+    expect(midPlan.sessions.every((s) => s.examId == null || s.examId === 1)).toBe(true);
+    const endPlan = generatePlan({ start: "2026-11-01", exams: [mid, end], topics, units, done: [], settings, mode: "end-term" });
+    expect(studied(endPlan.sessions)).toEqual(new Set([3, 4]));
+    expect(endPlan.sessions.every((s) => s.examId == null || s.examId === 2)).toBe(true);
+    // An exam's own ticked topics are taken as given (e.g. an older exam pointing at legacy units).
+    const ticked = generatePlan({ start: "2026-11-01", exams: [{ ...mid, topicIds: [4] }], topics, units, done: [], settings, mode: "mid-term" });
+    expect(studyMins(ticked.sessions, 4)).toBe(topicMinutes(topics[3]));
   });
 
   it("gives weak, low-confidence topics more time and skips revised ones", () => {
