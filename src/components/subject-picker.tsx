@@ -15,12 +15,32 @@ const UNIQUE: CatalogSubject[] = Object.values(
   }, {}),
 );
 
-/** Ranks catalog subjects for a query: exact alias, then name prefix, then word prefix, then substring. */
-function search(query: string, exclude: Set<string>): CatalogSubject[] {
+/** A course from the student's own Drive library ("IT307 - Exploring the networks"). */
+export interface Course {
+  code: string;
+  name: string;
+}
+
+/**
+ * The student's own courses come first, labelled with their code; the generic list fills in
+ * anything their library doesn't have. A generic entry with the same name as a course is dropped.
+ */
+type Entry = CatalogSubject & { own?: boolean };
+
+function buildPool(courses: Course[]): Entry[] {
+  const generic = new Map(UNIQUE.map((s) => [norm(s.name), s]));
+  // A course keeps the generic entry's short forms, so "dbms" still finds the student's own DBMS course.
+  const own = courses.map((c) => ({ name: c.name, programme: c.code, aliases: [c.code, ...(generic.get(norm(c.name))?.aliases ?? [])], own: true }));
+  const ownNames = new Set(own.map((c) => norm(c.name)));
+  return [...own, ...UNIQUE.filter((s) => !ownNames.has(norm(s.name)))];
+}
+
+/** Ranks subjects for a query: exact alias, then name prefix, then word prefix, then substring. */
+function search(query: string, all: Entry[], exclude: Set<string>): Entry[] {
   const q = norm(query);
-  const pool = UNIQUE.filter((s) => !exclude.has(norm(s.name)));
+  const pool = all.filter((s) => !exclude.has(norm(s.name)));
   if (!q) return pool;
-  const scored: [number, CatalogSubject][] = [];
+  const scored: [number, Entry][] = [];
   for (const s of pool) {
     const name = norm(s.name);
     const aliases = (s.aliases ?? []).map(norm);
@@ -31,18 +51,21 @@ function search(query: string, exclude: Set<string>): CatalogSubject[] {
     else if (name.includes(q)) score = 3;
     if (score >= 0) scored.push([score, s]);
   }
-  return scored.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name)).map(([, s]) => s);
+  // Within a score, the student's own courses come before generic ones.
+  return scored.sort((a, b) => a[0] - b[0] || Number(!!b[1].own) - Number(!!a[1].own) || a[1].name.localeCompare(b[1].name)).map(([, s]) => s);
 }
 
 /**
  * Subject name field with a searchable list of common subjects.
  * Free text still works: the student can type any name that isn't listed.
  */
-export function SubjectPicker({ value, onChange, exclude = [], autoFocus }: {
+export function SubjectPicker({ value, onChange, exclude = [], courses = [], autoFocus }: {
   value: string;
   onChange: (name: string) => void;
   /** Names already added, hidden from the list. */
   exclude?: string[];
+  /** The student's own courses from their Drive library, listed first. */
+  courses?: Course[];
   autoFocus?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -50,6 +73,23 @@ export function SubjectPicker({ value, onChange, exclude = [], autoFocus }: {
   const listId = useId();
   const listRef = useRef<HTMLUListElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const pointerDown = useRef(false);
+  useEffect(() => {
+    const down = () => {
+      pointerDown.current = true;
+    };
+    const up = () => {
+      setTimeout(() => {
+        pointerDown.current = false;
+      });
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+    };
+  }, []);
   // Plain autoFocus fires before the parent <dialog> is shown, so focus lands on its close button.
   // Waiting a tick lets showModal() run first.
   useEffect(() => {
@@ -61,7 +101,8 @@ export function SubjectPicker({ value, onChange, exclude = [], autoFocus }: {
     return () => clearTimeout(t);
   }, [autoFocus]);
   const excluded = useMemo(() => new Set(exclude.map(norm)), [exclude]);
-  const results = useMemo(() => search(value, excluded), [value, excluded]);
+  const pool = useMemo(() => buildPool(courses), [courses]);
+  const results = useMemo(() => search(value, pool, excluded), [value, pool, excluded]);
   const showing = open && results.length > 0;
 
   const pick = (s: CatalogSubject) => {
@@ -87,7 +128,14 @@ export function SubjectPicker({ value, onChange, exclude = [], autoFocus }: {
         aria-activedescendant={showing ? `${listId}-${active}` : undefined}
         autoComplete="off"
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          // A mouse click elsewhere blurs the input on mousedown. Closing the list right then shifts the form
+          // up under the pointer, so the click lands on the wrong element (e.g. misses Save). Close once it lands.
+          if (!pointerDown.current) return setOpen(false);
+          document.addEventListener("click", () => {
+            if (!wrapRef.current?.contains(document.activeElement)) setOpen(false);
+          }, { once: true });
+        }}
         onChange={(e) => {
           onChange(e.target.value);
           setOpen(true);
@@ -144,7 +192,7 @@ export function SubjectPicker({ value, onChange, exclude = [], autoFocus }: {
           ))}
         </ul>
       )}
-      {open && value.trim() && results.length === 0 && (
+      {value.trim() && results.length === 0 && (
         <p className="mt-1.5 text-xs text-muted">Not in the list. It will be added as you typed it.</p>
       )}
     </div>

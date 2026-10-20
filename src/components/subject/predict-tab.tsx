@@ -7,33 +7,33 @@ import { db } from "@/lib/db";
 import { aiModeFields, modeShort, pyqMatchesMode } from "@/lib/mode";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Markdown } from "../markdown";
 import { Button, Card, Empty } from "../ui";
-import { DocList, DocViewer, saveDoc, StopButton, useStreamDoc } from "./docs";
-import { MAX_CONTEXT, MAX_TOPICS, OfflineHint, useOnline, type TabProps } from "./shared";
+import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
+import { MAX_CONTEXT, OfflineHint, topicTitles, useOnline, type TabProps } from "./shared";
 
 export function PredictTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
   const online = useOnline();
   const gen = useStreamDoc();
   const [viewing, setViewing] = useState<GeneratedDoc | null>(null);
+  const [pendingTitle, setPendingTitle] = useState("");
 
   const allPyqs = useLiveQuery(() => db.materials.where({ subjectId }).filter((m) => m.kind === "pyq").toArray(), [subjectId]) ?? [];
-  // Prefer papers named for this exam (e.g. "Minor 2023" in mid-sem, "EndSem 2023" for major); else use them all.
-  const matched = allPyqs.filter((p) => pyqMatchesMode(p, mode));
-  const pyqs = matched.length ? matched : allPyqs;
+  // Only this exam's papers: never mid-sem papers for a major prediction or the other way round,
+  // and never papers whose exam is unknown.
+  const pyqs = allPyqs.filter((p) => pyqMatchesMode(p, mode));
+  const skipped = allPyqs.length - pyqs.length;
   const docs = useLiveQuery(() => db.docs.where({ subjectId }).filter((d) => d.kind === "predict").reverse().sortBy("createdAt"), [subjectId]) ?? [];
 
   const generate = async () => {
     setViewing(null);
     // Label each paper so the model can count repeats across years.
     const context = pyqs.map((p) => `=== ${p.fileName} ===\n${p.text}`).join("\n\n").slice(0, MAX_CONTEXT);
-    const content = await gen.run("predict", { subject: subject.name, topics: topics.slice(0, MAX_TOPICS).map((t) => t.title), context, ...aiModeFields(mode, units) });
+    const title = `Prediction: ${subject.name}${mode ? `, ${modeShort(mode).toLowerCase()}` : ""} (${pyqs.length} paper${pyqs.length === 1 ? "" : "s"})`;
+    setPendingTitle(title);
+    const content = await gen.run("predict", { subject: subject.name, topics: topicTitles(topics), context: context || undefined, ...aiModeFields(mode, units) });
     if (!content?.trim()) return;
-    const doc = await saveDoc({
-      subjectId, kind: "predict", content,
-      title: `Prediction: ${subject.name}${mode ? `, ${modeShort(mode).toLowerCase()}` : ""} (${pyqs.length} paper${pyqs.length === 1 ? "" : "s"})`,
-    });
+    const doc = await saveDoc({ subjectId, kind: "predict", content, title });
     gen.reset();
     setViewing(doc);
   };
@@ -46,10 +46,12 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
         </p>
         <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">
           {pyqs.length
-            ? `Using ${pyqs.length} ${matched.length && mode ? `${modeShort(mode).toLowerCase()} ` : ""}paper${pyqs.length === 1 ? "" : "s"}: ${pyqs.map((p) => p.fileName).join(", ")}${
-                matched.length && matched.length < allPyqs.length ? ` (${allPyqs.length - matched.length} other paper${allPyqs.length - matched.length === 1 ? "" : "s"} skipped)` : ""
+            ? `Using ${pyqs.length} ${modeShort(mode).toLowerCase()} paper${pyqs.length === 1 ? "" : "s"}: ${pyqs.map((p) => p.fileName).join(", ")}${
+                skipped ? ` (${skipped} other paper${skipped === 1 ? "" : "s"} not for this exam, or of unknown type, left out)` : ""
               }`
-            : "No previous year papers yet. Add them in Materials as “Previous year paper” for much better predictions. Without them, only the syllabus is used."}
+            : `No ${modeShort(mode)} papers yet. Sync Drive or upload some in Materials as “Previous year paper”. Until then, predictions use only the syllabus.${
+                skipped ? ` (${skipped} paper${skipped === 1 ? " is" : "s are"} for the other exam or of unknown type.)` : ""
+              }`}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           {gen.busy ? <StopButton onClick={gen.stop} /> : (
@@ -59,9 +61,15 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
         <div className="mt-2 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
       </Card>
 
-      {(gen.busy || gen.text) && (
-        <Card title={gen.busy ? "Reading the papers…" : "Draft"} className="no-print"><Markdown>{gen.text || "…"}</Markdown></Card>
-      )}
+      <DraftCard
+        gen={gen}
+        busyTitle="Reading the papers…"
+        onSave={async () => {
+          const doc = await saveDoc({ subjectId, kind: "predict", content: gen.text, title: `${pendingTitle || `Prediction: ${subject.name}`} (draft)` });
+          gen.reset();
+          setViewing(doc);
+        }}
+      />
 
       {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
 

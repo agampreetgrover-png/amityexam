@@ -8,10 +8,9 @@ import { aiModeFields, modeShort } from "@/lib/mode";
 import { retrieve } from "@/lib/retrieve";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Markdown } from "../markdown";
 import { Button, Card, Empty, Field, Select } from "../ui";
-import { DocList, DocViewer, saveDoc, StopButton, useStreamDoc } from "./docs";
-import { MAX_CONTEXT, MAX_TOPICS, noteTexts, OfflineHint, topicQuery, TopicSelect, useMaterials, useOnline, type TabProps } from "./shared";
+import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
+import { MAX_CONTEXT, noteTexts, OfflineHint, topicQuery, TopicSelect, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
 type NoteKind = "summary" | "cheatsheet";
 
@@ -23,6 +22,8 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
   const [viewing, setViewing] = useState<GeneratedDoc | null>(null);
   const [filter, setFilter] = useState("all");
   const gen = useStreamDoc();
+  // What the doc being written will be saved as, so a stopped draft can still be saved under the right name.
+  const [pending, setPending] = useState<Pick<GeneratedDoc, "topicId" | "kind" | "title"> | null>(null);
 
   const materials = useMaterials(subjectId);
   const docs =
@@ -38,12 +39,14 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
     const texts = noteTexts(materials);
     const context = topic ? retrieve(texts, topicQuery(topic, units), 15_000) : texts.join("\n\n").slice(0, MAX_CONTEXT);
     // Topics are already the current mode's syllabus (scoped by the subject page).
-    const topicNames = topic ? [topic.title] : topics.slice(0, MAX_TOPICS).map((t) => t.title);
-    const content = await gen.run(kind, { subject: subject.name, topics: topicNames, context, ...aiModeFields(mode, units) });
-    if (!content?.trim()) return;
+    const topicNames = topicTitles(topic ? [topic] : topics);
     const label = kind === "summary" ? "Notes" : "Cheat sheet";
     const scope = !topic && mode ? ` (${modeShort(mode).toLowerCase()})` : "";
-    const doc = await saveDoc({ subjectId, topicId: topic?.id, kind, content, title: `${label}: ${topic?.title ?? subject.name}${scope}` });
+    const meta = { topicId: topic?.id, kind, title: `${label}: ${topic?.title ?? subject.name}${scope}` };
+    setPending(meta);
+    const content = await gen.run(kind, { subject: subject.name, topics: topicNames, context, ...aiModeFields(mode, units) });
+    if (!content?.trim()) return;
+    const doc = await saveDoc({ subjectId, ...meta, content });
     gen.reset();
     setViewing(doc);
   };
@@ -71,11 +74,16 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
         <div className="mt-2 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
       </Card>
 
-      {(gen.busy || gen.text) && (
-        <Card title={gen.busy ? "Writing…" : "Draft"} className="no-print">
-          <Markdown>{gen.text || "…"}</Markdown>
-        </Card>
-      )}
+      <DraftCard
+        gen={gen}
+        busyTitle="Writing…"
+        onSave={async () => {
+          if (!pending) return;
+          const doc = await saveDoc({ subjectId, ...pending, title: `${pending.title} (draft)`, content: gen.text });
+          gen.reset();
+          setViewing(doc);
+        }}
+      />
 
       {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
 

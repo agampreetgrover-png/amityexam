@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generatePlan, topicMinutes } from "./planner";
+import { generatePlan, sessionMode, topicMinutes } from "./planner";
 import type { Exam, StudySession, Topic, Unit } from "./types";
 
 const settings = { dailyMinutes: 120, offDays: [], revisionDays: 1, sessionMins: 60 };
@@ -107,8 +107,8 @@ describe("generatePlan", () => {
     expect(sessions.every((s) => s.date >= "2026-11-02" && s.date < "2026-11-03")).toBe(true);
   });
 
-  it("plans only the chosen season's exams over that season's own syllabus", () => {
-    // Units 1–2 are the mid-sem syllabus, 3 the major one, 4 is legacy (untagged, so major).
+  it("plans only the chosen season's exams over that season's syllabus", () => {
+    // Units 1–2 are in the mid-sem; the major covers all four (3 tagged major, 4 untagged).
     const tags: (Unit["exam"])[] = ["mid-term", "mid-term", "end-term", undefined];
     const units: Unit[] = tags.map((exam, i) => ({ id: i + 1, subjectId: 1, title: `U${i + 1}`, order: i, exam }));
     const topics = [1, 2, 3, 4].map((id) => topic(id, 1, { unitId: id }));
@@ -119,7 +119,7 @@ describe("generatePlan", () => {
     expect(studied(midPlan.sessions)).toEqual(new Set([1, 2]));
     expect(midPlan.sessions.every((s) => s.examId == null || s.examId === 1)).toBe(true);
     const endPlan = generatePlan({ start: "2026-11-01", exams: [mid, end], topics, units, done: [], settings, mode: "end-term" });
-    expect(studied(endPlan.sessions)).toEqual(new Set([3, 4]));
+    expect(studied(endPlan.sessions)).toEqual(new Set([1, 2, 3, 4]));
     expect(endPlan.sessions.every((s) => s.examId == null || s.examId === 2)).toBe(true);
     // An exam's own ticked topics are taken as given (e.g. an older exam pointing at legacy units).
     const ticked = generatePlan({ start: "2026-11-01", exams: [{ ...mid, topicIds: [4] }], topics, units, done: [], settings, mode: "mid-term" });
@@ -129,5 +129,55 @@ describe("generatePlan", () => {
   it("gives weak, low-confidence topics more time and skips revised ones", () => {
     expect(topicMinutes(topic(1, 1, { weak: true, confidence: 1 }))).toBeGreaterThan(topicMinutes(topic(2)));
     expect(topicMinutes(topic(3, 1, { status: "revised" }))).toBe(0);
+  });
+});
+
+describe("sessionMode", () => {
+  const units = new Map<number, Unit>([
+    [1, { id: 1, subjectId: 1, title: "U1", order: 0, exam: "mid-term" }],
+    [2, { id: 2, subjectId: 1, title: "U2", order: 1 }], // untagged = major
+  ]);
+  const topics = new Map<number, Topic>([[1, topic(1, 1, { unitId: 1 })], [2, topic(2, 1, { unitId: 2 })], [3, topic(3, 1, { unitId: 99 })]]);
+  const exams = new Map<number, Exam>([
+    [1, { ...exam(1, 1, "2026-11-10"), type: "mid-term" }],
+    [2, { ...exam(2, 1, "2026-12-10"), type: "other" }],
+  ]);
+  const l = { topics, units, exams };
+  const study = (topicId: number): StudySession => ({ date: "2026-11-01", topicId, kind: "study", plannedMins: 30, actualMins: 0, done: false });
+  const rev = (examId: number): StudySession => ({ date: "2026-11-09", examId, kind: "revision", plannedMins: 60, actualMins: 0, done: false });
+
+  it("follows the topic's unit for study blocks", () => {
+    expect(sessionMode(study(1), l)).toBeUndefined(); // mid-sem units are in the major syllabus too, so either season
+    expect(sessionMode(study(2), l)).toBe("end-term");
+    expect(sessionMode(study(3), l)).toBe("end-term"); // unit missing
+    expect(sessionMode(study(42), l)).toBeUndefined(); // topic deleted
+  });
+  it("follows the exam type for revision blocks", () => {
+    expect(sessionMode(rev(1), l)).toBe("mid-term");
+    expect(sessionMode(rev(2), l)).toBeUndefined(); // "other" fits either season
+    expect(sessionMode(rev(7), l)).toBeUndefined();
+  });
+});
+
+describe("generatePlan: tidy days", () => {
+  const roomy = { ...settings, dailyMinutes: 240 };
+
+  it("doesn't leave a small leftover block of the same topic on the same day", () => {
+    const t = topic(1); // default needs 75 min with 60-min blocks
+    const { sessions } = generatePlan({ start: "2026-11-01", exams: [exam(1, 1, "2026-11-10")], topics: [t], done: [], settings: roomy });
+    const study = sessions.filter((s) => s.kind === "study");
+    expect(study).toHaveLength(1);
+    expect(study[0].plannedMins).toBe(topicMinutes(t));
+  });
+
+  it("keeps planning order within a day (hardest topic first, study before revision)", () => {
+    const topics = [topic(1, 1, { difficulty: 2 }), topic(2, 1, { difficulty: 5, confidence: 1 }), topic(3, 1, { difficulty: 3 })];
+    const { sessions } = generatePlan({ start: "2026-11-01", exams: [exam(1, 1, "2026-11-03")], topics, done: [], settings: { ...roomy, dailyMinutes: 600 } });
+    const day1 = sessions.filter((s) => s.date === "2026-11-01");
+    const order = day1.map((s) => s.topicId);
+    // Each topic's blocks stay together, hardest topic first.
+    expect(order.filter((id, i) => id !== order[i - 1])).toEqual([2, 3, 1]);
+    const day2 = sessions.filter((s) => s.date === "2026-11-02");
+    expect(day2.every((s) => s.kind === "revision")).toBe(true);
   });
 });

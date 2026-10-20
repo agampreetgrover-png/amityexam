@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Clock, MapPin, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Clock, MapPin, Plus, Printer, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
@@ -11,6 +11,7 @@ import { examTypeLabel } from "@/lib/exams";
 import { useExamMode } from "@/lib/mode";
 import { examSyllabus } from "@/lib/planner";
 import { Markdown } from "@/components/markdown";
+import { toast } from "@/components/toast";
 import { Button, Card, Empty, Input, List, Tick, cn } from "@/components/ui";
 
 export default function ExamKitPage() {
@@ -58,9 +59,13 @@ export default function ExamKitPage() {
       <header className="mb-8 flex flex-wrap items-end justify-between gap-6">
         <div className="flex items-end gap-5">
           <div>
-            <div className="numeral text-[88px] md:text-[112px]" style={{ color: days > 3 ? subject?.color : undefined }}>
-              <span className={days >= 0 && days <= 3 ? "mark" : undefined}>{Math.max(0, days)}</span>
-            </div>
+            {days < 0 ? (
+              <Check size={72} className="text-good" aria-hidden />
+            ) : (
+              <div className="numeral text-[88px] md:text-[112px]" style={{ color: days > 3 ? subject?.color : undefined }}>
+                <span className={days <= 3 ? "mark" : undefined}>{days}</span>
+              </div>
+            )}
             <p className="mt-2 text-sm text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
           </div>
           <div className="min-w-0 pb-6">
@@ -81,7 +86,7 @@ export default function ExamKitPage() {
               <p className="flex items-center gap-2"><MapPin size={15} className="text-muted" /> {[exam.venue, exam.seat && `Seat ${exam.seat}`].filter(Boolean).join(", ")}</p>
             )}
             <p className="text-muted">
-              {scope.length} topics in the syllabus. {notDone.length} not started, {weak.length} weak.
+              {scope.length} topic{scope.length === 1 ? "" : "s"} in the syllabus. {notDone.length} not started, {weak.length} weak.
             </p>
           </div>
           {exam.notes && <p className="mt-4 max-w-prose border-l-2 border-accent/40 pl-3 text-sm leading-relaxed">{exam.notes}</p>}
@@ -110,9 +115,16 @@ export default function ExamKitPage() {
                 />
                 <span className={item.done ? "text-muted line-through" : ""}>{item.text}</span>
                 <button
-                  className="no-print ml-auto rounded p-1 text-muted opacity-0 hover:text-bad group-hover:opacity-100 focus:opacity-100"
+                  // Always visible on touch screens; on a mouse it appears on hover or keyboard focus.
+                  className="no-print ml-auto rounded p-1.5 text-muted hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   aria-label={`Remove ${item.text}`}
-                  onClick={() => setChecklist((list) => list.filter((_, j) => j !== i))}
+                  onClick={async () => {
+                    await setChecklist((list) => list.filter((_, j) => j !== i));
+                    toast(`Removed ${item.text}`, {
+                      label: "Undo",
+                      onClick: () => void setChecklist((list) => [...list.slice(0, i), item, ...list.slice(i)]),
+                    });
+                  }}
                 >
                   <Trash2 size={14} />
                 </button>

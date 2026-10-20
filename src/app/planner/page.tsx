@@ -14,7 +14,8 @@ import { buildIcs } from "@/lib/calendar";
 import { downloadText } from "@/lib/download";
 import { db } from "@/lib/db";
 import { today } from "@/lib/dates";
-import type { PlanResult } from "@/lib/planner";
+import { examInMode, modeShort } from "@/lib/mode";
+import { sessionMode, type PlanResult } from "@/lib/planner";
 import { replan } from "@/lib/replan";
 import { fmtMins } from "@/lib/stats";
 import { DEFAULT_SETTINGS, type StudySession } from "@/lib/types";
@@ -55,7 +56,11 @@ export default function PlannerPage() {
   const t = today();
   const missed = data.sessions.filter((s) => s.date < t && !s.done);
   const todays = data.sessions.filter((s) => s.date === t);
-  const hasUpcoming = data.exams.some((e) => e.date >= t);
+  const mode = data.settings.examMode;
+  // Only this season's exams can be planned; the button stays off when there are none.
+  const hasUpcoming = data.exams.some((e) => e.date >= t && examInMode(e, mode));
+  // Unfinished future blocks from the other season, e.g. right after switching mid-sem ↔ major.
+  const stale = mode ? data.sessions.filter((s) => !s.done && s.date >= t && (sessionMode(s, lookup) ?? mode) !== mode).length : 0;
 
   const runReplan = async () => {
     setBusy(true);
@@ -115,6 +120,16 @@ export default function PlannerPage() {
           <p className="rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-muted shadow-[0_1px_3px_rgb(17_24_39/0.04)]" role="status">{message}</p>
         )}
 
+        {stale > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-accent/25 bg-accent-soft px-5 py-3.5 text-[15px]">
+            <span>
+              <span className="font-semibold">Your plan is still for the other exam.</span>{" "}
+              Rebalance to plan for your {modeShort(mode!)} exams instead.
+            </span>
+            <Button size="sm" onClick={runReplan} disabled={busy}>Rebalance</Button>
+          </div>
+        )}
+
         {missed.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-amber-200 bg-mark-soft px-5 py-3.5 text-[15px]">
             <span>
@@ -151,6 +166,11 @@ export default function PlannerPage() {
         {!data.sessions.length && hasUpcoming && (
           <Empty title="No plan yet">Press Generate plan to build a day-by-day schedule up to your exams.</Empty>
         )}
+        {!hasUpcoming && mode && (
+          <Empty title={`No upcoming ${modeShort(mode)} exams`}>
+            Add your {modeShort(mode)} dates on the <Link href="/exams" className="font-medium text-accent underline underline-offset-2">Exams</Link> page to build a plan.
+          </Empty>
+        )}
 
         <div>
           <Tabs label="Planner view" value={view} onChange={setView} options={VIEWS} className="mb-5" />
@@ -158,6 +178,7 @@ export default function PlannerPage() {
           {view === "today" && (
             <TodayView
               sessions={todays}
+              hasPlan={data.sessions.length > 0}
               lookup={lookup}
               dailyMinutes={data.settings.dailyMinutes}
               onStart={(s: StudySession, label) => s.id != null && setTimer({ id: s.id, label })}

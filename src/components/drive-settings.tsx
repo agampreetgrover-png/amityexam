@@ -23,9 +23,11 @@ export function DriveSettings() {
   const [linkError, setLinkError] = useState("");
   const [linking, setLinking] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [checking, setChecking] = useState(false);
   if (!settings) return null;
 
-  const sources = settings.driveSources?.length ? settings.driveSources : DEFAULT_DRIVE_SOURCES;
+  // An empty list means the student removed every folder; only unset means the defaults.
+  const sources = settings.driveSources ?? DEFAULT_DRIVE_SOURCES;
   const save = async (patch: Partial<Settings>) => db.settings.put({ ...(await getSettings()), ...patch });
 
   const addSource = async (e: React.FormEvent) => {
@@ -33,7 +35,24 @@ export function DriveSettings() {
     const id = folderIdFromLink(link.trim());
     if (!id) return setLinkError("Paste a Google Drive folder link (drive.google.com/drive/folders/…).");
     if (sources.some((s) => s.id === id)) return setLinkError("That folder is already in the list.");
-    await save({ driveSources: [...sources, { id, label: `Folder ${sources.length + 1}` }] });
+    // Check it's public now (not at the next sync) and label it with its real name.
+    setChecking(true);
+    let name = "";
+    try {
+      const r = await fetch(`/api/drive/folders?info=${encodeURIComponent(id)}`);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return setLinkError(j.error ?? "Couldn't open that folder.");
+      name = j.name ?? "";
+    } catch {
+      return setLinkError("Couldn't reach Google Drive. Check your connection.");
+    } finally {
+      setChecking(false);
+    }
+    // Fallback name: smallest unused number, so removing a folder and adding another can't produce two "Folder 3"s.
+    const used = new Set(sources.map((s) => s.label));
+    let n = 1;
+    while (used.has(`Folder ${n}`)) n++;
+    await save({ driveSources: [...sources, { id, label: name && !used.has(name) ? name : `Folder ${n}` }] });
     setLink("");
     setLinkError("");
   };
@@ -67,7 +86,7 @@ export function DriveSettings() {
 
       <form onSubmit={addSource} className="mb-1 flex max-w-xl gap-2">
         <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste another shared Drive folder link" aria-label="Drive folder link" />
-        <Button type="submit" variant="secondary" disabled={!link.trim()}><Plus size={16} /> Add</Button>
+        <Button type="submit" variant="secondary" disabled={!link.trim() || checking}>{checking ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add</Button>
       </form>
       {linkError && <p className="text-sm text-bad">{linkError}</p>}
       {settings.driveSources && (
@@ -102,6 +121,9 @@ export function DriveSettings() {
             {showErrors && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted">{sync.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
           </div>
         )}
+        {sync.notices.length > 0 && (
+          <ul className="list-disc space-y-0.5 pl-5 text-xs text-warn">{sync.notices.map((n) => <li key={n}>{n}</li>)}</ul>
+        )}
       </div>
 
       <Modal open={linking} onClose={() => setLinking(false)} title="Link a Drive folder to a subject">
@@ -114,7 +136,7 @@ export function DriveSettings() {
 /** For folders whose names don't match a subject on their own (e.g. "EN", "SKE"). */
 function LinkFolder({ onDone }: { onDone: () => void }) {
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
-  const [groups, setGroups] = useState<{ label: string; folders: { id: string; name: string }[] }[] | "error" | null>(null);
+  const [groups, setGroups] = useState<{ source: string; label: string; folders: { id: string; name: string }[] }[] | "error" | null>(null);
   const [subjectId, setSubjectId] = useState<number | "">("");
   const [folderId, setFolderId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -126,7 +148,9 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
       try {
         const r = await fetch(`/api/drive/folders${qs}`);
         if (!r.ok) throw new Error();
-        setGroups(await r.json());
+        const list: { source: string; label: string; folders: { id: string; name: string }[] }[] = await r.json();
+        // The route only knows folder ids for custom sources; show the names given in Settings.
+        setGroups(list.map((g) => ({ ...g, label: sources?.find((s) => s.id === g.source)?.label ?? g.label })));
       } catch {
         setGroups("error");
       }
@@ -163,7 +187,7 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
           <Select value={folderId} onChange={(e) => setFolderId(e.target.value)} required>
             <option value="">Choose a folder…</option>
             {groups.map((g) => (
-              <optgroup key={g.label} label={g.label}>
+              <optgroup key={g.source} label={g.label}>
                 {g.folders.map((f) => <option key={f.id} value={f.id} disabled={linked.has(f.id)}>{f.name}{linked.has(f.id) ? " (linked)" : ""}</option>)}
               </optgroup>
             ))}

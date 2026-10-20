@@ -6,6 +6,7 @@ import { db, getSettings } from "@/lib/db";
 import type { Material } from "@/lib/types";
 import type { SyncEvent } from "./sync";
 import { DEFAULT_DRIVE_SOURCES } from "./sources";
+import { analyseAll } from "@/lib/pyq/analyse";
 
 export interface DriveSyncState {
   running: boolean;
@@ -13,10 +14,11 @@ export interface DriveSyncState {
   imported: number;
   deferred: number; // left for a later sync (scan budget, AI busy, no Gemini key)
   errors: string[];
+  notices: string[]; // things the student can fix, e.g. a subject that fits two folders
   remaining: number; // files found but not fetched this time
 }
 
-const IDLE: DriveSyncState = { running: false, message: "", imported: 0, deferred: 0, errors: [], remaining: 0 };
+const IDLE: DriveSyncState = { running: false, message: "", imported: 0, deferred: 0, errors: [], notices: [], remaining: 0 };
 let state = IDLE;
 const listeners = new Set<() => void>();
 const set = (patch: Partial<DriveSyncState>) => {
@@ -36,9 +38,28 @@ const AUTO_INTERVAL = 30 * 60_000; // don't re-sync on every reload
 const MAX_ROUNDS = 4; // each round fetches up to 60 files
 const OCR_PER_OPEN = 10; // scanned papers read by Gemini per app open
 
+let inFlight = false; // set synchronously, so two calls in the same tick can't both start a sync
+let rerun = false; // a manual sync was asked for while one was running (e.g. a subject was just added)
+
 /** Run a sync. `auto` (on app open) is skipped when disabled, offline, or synced recently. */
 export async function runDriveSync({ auto = false } = {}) {
-  if (state.running) return;
+  if (inFlight) {
+    if (!auto) rerun = true;
+    return;
+  }
+  inFlight = true;
+  try {
+    await sync(auto);
+  } finally {
+    inFlight = false;
+    if (rerun) {
+      rerun = false;
+      void runDriveSync();
+    }
+  }
+}
+
+async function sync(auto: boolean) {
   const settings = await getSettings();
   if (auto && (settings.driveSync === false || (settings.lastDriveSync ?? 0) > Date.now() - AUTO_INTERVAL)) return;
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -51,31 +72,46 @@ export async function runDriveSync({ auto = false } = {}) {
     return;
   }
 
+  // An empty list is the student's choice (they removed every folder); only unset means the defaults.
+  const sources = settings.driveSources ?? DEFAULT_DRIVE_SOURCES;
+  if (!sources.length) {
+    if (!auto) set({ message: "No Drive folders to sync. Add one in Settings → Google Drive." });
+    return;
+  }
+
   set({ ...IDLE, running: true, message: "Looking through your Drive folders…" });
   const names = new Map(subjects.map((s) => [s.id!, s.name]));
+  // Files deferred or failed in this sync aren't asked for again in its later rounds, so a batch full of
+  // queued scans can't crowd out the notes and slides behind it.
+  const tried = new Set<string>();
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      const known = (await db.driveFiles.toCollection().primaryKeys()) as string[];
+      const known = [...((await db.driveFiles.toCollection().primaryKeys()) as string[]), ...tried];
       const res = await fetch("/api/drive/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subjects: subjects.map((s) => ({ id: s.id!, name: s.name, code: s.code })),
           known,
-          sources: settings.driveSources?.length ? settings.driveSources : DEFAULT_DRIVE_SOURCES,
+          sources,
           links: subjects.filter((s) => s.driveFolderIds?.length).map((s) => ({ subjectId: s.id!, folderIds: s.driveFolderIds! })),
           maxOcr: round === 0 ? OCR_PER_OPEN : 0,
         }),
       });
       if (!res.ok || !res.body) throw new Error(`Drive sync failed (${res.status})`);
 
-      let importedThisRound = 0;
+      let handledThisRound = 0;
       for await (const ev of readEvents(res.body)) {
-        importedThisRound += await handle(ev, names);
+        if ((ev.type === "deferred" || ev.type === "error") && ev.driveId) tried.add(ev.driveId);
+        if (ev.type === "file" || ev.type === "skip" || ev.type === "deferred" || (ev.type === "error" && ev.driveId)) handledThisRound++;
+        await handle(ev, names);
       }
-      if (!state.remaining || !importedThisRound) break;
+      // Keep going while files remain and this round got through some of them.
+      if (!state.remaining || !handledThisRound) break;
     }
     await db.settings.put({ ...(await getSettings()), lastDriveSync: Date.now() });
+    // Split new past papers into questions and sort them by year and topic (runs in the background).
+    void analyseAll();
     const { imported, deferred, errors } = state;
     set({
       message: imported
@@ -95,12 +131,17 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Syn
   let buf = "";
   for (;;) {
     const { done, value } = await reader.read();
-    if (value) buf += dec.decode(value, { stream: !done });
+    buf += done ? dec.decode() + "\n" : dec.decode(value, { stream: true }); // at the end, flush a split character and the last line
     let nl;
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
-      if (line) yield JSON.parse(line) as SyncEvent;
+      if (!line) continue;
+      try {
+        yield JSON.parse(line) as SyncEvent;
+      } catch {
+        // a garbled line (e.g. the connection dropped mid-write) shouldn't end the whole sync
+      }
     }
     if (done) return;
   }
@@ -114,7 +155,7 @@ async function handle(ev: SyncEvent, names: Map<number, string>): Promise<number
       return 0;
     case "file": {
       const f = ev.file;
-      if (!names.has(ev.subjectId)) return 0; // subject deleted mid-sync
+      if (!names.has(ev.subjectId)) return 0;
       const material: Material = {
         subjectId: ev.subjectId,
         kind: f.kind === "pyq" ? "pyq" : "notes",
@@ -124,16 +165,26 @@ async function handle(ev: SyncEvent, names: Map<number, string>): Promise<number
         pyqExam: f.pyqExam,
         source: { driveId: f.driveId, url: f.url, path: f.path, format: f.kind, ocr: f.ocr },
       };
-      await db.transaction("rw", db.materials, db.driveFiles, async () => {
-        if (await db.driveFiles.get(f.driveId)) return;
+      const added = await db.transaction("rw", db.subjects, db.materials, db.driveFiles, async () => {
+        // The subject may have been deleted while the sync ran; its files mustn't be added (or remembered).
+        if (!(await db.subjects.get(ev.subjectId)) || (await db.driveFiles.get(f.driveId))) return false;
         await db.materials.add(material);
         await db.driveFiles.put({ driveId: f.driveId, subjectId: ev.subjectId, name: f.name, status: "imported", at: Date.now() });
+        return true;
       });
+      if (!added) return 0;
       set({ imported: state.imported + 1, message: `${names.get(ev.subjectId)}: ${f.name}` });
       return 1;
     }
     case "skip":
-      await db.driveFiles.put({ driveId: ev.driveId, subjectId: ev.subjectId, name: ev.name, status: "skipped", reason: ev.reason, at: Date.now() });
+      await db.transaction("rw", db.subjects, db.driveFiles, async () => {
+        if (await db.subjects.get(ev.subjectId)) {
+          await db.driveFiles.put({ driveId: ev.driveId, subjectId: ev.subjectId, name: ev.name, status: "skipped", reason: ev.reason, at: Date.now() });
+        }
+      });
+      return 0;
+    case "notice":
+      set({ notices: [...new Set([...state.notices, ev.message])].slice(-10) });
       return 0;
     case "deferred":
       set({ deferred: state.deferred + 1 });

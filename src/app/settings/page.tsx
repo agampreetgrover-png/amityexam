@@ -26,11 +26,22 @@ const LIMITS: Record<NumKey, [number, number]> = {
 
 export default function SettingsPage() {
   const settings = useLiveQuery(getSettings);
-  const [msg, setMsg] = useState("");
+  // Each section reports next to its own buttons, and the line clears on that section's next action.
+  const [notifyMsg, setNotifyMsg] = useState("");
+  const [dataMsg, setDataMsg] = useState("");
+  // The browser's own permission, which the student can revoke in site settings behind the app's back.
+  const [permission, setPermission] = useState<NotificationPermission | "unsupported" | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    setPermission(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
+  }, []);
   if (!settings) return null;
+  const notificationsOn = settings.notifications && permission === "granted";
 
-  const set = (patch: Partial<Settings>) => db.settings.put({ ...DEFAULT_SETTINGS, ...settings, ...patch });
+  // Merge into the stored row, not this render's copy: quick successive changes (or a Drive sync
+  // writing lastDriveSync meanwhile) would otherwise overwrite each other.
+  const set = (patch: Partial<Settings>) =>
+    db.transaction("rw", db.settings, async () => db.settings.put({ ...DEFAULT_SETTINGS, ...(await getSettings()), ...patch }));
   // Saved on blur (not per keystroke) and clamped, so a half-typed or empty field can't store 0 or NaN.
   const num = (k: NumKey) => {
     const [min, max] = LIMITS[k];
@@ -51,22 +62,27 @@ export default function SettingsPage() {
   };
 
   const enableNotifications = async () => {
-    if (typeof Notification === "undefined") return setMsg("This browser doesn't support notifications.");
+    setNotifyMsg("");
+    if (typeof Notification === "undefined") return setNotifyMsg("This browser doesn't support notifications.");
     const p = await Notification.requestPermission();
+    setPermission(p);
     await set({ notifications: p === "granted" });
     if (p === "granted") await notify("Notifications on", "You'll get a daily study digest while the app is open.");
-    else setMsg("Notification permission was denied. Enable it in your browser's site settings.");
+    else setNotifyMsg("Notifications are blocked in your browser's site settings. Allow them there, then try again.");
   };
 
   const backup = async () => {
+    setDataMsg("");
     try {
       downloadText(JSON.stringify(await exportAll()), `amityexams-backup-${today()}.json`, "application/json");
+      setDataMsg("Backup downloaded.");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Could not export backup");
+      setDataMsg(e instanceof Error ? e.message : "Could not export backup");
     }
   };
 
   const restore = async (f: File) => {
+    setDataMsg("");
     try {
       if (!confirm("Replace ALL current data with this backup?")) return;
       let backup: unknown;
@@ -76,9 +92,9 @@ export default function SettingsPage() {
         throw new Error("That file isn't a valid backup (not JSON).");
       }
       await importAll(backup);
-      setMsg("Backup restored.");
+      setDataMsg("Backup restored.");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Could not read backup");
+      setDataMsg(e instanceof Error ? e.message : "Could not read backup");
     }
   };
 
@@ -144,11 +160,18 @@ export default function SettingsPage() {
             While the app is open you get a daily digest and an alert the day before each exam. For reminders when it&apos;s closed,
             export your plan to Google Calendar from the Planner.
           </p>
-          {settings.notifications ? (
-            <Button variant="secondary" onClick={() => set({ notifications: false })}><Bell size={16} /> Turn off notifications</Button>
+          {notificationsOn ? (
+            <Button variant="secondary" onClick={() => { setNotifyMsg(""); set({ notifications: false }); }}><Bell size={16} /> Turn off notifications</Button>
           ) : (
-            <Button onClick={enableNotifications}><Bell size={16} /> Turn on notifications</Button>
+            <Button onClick={enableNotifications} disabled={permission === "unsupported"}><Bell size={16} /> Turn on notifications</Button>
           )}
+          {notifyMsg ? (
+            <p className="mt-3 text-sm text-warn" role="status">{notifyMsg}</p>
+          ) : permission === "denied" ? (
+            <p className="mt-3 text-sm text-muted">Notifications are blocked in your browser&apos;s site settings. Allow them there to turn reminders on.</p>
+          ) : permission === "unsupported" ? (
+            <p className="mt-3 text-sm text-muted">This browser doesn&apos;t support notifications.</p>
+          ) : null}
         </Section>
 
         <AiStatus />
@@ -171,16 +194,21 @@ export default function SettingsPage() {
               variant="danger"
               className="text-bad"
               onClick={async () => {
-                if (confirm("Delete ALL data permanently? Export a backup first.")) {
+                setDataMsg("");
+                // Settings go too, so the app returns to the "What are you preparing for?" screen; say so up front.
+                if (
+                  confirm(
+                    "Delete ALL data permanently?\n\nThis removes every subject, exam, plan, note and quiz, and also resets your settings, exam mode and Google Drive folders. The app will start over from the welcome screen.\n\nExport a backup first if you might need it.",
+                  )
+                ) {
                   await clearAll();
-                  setMsg("All data deleted.");
                 }
               }}
             >
               <Trash2 size={16} /> Delete everything
             </Button>
           </div>
-          {msg && <p className="mt-3 text-sm" role="status">{msg}</p>}
+          {dataMsg && <p className="mt-3 text-sm" role="status">{dataMsg}</p>}
         </Section>
       </div>
     </>

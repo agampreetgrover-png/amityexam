@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import {
   DEFAULT_SETTINGS,
-  type ChatMessage, type DriveFile, type Exam, type GeneratedDoc, type Material,
+  type ChatMessage, type DriveFile, type Exam, type PyqQuestion, type GeneratedDoc, type Material,
   type QuizAttempt, type Settings, type StudySession, type Subject, type Topic, type Unit,
 } from "./types";
 
@@ -13,6 +13,7 @@ class ExamDB extends Dexie {
   sessions!: EntityTable<StudySession, "id">;
   materials!: EntityTable<Material, "id">;
   driveFiles!: EntityTable<DriveFile, "driveId">;
+  pyqQuestions!: EntityTable<PyqQuestion, "id">;
   quizzes!: EntityTable<QuizAttempt, "id">;
   docs!: EntityTable<GeneratedDoc, "id">;
   messages!: EntityTable<ChatMessage, "id">;
@@ -35,6 +36,7 @@ class ExamDB extends Dexie {
     });
     this.version(2).stores({ flashcards: null }); // drops the removed flashcards table
     this.version(3).stores({ driveFiles: "driveId, subjectId, status" }); // Google Drive sync bookkeeping
+    this.version(4).stores({ pyqQuestions: "++id, subjectId, materialId, topicId, year" }); // past-paper question bank
   }
 }
 
@@ -46,15 +48,23 @@ export async function getSettings(): Promise<Settings> {
 
 /** Delete a subject and everything hanging off it. */
 export async function deleteSubject(subjectId: number) {
-  await db.transaction("rw", [db.subjects, db.units, db.topics, db.exams, db.sessions, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles], async () => {
+  await db.transaction("rw", [db.subjects, db.units, db.topics, db.exams, db.sessions, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions], async () => {
     const topicIds = (await db.topics.where({ subjectId }).primaryKeys()) as number[];
     const examIds = (await db.exams.where({ subjectId }).primaryKeys()) as number[];
     await db.sessions.where("topicId").anyOf(topicIds).delete();
     await db.sessions.where("examId").anyOf(examIds).delete();
-    for (const table of [db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles]) {
+    for (const table of [db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions]) {
       await (table as Dexie.Table<{ subjectId: number }>).where({ subjectId }).delete();
     }
     await db.subjects.delete(subjectId);
+  });
+}
+
+/** Delete a material and the past-paper questions taken from it. */
+export async function deleteMaterial(materialId: number) {
+  await db.transaction("rw", db.materials, db.pyqQuestions, async () => {
+    await db.pyqQuestions.where({ materialId }).delete();
+    await db.materials.delete(materialId);
   });
 }
 

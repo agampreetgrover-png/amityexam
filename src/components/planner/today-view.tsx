@@ -44,8 +44,8 @@ function SessionRow({ s, lookup, onStart }: { s: StudySession; lookup: Lookup; o
               <Undo2 size={16} />
             </Button>
           ) : (
-            <Button variant="secondary" size="sm" onClick={() => onStart(s, title)} aria-label="Start Pomodoro">
-              <Play size={15} /> <span className="hidden sm:inline">Focus</span>
+            <Button variant="secondary" size="sm" onClick={() => onStart(s, title)} aria-label={`Start focus timer for ${title}`}>
+              <Play size={15} /> <span className="hidden sm:inline">Start</span>
             </Button>
           )}
         </div>
@@ -71,16 +71,26 @@ function SessionRow({ s, lookup, onStart }: { s: StudySession; lookup: Lookup; o
   );
 }
 
-export function TodayView({ sessions, lookup, dailyMinutes, onStart }: {
+export function TodayView({ sessions, hasPlan, lookup, dailyMinutes, onStart }: {
   sessions: StudySession[];
+  /** Whether any sessions exist on any day; decides between "make a plan" and "a free day". */
+  hasPlan: boolean;
   lookup: Lookup;
   dailyMinutes: number;
   onStart: (s: StudySession, label: string) => void;
 }) {
   const planned = sessions.reduce((a, s) => a + s.plannedMins, 0);
   const done = sessions.filter((s) => s.done).reduce((a, s) => a + s.actualMins, 0);
-  if (!sessions.length) return <Empty title="Nothing planned for today">Generate a plan, or take the day off.</Empty>;
-  const pct = planned ? Math.round((done / planned) * 100) : 0;
+  if (!sessions.length) {
+    return (
+      <Empty title="Nothing planned for today">
+        {hasPlan ? "Today is free in your plan. Rest, or get ahead on revision." : "Generate a plan, or take the day off."}
+      </Empty>
+    );
+  }
+  // Extra minutes on one session (a long focus sitting) mustn't push today past 100%.
+  const doneCapped = sessions.filter((s) => s.done).reduce((a, s) => a + Math.min(s.actualMins, s.plannedMins), 0);
+  const pct = planned ? Math.min(100, Math.round((doneCapped / planned) * 100)) : 0;
   const count = sessions.filter((s) => s.done).length;
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_3px_rgb(17_24_39/0.04)]">

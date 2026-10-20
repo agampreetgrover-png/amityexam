@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
@@ -11,6 +11,7 @@ import { coverage } from "@/lib/stats";
 import { Empty, Progress, Tabs, cn } from "@/components/ui";
 import { SyllabusTab } from "@/components/subject/syllabus-tab";
 import { MaterialsTab } from "@/components/subject/materials-tab";
+import { PyqsTab } from "@/components/subject/pyqs-tab";
 import { NotesTab } from "@/components/subject/notes-tab";
 import { QuizTab } from "@/components/subject/quiz-tab";
 import { PredictTab } from "@/components/subject/predict-tab";
@@ -19,16 +20,39 @@ import { ChatTab } from "@/components/subject/chat-tab";
 const TABS = [
   { key: "syllabus", label: "Syllabus", C: SyllabusTab },
   { key: "materials", label: "Materials", C: MaterialsTab },
+  { key: "pyqs", label: "PYQs", C: PyqsTab },
   { key: "notes", label: "Notes", C: NotesTab },
   { key: "quiz", label: "Quiz", C: QuizTab },
   { key: "predict", label: "Predict", C: PredictTab },
   { key: "chat", label: "Ask", C: ChatTab },
 ] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
 export default function SubjectPage() {
   const { id } = useParams<{ id: string }>();
   const subjectId = Number(id);
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("syllabus");
+  const [tab, setTabState] = useState<TabKey>("syllabus");
+  // Tabs stay mounted once opened, so leaving a half-done quiz or a half-typed question and coming back keeps it.
+  const [visited, setVisited] = useState<Set<TabKey>>(() => new Set<TabKey>(["syllabus"]));
+  const open = (key: TabKey) => {
+    setTabState(key);
+    setVisited((v) => (v.has(key) ? v : new Set(v).add(key)));
+  };
+  // The tab lives in ?tab= so a refresh lands on the same section. Read after mount so server and client agree.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("tab");
+    const match = TABS.find((t) => t.key === fromUrl);
+    if (match) {
+      setTabState(match.key);
+      setVisited((v) => new Set(v).add(match.key));
+    }
+  }, []);
+  const setTab = (key: TabKey) => {
+    open(key);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", key);
+    window.history.replaceState(window.history.state, "", url);
+  };
 
   const valid = Number.isInteger(subjectId);
 
@@ -47,7 +71,6 @@ export default function SubjectPage() {
   const units = allUnits.filter((u) => unitInScope(u, mode));
   const topics = topicsInScope(allTopics, allUnits, mode);
   const pct = coverage(topics);
-  const Active = TABS.find((t) => t.key === tab)!.C;
 
   return (
     <div>
@@ -63,7 +86,7 @@ export default function SubjectPage() {
           <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-muted">
             {subject.code && <span>{subject.code}</span>}
             {subject.credits ? <span>{subject.credits} credits</span> : null}
-            <span>{topics.length} {modeShort(mode).toLowerCase()} topics</span>
+            <span>{topics.length} {modeShort(mode).toLowerCase()} topic{topics.length === 1 ? "" : "s"}</span>
           </p>
         </div>
         <div className="w-full rounded-2xl border border-border bg-surface px-4 py-3 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:w-56">
@@ -85,7 +108,14 @@ export default function SubjectPage() {
         />
       </div>
 
-      <Active subject={subject} units={units} topics={topics} mode={mode} />
+      {/* Keyed so a mode switch (or another subject) starts each tab fresh instead of keeping a half-built quiz on the old syllabus.
+          Opened tabs stay mounted and are only hidden, so switching tabs never throws work away. */}
+      {TABS.filter((t) => visited.has(t.key)).map(({ key, C }) => (
+        <div key={`${subject.id}-${mode}-${key}`} hidden={key !== tab}>
+          {/* The Syllabus tab edits the one full syllabus (and which units the mid-sem covers); the rest work on the mode's part. */}
+          <C subject={subject} units={key === "syllabus" ? allUnits : units} topics={key === "syllabus" ? allTopics : topics} mode={mode} />
+        </div>
+      ))}
     </div>
   );
 }

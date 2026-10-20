@@ -3,7 +3,7 @@
 import { Empty, Progress, cn } from "@/components/ui";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
-import { useExamMode } from "@/lib/mode";
+import { examInMode, useExamMode } from "@/lib/mode";
 import { examSyllabus } from "@/lib/planner";
 import { fmtMins } from "@/lib/stats";
 import type { Exam, StudySession, Topic } from "@/lib/types";
@@ -19,15 +19,23 @@ export function TimelineView({ exams, topics, sessions, lookup }: {
   const t = today();
   const mode = useExamMode();
   const units = [...lookup.units.values()];
-  const upcoming = exams.filter((e) => e.date >= t).sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = exams.filter((e) => e.date >= t && examInMode(e, mode)).sort((a, b) => a.date.localeCompare(b.date));
   if (!upcoming.length) return <Empty title="No upcoming exams">Add exams to see the countdown.</Empty>;
+
+  // A topic studied for two exams (say an internal and the mid-term) counts toward the earliest one only,
+  // so the same sessions aren't shown as progress twice.
+  const syllabi = upcoming.map((e) => new Set(examSyllabus(e, topics, units, mode).map((x) => x.id!)));
+  const owner = new Map<number, number>();
+  upcoming.forEach((e, i) => syllabi[i].forEach((id) => { if (!owner.has(id)) owner.set(id, e.id!); }));
 
   return (
     <ul className="space-y-3">
-      {upcoming.map((e) => {
+      {upcoming.map((e, i) => {
         const subject = lookup.subjects.get(e.subjectId);
-        const ids = new Set(examSyllabus(e, topics, units, mode).map((x) => x.id));
-        const related = sessions.filter((s) => (s.topicId != null && ids.has(s.topicId)) || s.examId === e.id);
+        const ids = syllabi[i];
+        const related = sessions.filter((s) =>
+          s.kind === "revision" ? s.examId === e.id : s.topicId != null && owner.get(s.topicId) === e.id,
+        );
         const planned = related.reduce((a, s) => a + s.plannedMins, 0);
         const done = related.filter((s) => s.done).reduce((a, s) => a + Math.min(s.actualMins, s.plannedMins), 0);
         const days = daysBetween(t, e.date);
@@ -48,7 +56,7 @@ export function TimelineView({ exams, topics, sessions, lookup }: {
                 <span className="shrink-0 text-sm font-normal text-muted">{examTypeLabel(e.type)}</span>
               </p>
               <p className="mt-0.5 text-[13px] text-muted">
-                {prettyDay(e.date)}{e.time ? `, ${e.time}` : ""}, {ids.size} topics
+                {prettyDay(e.date)}{e.time ? `, ${e.time}` : ""}, {ids.size} topic{ids.size === 1 ? "" : "s"}
               </p>
               <Progress value={planned ? (done / planned) * 100 : 0} className="mt-2.5" color={subject?.color} />
               <p className="mt-1 text-xs tabular-nums text-muted">{fmtMins(done)} of {fmtMins(planned)} planned study done</p>

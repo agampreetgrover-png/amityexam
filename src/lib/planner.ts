@@ -1,5 +1,5 @@
 import { addDay, daysBetween, weekday } from "./dates";
-import { examInMode, examTypeMode, topicsInScope } from "./mode";
+import { examInMode, examTypeMode, topicsInScope, unitMode } from "./mode";
 import type { Exam, ExamMode, ISODay, Settings, StudySession, Topic, Unit } from "./types";
 
 interface PlanInput {
@@ -48,6 +48,26 @@ export function examSyllabus(exam: Exam, topics: Topic[], units: Unit[], mode?: 
   if (exam.topicIds.length) return examTopics(exam, topics);
   const season = examTypeMode(exam.type) ?? mode;
   return examTopics(exam, season ? topicsInScope(topics, units, season) : topics);
+}
+
+/**
+ * The season a planned session belongs to: a revision block follows its exam's type, a study
+ * block its topic's unit. Undefined when it can't be told (exam of type "other", deleted records).
+ */
+export function sessionMode(
+  s: StudySession,
+  l: { topics: Map<number, Topic>; units: Map<number, Unit>; exams: Map<number, Exam> },
+): ExamMode | undefined {
+  if (s.kind === "revision") {
+    const exam = s.examId != null ? l.exams.get(s.examId) : undefined;
+    return exam ? examTypeMode(exam.type) : undefined;
+  }
+  const topic = s.topicId != null ? l.topics.get(s.topicId) : undefined;
+  if (!topic) return undefined;
+  const unit = l.units.get(topic.unitId);
+  // A mid-sem unit is in the major syllabus too, so its study blocks fit either season.
+  if (unit && unitMode(unit) === "mid-term") return undefined;
+  return "end-term"; // major-only units, and topics of a missing unit, like topicsInScope
 }
 
 /**
@@ -121,7 +141,9 @@ export function generatePlan({ start, exams, topics: allTopics, done, settings, 
           day = addDay(day, 1);
           continue;
         }
-        const mins = Math.min(left, free, block);
+        let mins = Math.min(left, free, block);
+        // Don't leave a crumb (e.g. 60m + 15m of the same topic on one day): stretch the block to finish it.
+        if (left - mins > 0 && left - mins < 30 && left <= free) mins = left;
         capacity.set(day, free - mins);
         left -= mins;
         sessions.push({ date: day, topicId: t.id, kind: "study", plannedMins: mins, actualMins: 0, done: false });
@@ -131,6 +153,7 @@ export function generatePlan({ start, exams, topics: allTopics, done, settings, 
     }
   }
 
-  sessions.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === "study" ? -1 : 1));
+  // Study before revision within a day; otherwise keep planning order (the sort is stable).
+  sessions.sort((a, b) => a.date.localeCompare(b.date) || (a.kind === b.kind ? 0 : a.kind === "study" ? -1 : 1));
   return { sessions, unscheduled };
 }

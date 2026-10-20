@@ -9,17 +9,23 @@ import { CoverageChart, MinutesChart, QuizTrendChart } from "@/components/progre
 import { StatTile } from "@/components/progress/stat-tile";
 import { Card, Empty, List, PageHeader, Select } from "@/components/ui";
 import { addDay, fromDay, today } from "@/lib/dates";
-import { db } from "@/lib/db";
+import { db, getSettings } from "@/lib/db";
 import { topicsInScope, useExamMode } from "@/lib/mode";
 import { coverage, fmtMins } from "@/lib/stats";
 
-/** Consecutive days (ending today, or yesterday if today has nothing yet) with completed study. */
-function streak(days: Set<string>) {
+/**
+ * Study days in a row, ending today (or yesterday if today has nothing yet).
+ * Planned days off and days with nothing scheduled don't break the streak; they're skipped.
+ */
+function streak(days: Set<string>, offDays: number[], plannedDays: Set<string>) {
+  if (!days.size) return 0;
+  const earliest = [...days].sort()[0];
   let d = today();
   if (!days.has(d)) d = addDay(d, -1);
   let n = 0;
-  while (days.has(d)) {
-    n++;
+  while (d >= earliest) {
+    if (days.has(d)) n++;
+    else if (!offDays.includes(fromDay(d).getDay()) && plannedDays.has(d)) break;
     d = addDay(d, -1);
   }
   return n;
@@ -31,13 +37,16 @@ export default function ProgressPage() {
   const [quizSubject, setQuizSubject] = useState<number | "all">("all");
   const t = today();
   const data = useLiveQuery(async () => {
-    const [subjects, topics, sessions, quizzes] = await Promise.all([
+    const [subjects, topics, allSessions, quizzes, settings] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
-      db.sessions.filter((s) => s.done).toArray(),
+      db.sessions.toArray(),
       db.quizzes.orderBy("createdAt").toArray(),
+      getSettings(),
     ]);
-    return { subjects, topics, sessions, quizzes };
+    const sessions = allSessions.filter((s) => s.done);
+    const plannedDays = new Set(allSessions.map((s) => s.date));
+    return { subjects, topics, sessions, quizzes, plannedDays, offDays: settings.offDays };
   });
   const mode = useExamMode();
   const units = useLiveQuery(() => db.units.toArray());
@@ -62,7 +71,10 @@ export default function ProgressPage() {
   const scoped = topicsInScope(topics, units, mode);
   const revised = scoped.filter((x) => x.status === "revised").length;
 
-  const coverageData = subjects.map((s) => ({ name: s.name, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }));
+  // A subject with no syllabus in this mode would show a misleading 0%; it's listed under the chart instead.
+  const withSyllabus = subjects.filter((s) => scoped.some((x) => x.subjectId === s.id));
+  const withoutSyllabus = subjects.filter((s) => !scoped.some((x) => x.subjectId === s.id));
+  const coverageData = withSyllabus.map((s) => ({ name: s.name, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }));
 
   const minutesData = Array.from({ length: 14 }, (_, i) => {
     const d = addDay(t, i - 13);
@@ -80,7 +92,9 @@ export default function ProgressPage() {
 
   const weak = scoped.filter((x) => x.weak);
   const subjectName = new Map(subjects.map((s) => [s.id!, s]));
-  const days = streak(studyDays);
+  const days = streak(studyDays, data.offDays, data.plannedDays);
+  const recentMins = minutesData.reduce((a, d) => a + d.value, 0);
+  const seasonName = mode === "mid-term" ? "mid-sem" : "major";
 
   return (
     <>
@@ -101,14 +115,21 @@ export default function ProgressPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card title="Syllabus coverage">
-            {topics.length ? <CoverageChart data={coverageData} /> : <Empty title="No topics yet">Add a syllabus to a subject.</Empty>}
+            {scoped.length ? <CoverageChart data={coverageData} /> : <Empty title="No topics yet">Add {mode ? "this exam's" : "a"} syllabus to a subject.</Empty>}
             <p className="mt-1 text-xs text-muted">
               {mode && `${mode === "mid-term" ? "Mid-sem" : "Major"} syllabus only. `}Studied topics count half. Revised topics count in full.
             </p>
+            {scoped.length > 0 && withoutSyllabus.length > 0 && (
+              <p className="mt-1 text-xs text-muted">No {seasonName} syllabus yet: {withoutSyllabus.map((s) => s.name).join(", ")}</p>
+            )}
           </Card>
 
           <Card title="Study minutes, last 14 days">
-            {totalMins ? <MinutesChart data={minutesData} /> : <Empty title="No study logged yet">Mark sessions done in the Planner.</Empty>}
+            {recentMins ? (
+              <MinutesChart data={minutesData} />
+            ) : (
+              <Empty title={totalMins ? "No study in the last 14 days" : "No study logged yet"}>Mark sessions done in the Planner.</Empty>
+            )}
           </Card>
         </div>
 

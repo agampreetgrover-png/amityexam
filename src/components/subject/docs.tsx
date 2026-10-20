@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { FileText, Printer, Square, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { FileText, Printer, Save, Square, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { aiStream } from "@/lib/ai/client";
 import type { AiRequest, TextAction } from "@/lib/ai/schemas";
@@ -16,6 +16,8 @@ export function useStreamDoc() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const ctrl = useRef<AbortController | null>(null);
+  // Leaving the tab cancels the stream, so it can't keep using AI quota or save a doc nobody is waiting for.
+  useEffect(() => () => ctrl.current?.abort(), []);
 
   const run = async (action: TextAction, body: AiRequest): Promise<string | null> => {
     ctrl.current = new AbortController();
@@ -44,7 +46,39 @@ export async function saveDoc(doc: Omit<GeneratedDoc, "id" | "createdAt">): Prom
   return { ...full, id };
 }
 
-export const StopButton =({ onClick }: { onClick: () => void }) => (
+/**
+ * The streaming text while it's written. After Stop or a dropped connection the text is still here,
+ * so it can be kept with "Save draft" instead of vanishing on the next generate.
+ */
+export function DraftCard({ gen, busyTitle, onSave }: { gen: ReturnType<typeof useStreamDoc>; busyTitle: string; onSave: () => Promise<void> }) {
+  const [saving, setSaving] = useState(false);
+  if (!gen.busy && !gen.text) return null;
+  const canSave = !gen.busy && !!gen.text.trim();
+  return (
+    <Card
+      title={gen.busy ? busyTitle : "Unfinished draft"}
+      className="no-print"
+      action={canSave && (
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try { await onSave(); } finally { setSaving(false); }
+          }}
+        >
+          <Save size={14} /> {saving ? "Saving…" : "Save draft"}
+        </Button>
+      )}
+    >
+      {canSave && <p className="mb-2 text-xs text-muted">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
+      <Markdown>{gen.text || "…"}</Markdown>
+    </Card>
+  );
+}
+
+export const StopButton = ({ onClick }: { onClick: () => void }) => (
   <Button variant="secondary" onClick={onClick}><Square size={14} /> Stop</Button>
 );
 
@@ -79,7 +113,14 @@ export function DocList({ docs, selected, onSelect }: { docs: GeneratedDoc[]; se
 
 /** Printable viewer for a saved doc. Everything else on the page is marked no-print. */
 export function DocViewer({ doc, onDeleted }: { doc: GeneratedDoc; onDeleted: () => void }) {
+  // The viewer sits above the saved list; opening a doc from far down the list would otherwise look like nothing happened.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    ref.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, [doc.id]);
   return (
+    <div ref={ref} className="scroll-mt-4">
     <Card
       title={doc.title}
       action={
@@ -102,5 +143,6 @@ export function DocViewer({ doc, onDeleted }: { doc: GeneratedDoc; onDeleted: ()
     >
       <Markdown>{doc.content}</Markdown>
     </Card>
+    </div>
   );
 }

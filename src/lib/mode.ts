@@ -24,37 +24,49 @@ export const examTypeMode = (type: ExamType): ExamMode | undefined =>
   type === "other" ? undefined : MODE_TYPES["mid-term"].includes(type) ? "mid-term" : "end-term";
 
 /**
- * Each mode has its own syllabus: a unit belongs to the mode it was created or imported in.
- * Units from before modes existed have no tag and count as the major syllabus.
+ * One syllabus per subject; the mid-sem covers part of it. A unit tagged "mid-term" is in the mid-sem,
+ * and every unit (tagged or not) is in the major. Untagged units are major-only.
  */
 export const unitMode = (unit: Pick<Unit, "exam">): ExamMode => unit.exam ?? "end-term";
 
-/** Whether a unit is in the mode's syllabus. No mode (not loaded yet) means everything. */
-export const unitInScope = (unit: Pick<Unit, "exam">, mode?: ExamMode) => !mode || unitMode(unit) === mode;
+/** Whether a unit is in the mode's syllabus: all units for the major, only mid-sem units for the mid-sem. No mode means everything. */
+export const unitInScope = (unit: Pick<Unit, "exam">, mode?: ExamMode) => !mode || mode === "end-term" || unitMode(unit) === "mid-term";
 
-/** Topics in the mode's syllabus. A topic whose unit isn't in `units` is treated like a legacy (major) one. */
+/** Topics in the mode's syllabus. A topic whose unit isn't in `units` counts as major-only. */
 export function topicsInScope<T extends Pick<Topic, "unitId">>(topics: T[], units: Unit[], mode?: ExamMode): T[] {
-  if (!mode) return topics;
-  const unitModes = new Map(units.map((u) => [u.id, unitMode(u)]));
-  return topics.filter((t) => (unitModes.get(t.unitId) ?? "end-term") === mode);
+  if (!mode || mode === "end-term") return topics;
+  const mid = new Set(units.filter((u) => unitMode(u) === "mid-term").map((u) => u.id));
+  return topics.filter((t) => mid.has(t.unitId));
 }
 
-// File-name hints for past papers: "Minor_2023", "midsem", "Mid-Term" vs "Major", "EndSem", "end-term".
+// File-name hints for past papers: "Minor_2023", "midsem", "Mid-Term" vs "Major", "EndSem", "end_term".
+// Whole words only, so "middleware" or "legend" don't count.
 const PYQ_HINTS: Record<ExamMode, RegExp> = {
-  "mid-term": /(^|[^a-z])(minor|mid)/,
-  "end-term": /(^|[^a-z])(major|end)/,
+  "mid-term": /(^|[^a-z])(minor|mid(?:[-_ ]?(?:sem|semester|term))?)(?![a-z])/,
+  "end-term": /(^|[^a-z])(major|end(?:[-_ ]?(?:sem|semester|term))?)(?![a-z])/,
 };
-/** Whether a past paper is for the mode: its Drive tag when it has one, else hints in the file name. */
-export function pyqMatchesMode(paper: string | Pick<Material, "fileName" | "pyqExam">, mode?: ExamMode) {
-  if (!mode) return false;
-  if (typeof paper !== "string" && paper.pyqExam) return paper.pyqExam === mode;
-  return PYQ_HINTS[mode].test((typeof paper === "string" ? paper : paper.fileName).toLowerCase());
+
+/** The exam a past paper is for: its tag (from Drive or AI analysis), else an unambiguous file-name hint. */
+export function pyqMode(paper: string | Pick<Material, "fileName" | "pyqExam">): ExamMode | undefined {
+  if (typeof paper !== "string" && paper.pyqExam) return paper.pyqExam;
+  const name = (typeof paper === "string" ? paper : paper.fileName).toLowerCase();
+  const mid = PYQ_HINTS["mid-term"].test(name);
+  const end = PYQ_HINTS["end-term"].test(name);
+  return mid === end ? undefined : mid ? "mid-term" : "end-term"; // both or neither: unknown
 }
+
+/** Whether a past paper is for the mode. Papers of unknown type match neither mode. */
+export const pyqMatchesMode = (paper: string | Pick<Material, "fileName" | "pyqExam">, mode?: ExamMode) => !!mode && pyqMode(paper) === mode;
+
+/** Materials the AI may use in a mode: all study material, but only this exam's past papers. */
+export const materialsForMode = <M extends Pick<Material, "kind" | "fileName" | "pyqExam">>(materials: M[], mode?: ExamMode) =>
+  materials.filter((m) => m.kind !== "pyq" || pyqMatchesMode(m, mode));
 
 /** What the AI should know about the exam being prepared for (spread into an AI request body). */
 export function aiModeFields(mode: ExamMode | undefined, units: Unit[]) {
   if (!mode) return {};
-  return { examMode: mode, scopeUnits: units.filter((u) => unitInScope(u, mode)).map((u) => u.title).slice(0, 50) };
+  // Same caps as the AI request schema (50 units, 300 characters each), so a big syllabus can't cause a 400.
+  return { examMode: mode, scopeUnits: units.filter((u) => unitInScope(u, mode)).slice(0, 50).map((u) => u.title.slice(0, 300)) };
 }
 
 /** The chosen exam mode; undefined while loading or before it's picked. */

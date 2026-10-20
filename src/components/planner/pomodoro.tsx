@@ -102,6 +102,40 @@ export function Pomodoro({ sessionId, label, onClose }: { sessionId: number | nu
     }
   };
 
+  // Leaving the planner while the timer runs (e.g. tapping another page) unmounts this; log the focus time first.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+  useEffect(() => () => void flushRef.current(), []);
+
+  // Reloading or closing the tab never unmounts: save whole minutes every minute while running (below)
+  // and when the page is hidden. The timer keeps running; leftover seconds carry over so nothing is logged twice.
+  const checkpoint = useCallback(() => {
+    if (sessionId == null) return;
+    const wasRunning = focusFrom.current != null;
+    pauseFocus();
+    const mins = Math.floor(focusMs.current / 60_000);
+    focusMs.current -= mins * 60_000;
+    if (wasRunning) focusFrom.current = Date.now();
+    if (mins > 0) {
+      void addFocusMinutes(sessionId, mins);
+      setLogged((l) => l + mins);
+    }
+  }, [sessionId]);
+  const checkpointRef = useRef(checkpoint);
+  checkpointRef.current = checkpoint;
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === "hidden") checkpointRef.current();
+    };
+    const onPageHide = () => checkpointRef.current();
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, []);
+
   const switchRef = useRef(switchPhase);
   switchRef.current = switchPhase;
   useEffect(() => {
@@ -112,9 +146,12 @@ export function Pomodoro({ sessionId, label, onClose }: { sessionId: number | nu
       else setLeft(secs);
     };
     const id = setInterval(tick, 500);
+    // Browsers drop database writes started while a tab closes, so save focus time every minute instead.
+    const save = setInterval(() => checkpointRef.current(), 60_000);
     document.addEventListener("visibilitychange", tick);
     return () => {
       clearInterval(id);
+      clearInterval(save);
       document.removeEventListener("visibilitychange", tick);
     };
   }, [running, phase]);
@@ -164,7 +201,8 @@ export function Pomodoro({ sessionId, label, onClose }: { sessionId: number | nu
           <Button onClick={toggle} className="min-w-28">
             {running ? <><Pause size={16} /> Pause</> : <><Play size={16} /> Start</>}
           </Button>
-          <Button variant="secondary" onClick={() => { setRunning(false); pauseFocus(); setLeft(total); if (phase === "work") focusMs.current = 0; }} aria-label="Reset">
+          {/* Reset restarts the countdown, but focus time already spent is logged first, never thrown away. */}
+          <Button variant="secondary" onClick={() => { setRunning(false); void flush(); setLeft(total); }} aria-label="Reset timer">
             <RotateCcw size={16} />
           </Button>
           <Button variant="secondary" onClick={() => switchPhase(phase === "work" ? "break" : "work", running)} aria-label="Skip phase">

@@ -2,20 +2,24 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Briefcase, Check, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { Briefcase, Check, FileSpreadsheet, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db, deleteExam } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
-import { examInMode, examTypeMode, modeShort, unitMode, useExamMode } from "@/lib/mode";
+import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
-import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select, Textarea } from "@/components/ui";
+import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select } from "@/components/ui";
+import { DatesheetImport } from "@/components/exams/datesheet-import";
+import { toast } from "@/components/toast";
+import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
 
 export default function ExamsPage() {
   const exams = useLiveQuery(() => db.exams.orderBy("date").toArray());
   const subjects = useLiveQuery(() => db.subjects.toArray());
   const [editing, setEditing] = useState<Exam | null>(null);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const mode = useExamMode();
   const t = today();
@@ -60,7 +64,7 @@ export default function ExamsPage() {
               <MapPin size={12} /> {[e.venue, e.seat && `Seat ${e.seat}`].filter(Boolean).join(", ")}
             </p>
           )}
-          {e.topicIds.length > 0 && <p className="mt-0.5 text-xs text-muted">{e.topicIds.length} topics in scope</p>}
+          {e.topicIds.length > 0 && <p className="mt-0.5 text-xs text-muted">{e.topicIds.length} topic{e.topicIds.length === 1 ? "" : "s"} in scope</p>}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <Link
@@ -80,8 +84,13 @@ export default function ExamsPage() {
     <>
       <PageHeader
         title="Exams"
-        sub="Your date sheet, venues and exam-day kits"
-        action={<Button onClick={() => setAdding(true)} disabled={!subjects?.length}><Plus size={16} /> Add exam</Button>}
+        sub="Your date sheet and exam-day kits"
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" onClick={() => setImporting(true)}><FileSpreadsheet size={16} /> Upload date sheet</Button>
+            <Button onClick={() => setAdding(true)} disabled={!subjects?.length}><Plus size={16} /> Add exam</Button>
+          </div>
+        }
       />
       {subjects?.length === 0 && (
         <Empty icon={<GraduationCap size={28} />} title="Add a subject first">
@@ -104,7 +113,7 @@ export default function ExamsPage() {
       )}
       {mode && !!exams?.length && !shown.length && (
         <Empty icon={<GraduationCap size={28} />} title={`No ${modeShort(mode).toLowerCase()} exams yet`}>
-          Add your {mode === "mid-term" ? "mid-sem" : "end-sem"} date sheet so the planner can schedule study time.
+          Add your {modeShort(mode).toLowerCase()} date sheet so the planner can schedule study time.
         </Empty>
       )}
       {upcoming.length > 0 && <ul className="space-y-3">{upcoming.map(row)}</ul>}
@@ -114,13 +123,31 @@ export default function ExamsPage() {
         </Section>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit exam" : "Add exam"}>
-        <ExamForm initial={editing} mode={mode} onDone={() => { setAdding(false); setEditing(null); }} />
+        <ExamForm
+          initial={editing}
+          mode={mode}
+          onDone={(saved) => {
+            setAdding(false);
+            setEditing(null);
+            // An exam of the other season disappears from this list, so say where it went.
+            const season = saved && examTypeMode(saved);
+            if (mode && season && !showAll && !examInMode({ type: saved }, mode)) {
+              toast(`Saved. It's a ${modeShort(season).toLowerCase()} exam, so it's hidden in ${modeShort(mode).toLowerCase()} mode`, {
+                label: "Show",
+                onClick: () => setShowAll(true),
+              });
+            }
+          }}
+        />
+      </Modal>
+      <Modal open={importing} onClose={() => setImporting(false)} title="Upload date sheet">
+        <DatesheetImport onDone={() => setImporting(false)} />
       </Modal>
     </>
   );
 }
 
-function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: ExamMode; onDone: () => void }) {
+function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: ExamMode; onDone: (savedType?: ExamType) => void }) {
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
   const [subjectId, setSubjectId] = useState<number | "">(initial?.subjectId ?? "");
   const sid = subjectId || subjects?.[0]?.id;
@@ -130,15 +157,13 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
   const [date, setDate] = useState(initial?.date ?? "");
   const [time, setTime] = useState(initial?.time ?? "10:00");
   const [duration, setDuration] = useState(initial?.durationMins?.toString() ?? "180");
-  const [venue, setVenue] = useState(initial?.venue ?? "");
-  const [seat, setSeat] = useState(initial?.seat ?? "");
-  const [notes, setNotes] = useState(initial?.notes ?? "");
   const [scope, setScope] = useState<Set<number>>(new Set(initial?.topicIds ?? []));
 
   // The picker shows the syllabus of the exam's season (by type; "other" follows the app mode),
   // plus any unit that already has ticked topics so nothing saved is ever hidden.
   const season = examTypeMode(type) ?? mode ?? "end-term";
-  const shownUnits = units?.filter((u) => unitMode(u) === season || topics?.some((t) => t.unitId === u.id && scope.has(t.id!)));
+  const shownUnits = units?.filter((u) => unitInScope(u, season) || topics?.some((t) => t.unitId === u.id && scope.has(t.id!)));
+  const hasSyllabus = !!shownUnits?.some((u) => topics?.some((t) => t.unitId === u.id));
 
   const toggle = (id: number) => setScope((s) => {
     const n = new Set(s);
@@ -152,11 +177,11 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
     if (!sid) return;
     const data = {
       subjectId: sid, type, date, time: time || undefined, durationMins: Number(duration) || undefined,
-      venue: venue || undefined, seat: seat || undefined, notes: notes || undefined, topicIds: [...scope],
+      topicIds: [...scope],
     };
     if (initial?.id) await db.exams.update(initial.id, data);
     else await db.exams.add({ ...data, checklist: DEFAULT_CHECKLIST });
-    onDone();
+    onDone(type);
   };
 
   return (
@@ -167,7 +192,10 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
         </Select>
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Type">
+        <Field
+          label="Type"
+          hint={mode && !examInMode({ type }, mode) ? `Belongs to ${modeShort(season).toLowerCase()} mode, so it won't show in this list` : undefined}
+        >
           <Select value={type} onChange={(e) => setType(e.target.value as ExamType)}>
             {EXAM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </Select>
@@ -175,16 +203,13 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
         <Field label="Date"><Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="Start time"><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
         <Field label="Duration (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} /></Field>
-        <Field label="Venue or block"><Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="E2 Block, Room 304" /></Field>
-        <Field label="Seat no."><Input value={seat} onChange={(e) => setSeat(e.target.value)} /></Field>
       </div>
-      <Field
-        label="Syllabus for this exam"
-        hint={`Leave everything unticked to cover the subject's whole ${season === "mid-term" ? "mid-sem" : "major"} syllabus.`}
-      >
+      {/* A fieldset, not <Field>: Field is a <label>, and a label around many checkboxes toggles the first one on any click. */}
+      <fieldset className="space-y-1.5">
+        <legend className="mb-1.5 text-[13px] font-medium text-muted">Syllabus for this exam</legend>
         <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
-          {!shownUnits?.some((u) => topics?.some((t) => t.unitId === u.id)) && (
-            <p className="text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus yet. Add it on the subject page, in that exam mode.</p>
+          {!hasSyllabus && (
+            <p className="text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus for this subject yet. Type or paste it below.</p>
           )}
           {shownUnits?.map((u) => {
             const ts = topics?.filter((t) => t.unitId === u.id) ?? [];
@@ -209,8 +234,20 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
             );
           })}
         </div>
-      </Field>
-      <Field label="Notes"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Open book? Allowed materials, marking scheme…" /></Field>
+        <span className="block text-xs text-muted">
+          Leave everything unticked to cover the subject&apos;s whole {season === "mid-term" ? "mid-sem" : "major"} syllabus.
+        </span>
+        {/* Rendered once the syllabus has loaded, so it only opens by itself when there really is none. Keyed so it resets per subject and season. */}
+        {sid && units && topics && (
+          <ExamSyllabusInput
+            key={`${sid}-${season}`}
+            subjectId={sid}
+            season={season}
+            defaultOpen={!hasSyllabus}
+            onAdded={(ids) => setScope((s) => new Set([...s, ...ids]))}
+          />
+        )}
+      </fieldset>
       <div className="flex justify-end pt-1"><Button type="submit">Save exam</Button></div>
     </form>
   );

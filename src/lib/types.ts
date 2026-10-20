@@ -84,6 +84,8 @@ export interface Material {
   createdAt: number;
   pyqExam?: ExamMode; // which exam a past paper was for, when its name says so
   source?: DriveRef; // set when imported from Google Drive
+  analysedAt?: number; // past paper split into questions (see PyqQuestion)
+  paperYear?: number; // exam year read from the paper itself
 }
 
 export interface DriveRef {
@@ -92,6 +94,20 @@ export interface DriveRef {
   path: string[]; // folder names in Drive, e.g. ["CSE201 - Database Management Systems", "PYQs"]
   format: "notes" | "ppt" | "pyq";
   ocr: boolean; // read from a scan by AI
+}
+
+/** One question from a past paper, for the year-wise and topic-wise question bank. */
+export interface PyqQuestion {
+  id?: number;
+  subjectId: number;
+  materialId: number;
+  year?: number;
+  exam?: ExamMode;
+  number: string; // as printed, e.g. "Q2(b)"
+  section?: string; // e.g. "Section B"
+  text: string;
+  marks?: number;
+  topicId?: number | null; // null = checked, matches no syllabus topic; undefined = not mapped yet
 }
 
 /** Every Drive file the sync has dealt with, so deleted or skipped files aren't fetched again. */

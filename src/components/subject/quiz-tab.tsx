@@ -2,17 +2,17 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Sparkles, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Sparkles, XCircle } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { refreshWeak } from "@/lib/weak";
 import { aiJson } from "@/lib/ai/client";
 import { aiModeFields } from "@/lib/mode";
-import type { QuizQuestion } from "@/lib/types";
+import type { QuizAttempt, QuizQuestion } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Badge, Button, Card, Empty, Field, List, Progress, Select, Textarea, cn } from "../ui";
 import { matchOption, norm } from "./quiz-match";
-import { noteTexts, OfflineHint, useMaterials, useOnline, type TabProps } from "./shared";
+import { noteTexts, OfflineHint, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
 type Difficulty = "easy" | "medium" | "hard";
 interface Graded { score: number; feedback?: string }
@@ -34,6 +34,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
   const [responses, setResponses] = useState<string[]>([]);
   const [page, setPage] = useState(0);
   const [graded, setGraded] = useState<Graded[] | null>(null);
+  // A past attempt opened from the list, to see which answers were wrong.
+  const [reviewing, setReviewing] = useState<QuizAttempt | null>(null);
 
   const materials = useMaterials(subjectId);
   const attempts = useLiveQuery(() => db.quizzes.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]) ?? [];
@@ -48,7 +50,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
       const chosen = topics.filter((t) => picked.includes(t.id!));
       if (!chosen.length) throw new Error("Pick at least one topic.");
       const context = retrieve(noteTexts(materials), chosen.map((t) => t.title).join(" "), 12_000);
-      const res = await aiJson("quiz", { subject: subject.name, topics: chosen.map((t) => t.title), context, count, difficulty, ...aiModeFields(mode, units) });
+      const res = await aiJson("quiz", { subject: subject.name, topics: topicTitles(chosen), context, count, difficulty, ...aiModeFields(mode, units) });
       // MCQs need options and an answer that is one of them; otherwise grade them as short answers instead.
       const qs: QuizQuestion[] = res.questions
         .filter((q) => q.question.trim())
@@ -102,6 +104,11 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 
   const reset = () => { setQuestions(null); setGraded(null); setResponses([]); };
 
+  // ---- Reviewing a past attempt
+  if (reviewing && !questions) {
+    return <AttemptReview attempt={reviewing} topics={topics} onBack={() => setReviewing(null)} />;
+  }
+
   // ---- Results view
   if (questions && graded) {
     const score = Math.round((graded.reduce((a, r) => a + r.score, 0) / questions.length) * 100);
@@ -149,6 +156,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
     const q = questions[page];
     const answered = responses.filter((r) => r.trim()).length;
     const set = (v: string) => setResponses((r) => r.map((x, i) => (i === page ? v : x)));
+    // Choose-one answers are marked here; only written answers need the AI, so an all-MCQ quiz can be submitted offline.
+    const needsAi = questions.some((x, i) => x.type === "short" && responses[i]?.trim());
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between text-sm text-muted">
@@ -181,13 +190,16 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
           )}
         </Card>
         <AiErrorBox error={error} />
+        {needsAi && !online && page === questions.length - 1 && (
+          <p className="text-xs text-warn">You&apos;re offline. Written answers are marked by AI, so submit once you&apos;re back online.</p>
+        )}
         <div className="flex items-center justify-between gap-2">
           <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0}><ChevronLeft size={16} /> Previous</Button>
           <Button variant="ghost" disabled={!!busy} onClick={() => confirm("Leave this quiz? Your answers won't be saved.") && reset()}>Leave quiz</Button>
           {page < questions.length - 1 ? (
             <Button variant="secondary" onClick={() => setPage(page + 1)}>Next <ChevronRight size={16} /></Button>
           ) : (
-            <Button onClick={submit} disabled={!!busy || !online}>{busy || "Submit answers"}</Button>
+            <Button onClick={submit} disabled={!!busy || (needsAi && !online)}>{busy || "Submit answers"}</Button>
           )}
         </div>
       </div>
@@ -265,16 +277,65 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         ) : (
           <List className="border-y-0">
             {attempts.map((a) => (
-              <li key={a.id} className="flex items-center gap-4 py-3 text-sm">
-                <span className={cn("w-12 text-[17px] font-semibold tabular-nums", scoreColor(a.score))}>{a.score}%</span>
-                <span className="min-w-0 flex-1 truncate">
-                  {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
-                </span>
-                <span className="shrink-0 text-xs text-muted">{a.questions.length} questions, {new Date(a.createdAt).toLocaleDateString()}</span>
+              <li key={a.id}>
+                <button
+                  type="button"
+                  onClick={() => setReviewing(a)}
+                  disabled={!a.questions.length}
+                  aria-label={`Review the ${a.score}% quiz from ${new Date(a.createdAt).toLocaleDateString()}`}
+                  className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-4 rounded-lg px-2 py-3 text-left text-sm transition-colors hover:bg-surface-2 disabled:pointer-events-none"
+                >
+                  <span className={cn("w-12 text-[17px] font-semibold tabular-nums", scoreColor(a.score))}>{a.score}%</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted">{a.questions.length} questions, {new Date(a.createdAt).toLocaleDateString()}</span>
+                  {a.questions.length > 0 && <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />}
+                </button>
               </li>
             ))}
           </List>
         )}
+      </Card>
+    </div>
+  );
+}
+
+/** A saved attempt, read back. Choose-one answers are re-marked; written answers show the model answer, since their AI feedback isn't stored. */
+function AttemptReview({ attempt, topics, onBack }: { attempt: QuizAttempt; topics: TabProps["topics"]; onBack: () => void }) {
+  const names = attempt.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ");
+  return (
+    <div className="space-y-6">
+      <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2"><ArrowLeft size={14} /> Back to quizzes</Button>
+      <Card>
+        <p className="mb-3 text-[15px] font-semibold">Quiz from {new Date(attempt.createdAt).toLocaleDateString()}</p>
+        <p className={cn("numeral text-7xl", scoreColor(attempt.score))}>{attempt.score}%</p>
+        {names && <p className="mt-2 text-[15px] text-muted">{names}</p>}
+        <Progress value={attempt.score} className="mt-5" />
+      </Card>
+      <Card title="Answers">
+        <List className="border-y-0">
+          {attempt.questions.map((q, i) => {
+            const given = attempt.responses[i] ?? "";
+            const mcq = q.type === "mcq";
+            const ok = mcq && norm(given) === norm(q.answer);
+            return (
+              <li key={i} className="flex gap-3 py-4">
+                {mcq ? (
+                  ok ? <CheckCircle2 className="mt-0.5 shrink-0 text-good" size={18} aria-label="Correct" /> : <XCircle className="mt-0.5 shrink-0 text-bad" size={18} aria-label="Wrong" />
+                ) : (
+                  <span className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-border" aria-label="Written answer" />
+                )}
+                <div className="min-w-0 space-y-1.5 text-sm leading-relaxed">
+                  <p className="text-[15px] font-medium">{i + 1}. {q.question}</p>
+                  <p><span className="text-muted">Your answer:</span> {given || <em className="text-muted">left blank</em>}</p>
+                  {!ok && <p><span className="text-muted">{mcq ? "Correct answer:" : "Model answer:"}</span> {q.answer}</p>}
+                  {q.explanation && <p className="text-muted">{q.explanation}</p>}
+                </div>
+              </li>
+            );
+          })}
+        </List>
       </Card>
     </div>
   );

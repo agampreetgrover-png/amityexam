@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiModeFields, examInMode, examTypeMode, pyqMatchesMode, topicsInScope, unitInScope } from "./mode";
+import { aiModeFields, examInMode, examTypeMode, materialsForMode, pyqMatchesMode, pyqMode, topicsInScope, unitInScope } from "./mode";
 import type { ExamMode, ExamType, Topic, Unit } from "./types";
 
 const unit = (id: number, exam?: ExamMode, subjectId = 1): Unit => ({ id, subjectId, title: `U${id}`, order: id, exam });
@@ -29,10 +29,10 @@ describe("examTypeMode", () => {
 });
 
 describe("unitInScope", () => {
-  it("matches a unit's own syllabus to the mode, with untagged (legacy) units counting as major", () => {
+  it("treats the mid-sem syllabus as part of the major one", () => {
     const units = [unit(1, "mid-term"), unit(2, "end-term"), unit(3)];
     expect(units.map((u) => unitInScope(u, "mid-term"))).toEqual([true, false, false]);
-    expect(units.map((u) => unitInScope(u, "end-term"))).toEqual([false, true, true]);
+    expect(units.map((u) => unitInScope(u, "end-term"))).toEqual([true, true, true]);
   });
 
   it("includes everything when no mode is chosen", () => {
@@ -45,12 +45,12 @@ describe("topicsInScope", () => {
   const units = [unit(1, "mid-term"), unit(2, "mid-term"), unit(3, "end-term"), unit(4), unit(5, "mid-term", 2)];
   const topics = [topic(1, 1), topic(2, 2), topic(3, 3), topic(4, 4), topic(5, 5), topic(6, 99)];
 
-  it("keeps only the mode's syllabus, across subjects", () => {
+  it("keeps only units marked mid-sem in mid-sem mode, across subjects", () => {
     expect(topicsInScope(topics, units, "mid-term").map((t) => t.id)).toEqual([1, 2, 5]);
   });
 
-  it("counts topics of untagged or unknown units as major", () => {
-    expect(topicsInScope(topics, units, "end-term").map((t) => t.id)).toEqual([3, 4, 6]);
+  it("keeps the whole syllabus in major mode, mid-sem units and unknown units included", () => {
+    expect(topicsInScope(topics, units, "end-term").map((t) => t.id)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it("keeps everything with no mode", () => {
@@ -73,7 +73,7 @@ describe("aiModeFields", () => {
   const units = [unit(1, "mid-term"), unit(2, "mid-term"), unit(3)];
   it("names the units of the mode's syllabus", () => {
     expect(aiModeFields("mid-term", units)).toEqual({ examMode: "mid-term", scopeUnits: ["U1", "U2"] });
-    expect(aiModeFields("end-term", units)).toEqual({ examMode: "end-term", scopeUnits: ["U3"] });
+    expect(aiModeFields("end-term", units)).toEqual({ examMode: "end-term", scopeUnits: ["U1", "U2", "U3"] });
     expect(aiModeFields(undefined, units)).toEqual({});
   });
 });
@@ -85,5 +85,49 @@ describe("pyqMatchesMode with Drive tags", () => {
   });
   it("falls back to the file name when untagged", () => {
     expect(pyqMatchesMode({ fileName: "Minor 2023.pdf" }, "mid-term")).toBe(true);
+  });
+});
+
+describe("pyqMode / strict mode matching", () => {
+  it("treats papers with no hint as unknown for both modes", () => {
+    for (const f of ["DBMS PYQ 2018.pdf", "Set-1 [AIML202].pdf", "paper.pdf"]) {
+      expect(pyqMatchesMode(f, "mid-term")).toBe(false);
+      expect(pyqMatchesMode(f, "end-term")).toBe(false);
+      expect(pyqMatchesMode({ fileName: f }, "end-term")).toBe(false);
+    }
+  });
+  it("treats names with both major and minor words as unknown", () => {
+    expect(pyqMode("Major and Minor papers 2022.pdf")).toBeUndefined();
+    expect(pyqMatchesMode("Major and Minor papers 2022.pdf", "mid-term")).toBe(false);
+    expect(pyqMatchesMode("Major and Minor papers 2022.pdf", "end-term")).toBe(false);
+  });
+  it("only matches whole words", () => {
+    expect(pyqMode("Middleware notes.pdf")).toBeUndefined();
+    expect(pyqMode("Weekend revision.pdf")).toBeUndefined();
+    expect(pyqMode("Minority report.pdf")).toBeUndefined();
+    expect(pyqMode("DBMS Mid Semester 2023.pdf")).toBe("mid-term");
+    expect(pyqMode("End Semester 2021.pdf")).toBe("end-term");
+  });
+  it("lets the tag override an ambiguous or opposite name", () => {
+    expect(pyqMode({ fileName: "Major and Minor.pdf", pyqExam: "end-term" })).toBe("end-term");
+    expect(pyqMatchesMode({ fileName: "Minor 2023.pdf", pyqExam: "end-term" }, "mid-term")).toBe(false);
+  });
+});
+
+describe("materialsForMode", () => {
+  const m = (kind: "notes" | "pyq", fileName: string, pyqExam?: ExamMode) => ({ kind, fileName, pyqExam });
+  const all = [m("notes", "Unit 1.pdf"), m("pyq", "Major 2021.pdf"), m("pyq", "Minor 2023.pdf"), m("pyq", "DBMS PYQ 2018.pdf"), m("pyq", "x.pdf", "mid-term")];
+  it("keeps notes and only this exam's past papers", () => {
+    expect(materialsForMode(all, "end-term").map((x) => x.fileName)).toEqual(["Unit 1.pdf", "Major 2021.pdf"]);
+    expect(materialsForMode(all, "mid-term").map((x) => x.fileName)).toEqual(["Unit 1.pdf", "Minor 2023.pdf", "x.pdf"]);
+  });
+});
+
+describe("aiModeFields caps", () => {
+  it("clips to the request schema limits", () => {
+    const many = Array.from({ length: 60 }, (_, i) => ({ ...unit(i, "mid-term"), title: "x".repeat(400) }));
+    const f = aiModeFields("mid-term", many) as { scopeUnits: string[] };
+    expect(f.scopeUnits).toHaveLength(50);
+    expect(f.scopeUnits[0]).toHaveLength(300);
   });
 });

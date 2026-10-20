@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BookOpen, CalendarDays, GraduationCap, House, RotateCcw, Settings } from "lucide-react";
+import { BarChart3, BookOpen, CalendarDays, GraduationCap, House, RotateCcw, Search, Settings } from "lucide-react";
+import { openCommandPalette } from "./command-palette";
 import { ModePill } from "./mode-pill";
 import { cn } from "./ui";
 
@@ -46,7 +47,16 @@ export function Nav() {
           </span>
           <span className="text-lg font-bold tracking-tight">Amity Exams</span>
         </Link>
-        <ModePill className="mb-6 ml-1 mt-3 self-start" />
+        <ModePill className="ml-1 mt-3 self-start" />
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="mb-5 mt-5 flex h-10 items-center gap-2.5 rounded-xl border border-border bg-bg px-3 text-sm text-muted transition-colors hover:border-accent/40 hover:text-text"
+        >
+          <Search size={16} aria-hidden />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="rounded-md border border-border bg-surface px-1.5 text-[11px]">Ctrl K</kbd>
+        </button>
         <ul className="space-y-1">{primary.map(item)}</ul>
         <ul className="mt-auto space-y-1 border-t border-border pt-4">{secondary.map(item)}</ul>
       </nav>

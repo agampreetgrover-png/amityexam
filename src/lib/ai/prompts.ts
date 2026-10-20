@@ -69,6 +69,65 @@ Shape: {"results":[{"score":number,"feedback":string}]} (same order as input)
 ${JSON.stringify(r.answers ?? [])}`,
         },
       ];
+    case "pyq":
+      return [
+        { role: "system", content: sys },
+        {
+          role: "user",
+          content: `Split this previous year exam paper into individual questions for a question bank.
+- "year": the exam year printed on the paper (e.g. "NOV-DEC, 2021" → 2021); if none is printed, use a year in the file name; else null.
+- "exam": "end-term" for END SEMESTER / major papers, "mid-term" for MID TERM / minor / internal papers, else null.
+- Each separately answerable part is its own question (Q2(a), Q2(b)…). Keep "OR" alternatives as separate questions.
+- "number" as printed (e.g. "Q2(b)"), "section" (e.g. "Section B") or null.
+- "text": the full question wording, with OCR noise fixed (broken words, stray symbols). Leave out instructions, enrolment boxes, page headers and footers.
+- "marks": marks for that question; if marks are given per section (e.g. "5×4 = 20 marks"), use the per-question value; else null.
+Shape: {"year":number|null,"exam":"mid-term"|"end-term"|null,"questions":[{"number":string,"section":string|null,"text":string,"marks":number|null}]}
+${topicLine(r)}
+File name: ${fence(r.text ?? "unknown")}
+Paper:
+"""
+${clip(r.context, maxChars)}
+"""`,
+        },
+      ];
+    case "datesheet":
+      return [
+        { role: "system", content: sys },
+        {
+          role: "user",
+          content: `Find the student's exams in this university date sheet. It covers many programmes and semesters: include ONLY the student's subjects listed below, matching by course code first (e.g. CSE201), then by subject name. Ignore every other paper.
+For each of the student's exams give: "subject" = the subject's index number from the list; "date" as YYYY-MM-DD (sheets use Indian day-first dates such as 13-10-2025, 3/10/25 or "13th October 2025"; a two-digit year means 20xx); "time" = start time as HH:mm in 24-hour form, or null (a "shift"/"session" with times counts); "durationMins" if stated, else null; "type" from the sheet's title or headings: MID-SEM / mid term / minor → "mid-term", end semester / odd or even semester examination / major → "end-term", internal / class test → "internal", practical / lab → "practical", viva → "viva", otherwise "other"; "venue" if stated, else null.
+If a subject appears more than once (e.g. theory and practical), list each.
+Shape: {"exams":[{"subject":number,"date":"YYYY-MM-DD","time":string|null,"durationMins":number|null,"type":string,"venue":string|null}]}
+The student's subjects ("code | name"):
+"""
+${fence((r.topics ?? []).map((t, n) => `${n}. ${t}`).join("\n"))}
+"""
+Reading the layout: spreadsheet rows are "cell | cell | …" with empty cells kept, so columns line up. Time slots are often column headers (a row like "(10:00 to 11:00 AM) | | (02:00 to 03:00 PM)"): a paper takes the time of the column it sits in. A day/date row (e.g. "TUESDAY (09-09-25)") applies to the rows below it until the next date. Some rows may be omitted.
+Date sheet (spreadsheet rows, or extracted PDF text):
+"""
+${clip(r.text, maxChars)}
+"""`,
+        },
+      ];
+    case "pyqmap":
+      return [
+        { role: "system", content: sys },
+        {
+          role: "user",
+          content: `Map each exam question to the ONE syllabus topic it mainly tests, judging by meaning, not just shared keywords. Use the topic's index number. Use -1 only when no topic fits at all.
+Shape: {"map":[{"i":number,"t":number}]} (one entry per question; "i" is the question's id)
+${r.subject ? `Subject: ${fence(r.subject)}` : ""}
+Topics:
+"""
+${fence((r.topics ?? []).map((t, n) => `${n}. ${t}`).join("\n"))}
+"""
+Questions (JSON array of {"i": id, "q": question}):
+"""
+${clip(r.text, maxChars)}
+"""`,
+        },
+      ];
   }
 }
 
@@ -76,7 +135,7 @@ export function buildTextPrompt(action: TextAction, r: AiRequest, { maxChars, ch
   const ask = (content: string): Msg[] => [{ role: "system", content: SYSTEM }, { role: "user", content }];
   switch (action) {
     case "summary":
-      return ask(`Write exam-ready short notes. Start with a 2-line overview, then key concepts with crisp explanations, important definitions, formulas/diagrams described in words, examples, and a final "Likely exam points" list.
+      return ask(`Write exam-ready short notes. Open with a two-sentence overview (as a plain paragraph, not a heading), then key concepts with crisp explanations, important definitions, formulas/diagrams described in words, examples, and a final "Likely exam points" list.
 ${topicLine(r)}${notes(r, maxChars)}`);
     case "cheatsheet":
       return ask(`Make a one-page last-minute revision cheat sheet: only the highest-yield facts, definitions, formulas, mnemonics and comparisons (use small tables). Very compact, no filler.

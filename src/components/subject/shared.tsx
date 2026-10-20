@@ -18,6 +18,10 @@ export const noteTexts = (materials: Material[]) => materials.filter((m) => m.ki
 export const MAX_TOPICS = 150;
 export const MAX_CONTEXT = 400_000;
 export const MAX_TEXT = 100_000;
+const MAX_TITLE = 300;
+
+/** Topic titles for an AI request, within the schema's caps (150 titles, 300 characters each). */
+export const topicTitles = (topics: Pick<Topic, "title">[], max = MAX_TOPICS) => topics.slice(0, max).map((t) => t.title.slice(0, MAX_TITLE));
 
 /** Retrieval query for a topic: its title plus its unit's title for extra keywords. */
 export const topicQuery = (topic: Topic, units: Unit[]) => `${topic.title} ${units.find((u) => u.id === topic.unitId)?.title ?? ""}`;

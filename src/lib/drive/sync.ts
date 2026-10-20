@@ -1,5 +1,5 @@
 // Server-only: find each subject's material in the Drive sources and yield it as events.
-import { classify, MATCH_THRESHOLD, skipFolder, subjectScore, type DriveKind, type PyqExam, type SubjectRef } from "./classify";
+import { bestSubject, classify, pickFolders, skipFolder, type DriveKind, type PyqExam, type SubjectRef } from "./classify";
 import { DeferFile, fileText, SkipFile } from "./extract";
 import { crawl, listFolder, type CrawledFile } from "./list";
 import type { DriveSource } from "./sources";
@@ -31,21 +31,12 @@ export type SyncEvent =
   | { type: "skip"; subjectId: number; driveId: string; name: string; reason: string }
   | { type: "deferred"; subjectId: number; driveId: string; name: string; reason: string }
   | { type: "error"; subjectId?: number; driveId?: string; name?: string; message: string }
+  | { type: "notice"; subjectId: number; message: string } // e.g. two folders fit a subject equally well
   | { type: "done"; imported: number; skipped: number; deferred: number; failed: number };
 
 const PYQ_FOLDER = /\b(pyqs?|papers?|question ?papers?|previous)\b/i;
-const yearOf = (n: string) => Number(n.match(/(20dd)/)?.[1] ?? 0);
+const yearOf = (n: string) => Number(n.match(/(?:^|[^0-9])(20\d\d)(?![0-9])/)?.[1] ?? 0);
 const sameName = (n: string) => n.toLowerCase().replace(/\s*\(\d+\)(?=\.[a-z0-9]+$)/, "").replace(/\s+/g, " ").trim();
-
-function bestSubject(name: string, subjects: SubjectRef[]): SubjectRef | undefined {
-  let best: SubjectRef | undefined;
-  let score = 0;
-  for (const s of subjects) {
-    const sc = subjectScore(name, s);
-    if (sc > score) [best, score] = [s, sc];
-  }
-  return score >= MATCH_THRESHOLD ? best : undefined;
-}
 
 async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {
   let i = 0;
@@ -62,6 +53,18 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   const found = new Map<number, CrawledFile[]>();
   const add = (sid: number, files: CrawledFile[]) => found.set(sid, [...(found.get(sid) ?? []), ...files]);
 
+  // Folders linked by hand come first, so their files go to that subject even if another one also matches.
+  for (const link of req.links ?? []) {
+    for (const folderId of link.folderIds) {
+      try {
+        add(link.subjectId, await crawl(folderId, { skipFolder, signal }));
+      } catch (e) {
+        yield { type: "error", subjectId: link.subjectId, message: `Linked folder: ${e instanceof Error ? e.message : "unavailable"}` };
+      }
+    }
+  }
+
+  const names = new Map(subjects.map((s) => [s.id, s.name]));
   for (const src of sources) {
     let top;
     try {
@@ -70,36 +73,41 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
       yield { type: "error", message: `${src.label}: ${e instanceof Error ? e.message : "unavailable"}` };
       continue;
     }
-    const matched = new Map<number, { id: string; name: string; source: string }[]>();
+    const { picked, ambiguous } = pickFolders(top.filter((e) => e.type === "folder"), subjects);
+    const taken = new Set([...picked.values(), ...ambiguous.values()].flat().map((f) => f.id));
+    for (const [subjectId, fs] of ambiguous) {
+      yield {
+        type: "notice",
+        subjectId,
+        message: `${names.get(subjectId)}: several folders in ${src.label} could fit (${fs.map((f) => f.name).join(", ")}). Link the right one in Settings → Google Drive.`,
+      };
+    }
+    for (const [subjectId, fs] of picked) {
+      // A subject's own folders: everything inside belongs to it.
+      for (const f of fs) {
+        try {
+          add(subjectId, await crawl(f.id, { path: [f.name], skipFolder, signal }));
+        } catch (e) {
+          yield { type: "error", subjectId, message: `${f.name}: ${e instanceof Error ? e.message : "unavailable"}` };
+        }
+      }
+      yield { type: "match", subjectId, folders: fs.map((f) => ({ id: f.id, name: f.name, source: src.label })) };
+    }
     for (const entry of top) {
-      const subject = bestSubject(entry.name, subjects);
+      if (taken.has(entry.id)) continue;
       try {
-        if (entry.type === "folder" && subject) {
-          // A subject's own folder: everything inside belongs to it.
-          matched.set(subject.id, [...(matched.get(subject.id) ?? []), { id: entry.id, name: entry.name, source: src.label }]);
-          add(subject.id, await crawl(entry.id, { path: [entry.name], skipFolder, signal }));
-        } else if (entry.type === "folder" && PYQ_FOLDER.test(entry.name)) {
+        if (entry.type === "folder" && PYQ_FOLDER.test(entry.name)) {
           // A mixed past-papers folder: assign each file by its own name.
           for (const f of await crawl(entry.id, { path: [entry.name], skipFolder, signal })) {
             const s = bestSubject(f.name, subjects);
             if (s) add(s.id, [f]);
           }
-        } else if (entry.type !== "folder" && subject) {
-          add(subject.id, [{ ...entry, path: [] }]);
+        } else if (entry.type !== "folder") {
+          const s = bestSubject(entry.name, subjects);
+          if (s) add(s.id, [{ ...entry, path: [] }]);
         }
       } catch (e) {
-        yield { type: "error", subjectId: subject?.id, message: `${entry.name}: ${e instanceof Error ? e.message : "unavailable"}` };
-      }
-    }
-    for (const [subjectId, folders] of matched) yield { type: "match", subjectId, folders };
-  }
-
-  for (const link of req.links ?? []) {
-    for (const folderId of link.folderIds) {
-      try {
-        add(link.subjectId, await crawl(folderId, { skipFolder, signal }));
-      } catch (e) {
-        yield { type: "error", subjectId: link.subjectId, message: `Linked folder: ${e instanceof Error ? e.message : "unavailable"}` };
+        yield { type: "error", message: `${entry.name}: ${e instanceof Error ? e.message : "unavailable"}` };
       }
     }
   }

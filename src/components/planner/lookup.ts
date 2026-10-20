@@ -1,3 +1,4 @@
+import { examTypeLabel } from "@/lib/exams";
 import type { Exam, StudySession, Subject, Topic, Unit } from "@/lib/types";
 
 /** Id → record maps the planner views share to label sessions. */
@@ -21,7 +22,7 @@ export function describeSession(s: StudySession, l: Lookup) {
   if (s.kind === "revision") {
     const exam = s.examId != null ? l.exams.get(s.examId) : undefined;
     const subject = exam ? l.subjects.get(exam.subjectId) : undefined;
-    return { title: `Revision: ${subject?.name ?? "exam"}`, sub: exam ? `${exam.type} exam` : "", subject };
+    return { title: `Revision: ${subject?.name ?? "exam"}`, sub: exam ? `${examTypeLabel(exam.type)} exam` : "", subject };
   }
   const topic = s.topicId != null ? l.topics.get(s.topicId) : undefined;
   const subject = topic ? l.subjects.get(topic.subjectId) : undefined;

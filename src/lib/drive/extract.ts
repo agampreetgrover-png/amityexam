@@ -6,6 +6,7 @@ import { AiProviderError, getProviders } from "@/lib/ai/providers";
 const MAX_BYTES = 40 * 1024 * 1024; // skip anything bigger (usually full textbooks)
 const MAX_OCR_BYTES = 15 * 1024 * 1024; // Gemini inline-data limit with headroom
 export const MAX_TEXT = 400_000; // same cap the AI routes accept for `context`
+const MAX_PDF_PAGES = 150; // longer PDFs are textbooks, not notes
 
 /** Permanently ignore this file (wrong type, too big, empty). */
 export class SkipFile extends Error {}
@@ -101,6 +102,8 @@ export async function fileText(
   if (ext === "txt" || ext === "md") return { text: clip(buf.toString("utf8").trim()), ocr: false };
   if (ext === "pdf") {
     const { text, pages } = await pdfText(buf);
+    // Lecture notes and papers are short; a PDF this long is a textbook and would crowd out the notes as AI context.
+    if (pages > MAX_PDF_PAGES) throw new SkipFile(`looks like a full book (${pages} pages)`);
     // Under ~40 characters per page means scanned images, not real text.
     if (text.length >= Math.max(200, pages * 40)) return { text: clip(text), ocr: false };
     const gemini = getProviders().find((p) => p.name === "gemini");

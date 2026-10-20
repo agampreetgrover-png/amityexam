@@ -10,6 +10,7 @@ import type { SyllabusResult } from "@/lib/ai/schemas";
 import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Badge, Button, Card, Dots, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
+import { unitMode } from "@/lib/mode";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
 
 const newTopic = (subjectId: number, unitId: number, title: string, difficulty = 3): Topic => ({
@@ -23,8 +24,10 @@ const newTopic = (subjectId: number, unitId: number, title: string, difficulty =
  * topics would cover nothing (an empty list means "whole subject" to the planner).
  */
 async function deleteTopics(ids: number[], unitId?: number) {
-  await db.transaction("rw", [db.units, db.topics, db.sessions, db.exams], async () => {
+  await db.transaction("rw", [db.units, db.topics, db.sessions, db.exams, db.pyqQuestions], async () => {
     await db.sessions.where("topicId").anyOf(ids).delete();
+    // Past-paper questions filed under these topics go back to "not matched yet" and get re-matched.
+    await db.pyqQuestions.where("topicId").anyOf(ids).modify((q) => { delete q.topicId; });
     await db.exams
       .filter((e) => e.topicIds.some((id) => ids.includes(id)))
       .modify((e) => { e.topicIds = e.topicIds.filter((id) => !ids.includes(id)); });
@@ -33,25 +36,40 @@ async function deleteTopics(ids: number[], unitId?: number) {
   });
 }
 
+/** Next free order number. Counting units would reuse a number after a delete and make the order unstable. */
+const nextOrder = (units: Unit[]) => units.reduce((max, u) => Math.max(max, u.order + 1), 0);
+
 export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
   const [importOpen, setImportOpen] = useState(false);
+  // Kept here, not in the dialog: the dialog's content unmounts on close, and a reviewed draft cost an AI call.
+  const [importText, setImportText] = useState("");
+  const [importDraft, setImportDraft] = useState<Draft | null>(null);
   const [newUnit, setNewUnit] = useState("");
+  const [adding, setAdding] = useState(false);
   const mid = mode === "mid-term";
 
-  // New units join the current mode's syllabus; the other mode's syllabus is kept separately.
+  // One syllabus per subject. A unit added while preparing for the mid-sem is marked as in the mid-sem.
   const addUnit = async () => {
-    if (!newUnit.trim()) return;
-    await db.units.add({ subjectId: subject.id!, title: newUnit.trim(), order: units.length, exam: mode });
-    setNewUnit("");
+    const title = newUnit.trim();
+    if (!title || adding) return; // a quick double Enter must not add the unit twice
+    setAdding(true);
+    try {
+      await db.units.add({ subjectId: subject.id!, title, order: nextOrder(units), exam: mode });
+      setNewUnit("");
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <header className="mb-4">
-          <h2 className="text-lg font-semibold">{mid ? "Mid-sem syllabus" : "Major syllabus"}</h2>
+          <h2 className="text-lg font-semibold">Syllabus</h2>
           <p className="text-[13px] text-muted">
-            {mid ? "Only what your mid-sem covers. Your major syllabus is kept separately." : "The full end-sem syllabus. Your mid-sem syllabus is kept separately."}
+            {mid
+              ? "The full syllabus. Tick “In mid-sem” on the units your mid-sem covers; only those count while you prepare for it."
+              : "The full syllabus for the major exam. Tick “In mid-sem” on the units the mid-sem covers."}
           </p>
         </header>
 
@@ -65,18 +83,26 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
       </Card>
 
       {units.length === 0 ? (
-        <Empty icon={<Upload />} title={mid ? "Upload your mid-sem syllabus" : "Upload your major syllabus"}>
-          {mid
-            ? "The mid-sem has its own syllabus, separate from the major one. Import it from a PDF, photo or pasted text with AI, or add units by hand."
-            : "The major (end-sem) syllabus is separate from the mid-sem one. Import it from a PDF, photo or pasted text with AI, or add units by hand."}
-          <div className="mt-3"><Button size="sm" onClick={() => setImportOpen(true)}><Sparkles size={14} /> Import {mid ? "mid-sem" : "major"} syllabus</Button></div>
+        <Empty icon={<Upload />} title="Add this subject's syllabus">
+          Import it from a PDF, photo or pasted text with AI, or add units by hand. Then tick the units your mid-sem covers.
+          <div className="mt-3"><Button size="sm" onClick={() => setImportOpen(true)}><Sparkles size={14} /> Import syllabus</Button></div>
         </Empty>
       ) : (
         units.map((u) => <UnitSection key={u.id} unit={u} topics={topics.filter((t) => t.unitId === u.id)} />)
       )}
 
-      <Modal open={importOpen} onClose={() => setImportOpen(false)} title={`Import ${mid ? "mid-sem" : "major"} syllabus with AI`}>
-        <ImportSyllabus subjectId={subject.id!} subjectName={subject.name} unitCount={units.length} mode={mode} onDone={() => setImportOpen(false)} />
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import syllabus with AI">
+        <ImportSyllabus
+          subjectId={subject.id!}
+          subjectName={subject.name}
+          firstOrder={nextOrder(units)}
+          mode={mode}
+          text={importText}
+          setText={setImportText}
+          draft={importDraft}
+          setDraft={setImportDraft}
+          onDone={() => { setImportOpen(false); setImportText(""); setImportDraft(null); }}
+        />
       </Modal>
     </div>
   );
@@ -86,6 +112,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(unit.title);
   const [newT, setNewT] = useState("");
+  const [adding, setAdding] = useState(false);
 
   const remove = async () => {
     if (!confirm(`Delete "${unit.title}" and its ${topics.length} topics?`)) return;
@@ -116,12 +143,22 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
         ) : (
           <span className="flex items-baseline gap-2">
             {unit.title}
-            <span className="text-[13px] font-normal text-muted">{topics.length} topics</span>
+            <span className="text-[13px] font-normal text-muted">{topics.length} topic{topics.length === 1 ? "" : "s"}</span>
           </span>
         )
       }
       action={
-        <div className="flex shrink-0">
+        <div className="flex shrink-0 items-center">
+          <label className="mr-1 flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-muted hover:bg-surface-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[var(--accent)]"
+              aria-label={`${unit.title} is in the mid-sem`}
+              checked={unitMode(unit) === "mid-term"}
+              onChange={(e) => db.units.update(unit.id!, { exam: e.target.checked ? "mid-term" : "end-term" })}
+            />
+            In mid-sem
+          </label>
           <Button variant="ghost" size="sm" onClick={toggleEdit} aria-label="Rename unit"><Pencil size={14} /></Button>
           <Button variant="danger" size="sm" onClick={remove} aria-label="Delete unit"><Trash2 size={14} /></Button>
         </div>
@@ -136,9 +173,15 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
         className="mt-3 flex gap-2"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!newT.trim()) return;
-          await db.topics.add(newTopic(unit.subjectId, unit.id!, newT.trim()));
-          setNewT("");
+          const title = newT.trim();
+          if (!title || adding) return;
+          setAdding(true);
+          try {
+            await db.topics.add(newTopic(unit.subjectId, unit.id!, title));
+            setNewT("");
+          } finally {
+            setAdding(false);
+          }
         }}
       >
         <Input placeholder="Add a topic" value={newT} onChange={(e) => setNewT(e.target.value)} className="h-9" />
@@ -211,18 +254,23 @@ function TopicRow({ topic }: { topic: Topic }) {
   );
 }
 
-function ImportSyllabus({ subjectId, subjectName, unitCount, mode, onDone }: {
+type Draft = SyllabusResult["units"];
+
+function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text, setText, draft, setDraft }: {
   subjectId: number;
   subjectName: string;
-  unitCount: number;
+  firstOrder: number;
   mode: ExamMode; // imported units join this mode's syllabus
   onDone: () => void;
+  // Held by SyllabusTab, so closing the dialog by mistake doesn't throw away the pasted text or the reviewed draft.
+  text: string;
+  setText: (t: string) => void;
+  draft: Draft | null;
+  setDraft: React.Dispatch<React.SetStateAction<Draft | null>>;
 }) {
   const online = useOnline();
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [draft, setDraft] = useState<SyllabusResult["units"] | null>(null);
   const [reading, setReading] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -240,6 +288,7 @@ function ImportSyllabus({ subjectId, subjectName, unitCount, mode, onDone }: {
   };
 
   const run = async () => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -258,7 +307,7 @@ function ImportSyllabus({ subjectId, subjectName, unitCount, mode, onDone }: {
     setError(null);
     try {
       await db.transaction("rw", db.units, db.topics, async () => {
-        let order = unitCount;
+        let order = firstOrder;
         for (const u of draft) {
           // Skip units left with no named topics after review instead of creating empty ones.
           const named = u.topics.filter((t) => t.title.trim());
@@ -279,10 +328,14 @@ function ImportSyllabus({ subjectId, subjectName, unitCount, mode, onDone }: {
     setDraft((d) => d!.map((u, j) => (j === i ? { ...u, ...patch } : u)));
 
   if (draft) {
-    const count = draft.reduce((a, u) => a + u.topics.length, 0);
+    // Count what save() will actually store: named topics under named units.
+    const count = draft.reduce((a, u) => a + (u.title.trim() ? u.topics.filter((t) => t.title.trim()).length : 0), 0);
     return (
       <div className="space-y-5">
-        <p className="text-sm text-muted">Check {draft.length} units and {count} topics before saving. Fix names, adjust difficulty and remove anything wrong.</p>
+        <p className="text-sm text-muted">
+          Check {draft.length} units and {count} topics before saving. Fix names, adjust difficulty and remove anything wrong.
+          {mode === "mid-term" && " They'll be marked as in the mid-sem; untick any it doesn't cover after saving."}
+        </p>
         {draft.map((u, i) => (
           <div key={i}>
             <div className="mb-2 flex gap-2">

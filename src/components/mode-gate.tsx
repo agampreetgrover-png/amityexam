@@ -20,10 +20,10 @@ const CHOICES: { mode: ExamMode; title: string; blurb: string; tile: string; ico
   {
     mode: "mid-term",
     title: "Mid-semester exam",
-    blurb: "The minor / mid-term exam, with its own syllabus you upload.",
+    blurb: "The minor / mid-term exam, on part of the full syllabus.",
     tile: "from-indigo-500 to-violet-500",
     icon: <BookOpenCheck size={26} />,
-    focus: ["Your mid-sem syllabus, kept separate from the major one", "Mid-term and internal tests", "Notes, quizzes and predictions for minor papers"],
+    focus: ["Only the units your mid-sem covers, ticked in each subject's syllabus", "Mid-term and internal tests", "Notes, quizzes and predictions for minor papers"],
   },
   {
     mode: "end-term",

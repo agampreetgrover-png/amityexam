@@ -3,7 +3,7 @@ import { buildJsonPrompt, buildTextPrompt } from "@/lib/ai/prompts";
 import { errorResponse, NO_KEYS, readJsonBody } from "@/lib/ai/errors";
 import { AiProviderError, getProviders, runWithFallback, type ProviderName } from "@/lib/ai/providers";
 import {
-  AiRequestSchema, GradeSchema, JSON_ACTIONS, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
+  AiRequestSchema, DatesheetSchema, GradeSchema, JSON_ACTIONS, PyqMapSchema, PyqPaperSchema, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
   type AiRequest, type JsonAction, type TextAction,
 } from "@/lib/ai/schemas";
 
@@ -16,6 +16,9 @@ const schemas: Record<JsonAction, z.ZodTypeAny> = {
   syllabus: SyllabusSchema,
   quiz: QuizSchema,
   grade: GradeSchema,
+  pyq: PyqPaperSchema,
+  pyqmap: PyqMapSchema,
+  datesheet: DatesheetSchema,
 };
 
 export async function POST(req: Request, { params }: { params: Promise<{ action: string }> }) {

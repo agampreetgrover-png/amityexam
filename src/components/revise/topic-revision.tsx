@@ -7,7 +7,7 @@ import { useState } from "react";
 import { StatTile } from "@/components/progress/stat-tile";
 import { Button, Card, Dots, Empty, List } from "@/components/ui";
 import { db, getSettings } from "@/lib/db";
-import { prettyDay, today } from "@/lib/dates";
+import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { topicsInScope } from "@/lib/mode";
 import { review } from "@/lib/srs";
 import type { Topic } from "@/lib/types";
@@ -29,9 +29,31 @@ async function markRevised(t: Topic, confidence: number) {
   await refreshWeak([t.id]);
 }
 
+/** When a topic is due, with overdue ones called out so they don't read like "due today". */
+function when(t: Topic) {
+  const d = today();
+  if (!t.nextReview) return t.status === "studied" ? "first revision" : "not studied yet";
+  if (t.nextReview < d) {
+    const n = daysBetween(t.nextReview, d);
+    return <span className="font-medium text-warn">overdue {n} day{n === 1 ? "" : "s"}</span>;
+  }
+  return t.nextReview === d ? "due today" : `due ${prettyDay(t.nextReview)}`;
+}
+
 function TopicRow({ t, subject }: { t: Topic; subject?: { name: string; color: string } }) {
   const [picking, setPicking] = useState(false);
   const [conf, setConf] = useState(t.confidence);
+  // A second tap while saving would apply the spaced-repetition step twice.
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await markRevised(t, conf);
+    } catch {
+      setSaving(false); // keep the row so the student can retry
+    }
+  };
   return (
     <li className="py-3.5">
       <div className="flex items-center gap-3">
@@ -39,7 +61,7 @@ function TopicRow({ t, subject }: { t: Topic; subject?: { name: string; color: s
         <div className="min-w-0 flex-1">
           <Link href={`/subjects/${t.subjectId}`} className="text-[15px] font-semibold hover:underline hover:underline-offset-2">{t.title}</Link>
           <p className="mt-0.5 text-[13px] text-muted">
-            {subject?.name}, {t.nextReview ? `due ${prettyDay(t.nextReview)}` : "first revision"}
+            {subject?.name}, {when(t)}
             {t.weak && <span className="ml-2 rounded-md bg-bad/10 px-1.5 py-px text-[11px] font-semibold text-bad">weak</span>}
           </p>
         </div>
@@ -53,7 +75,7 @@ function TopicRow({ t, subject }: { t: Topic; subject?: { name: string; color: s
         <div className="mt-3 flex flex-wrap items-center gap-3 pl-4">
           <span className="text-sm text-muted">How confident are you now?</span>
           <Dots value={conf} onChange={setConf} label="Confidence" />
-          <Button size="sm" onClick={() => markRevised(t, conf)}>Save</Button>
+          <Button size="sm" onClick={save} disabled={saving}>Save</Button>
           <Button size="sm" variant="ghost" onClick={() => setPicking(false)}>Cancel</Button>
         </div>
       )}
@@ -64,16 +86,20 @@ function TopicRow({ t, subject }: { t: Topic; subject?: { name: string; color: s
 export function TopicRevision() {
   const t = today();
   const data = useLiveQuery(async () => {
-    const [due, subjects, units, settings] = await Promise.all([
-      db.topics.filter((x) => (x.nextReview ? x.nextReview <= t : x.status === "studied")).toArray(),
+    const isDue = (x: Topic) => (x.nextReview ? x.nextReview <= t : x.status === "studied");
+    const [candidates, subjects, units, settings] = await Promise.all([
+      db.topics.filter((x) => isDue(x) || !!x.weak).toArray(),
       db.subjects.toArray(),
       db.units.toArray(),
       getSettings(),
     ]);
     // Only the current mode's syllabus. Weak and overdue first.
-    const topics = topicsInScope(due, units, settings.examMode);
+    const inScope = topicsInScope(candidates, units, settings.examMode);
+    const topics = inScope.filter(isDue);
     topics.sort((a, b) => Number(!!b.weak) - Number(!!a.weak) || (a.nextReview ?? "").localeCompare(b.nextReview ?? ""));
-    return { topics, subjects: new Map(subjects.map((s) => [s.id!, s])) };
+    // Weak topics that aren't due yet still need work; Progress links here for them.
+    const weakLater = inScope.filter((x) => x.weak && !isDue(x));
+    return { topics, weakLater, subjects: new Map(subjects.map((s) => [s.id!, s])) };
   }, [t]);
 
   const weak = data ? data.topics.filter((x) => x.weak).length : 0;
@@ -98,6 +124,14 @@ export function TopicRevision() {
           <Empty title="No topics due for revision">Topics show up here after you study them, spaced out over time.</Empty>
         )}
       </Card>
+      {data && data.weakLater.length > 0 && (
+        <Card title="Weak, not due yet" action={<span className="text-sm text-muted">{data.weakLater.length}</span>}>
+          <p className="-mt-1 mb-1 text-[13px] text-muted">Revise these early to lift your confidence before the exam.</p>
+          <List className="border-y-0">
+            {data.weakLater.map((x) => <TopicRow key={x.id} t={x} subject={data.subjects.get(x.subjectId)} />)}
+          </List>
+        </Card>
+      )}
     </div>
   );
 }

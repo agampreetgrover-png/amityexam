@@ -3,49 +3,57 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BarChart3, BookOpen, CalendarDays, ChevronRight, Clock, Settings as SettingsIcon, Target, TrendingUp } from "lucide-react";
+import { BarChart3, ChevronRight, Play, RefreshCw, RotateCcw, Search, Settings as SettingsIcon } from "lucide-react";
 import { useState } from "react";
 import { db, getSettings } from "@/lib/db";
 import { daysBetween, fromDay, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
 import { examInMode, modeShort, topicsInScope, useExamMode } from "@/lib/mode";
+import { examSyllabus } from "@/lib/planner";
 import { replan } from "@/lib/replan";
 import { coverage, fmtMins } from "@/lib/stats";
+import type { StudySession } from "@/lib/types";
 import { completeSession, undoSession } from "@/components/planner/actions";
-import { StatTile } from "@/components/progress/stat-tile";
+import { Pomodoro } from "@/components/planner/pomodoro";
+import { openCommandPalette } from "@/components/command-palette";
 import { ModePill } from "@/components/mode-pill";
-import { Button, Card, List, Progress, Tick, cn } from "@/components/ui";
+import { toast } from "@/components/toast";
+import { Button, Progress, Tick, cn } from "@/components/ui";
+
+const daysWord = (d: number) => (d === 0 ? "today" : d === 1 ? "day to go" : "days to go");
 
 export default function TodayPage() {
   const t = today();
   const data = useLiveQuery(async () => {
-    const [subjects, topics, exams, sessions, examCount, settings] = await Promise.all([
+    const [subjects, topics, units, exams, sessions, examCount, settings] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
+      db.units.toArray(),
       db.exams.where("date").aboveOrEqual(t).sortBy("date"),
       db.sessions.toArray(),
       db.exams.count(),
       getSettings(),
     ]);
-    return { subjects, topics, exams, sessions, examCount, settings };
+    return { subjects, topics, units, exams, sessions, examCount, settings };
   }, [t]);
-  const [busy, setBusy] = useState(false);
   const mode = useExamMode();
-  const units = useLiveQuery(() => db.units.toArray());
-  if (!data || !units) return null;
+  const [busy, setBusy] = useState(false);
+  const [pickedExam, setPickedExam] = useState<number | null>(null);
+  const [timer, setTimer] = useState<{ id: number; label: string } | null>(null);
+  if (!data) return null;
 
-  const { subjects, topics, exams, sessions, examCount } = data;
-  // Countdown, stats, coverage and setup follow the chosen exam mode and its own syllabus.
+  const { subjects, topics, units, exams, sessions, examCount } = data;
+  // Everything on this page follows the chosen exam mode and its own syllabus.
   const scoped = topicsInScope(topics, units, mode);
   const modeName = mode === "mid-term" ? "mid-sem" : mode === "end-term" ? "major" : "";
   const subject = (id?: number) => subjects.find((s) => s.id === id);
   const topic = (id?: number) => topics.find((x) => x.id === id);
+
   const todays = sessions.filter((s) => s.date === t);
   const todaysDone = todays.filter((s) => s.done).length;
   const missed = sessions.filter((s) => s.date < t && !s.done).length;
   const doneMins = todays.filter((s) => s.done).reduce((a, s) => a + s.actualMins, 0);
   const planned = todays.reduce((a, s) => a + s.plannedMins, 0);
-  const pct = planned ? Math.round((doneMins / planned) * 100) : 0;
   // Same rule as the Revise page: due by schedule, or studied and never revised.
   const topicsDue = scoped.filter((x) => (x.nextReview ? x.nextReview <= t : x.status === "studied")).length;
 
@@ -58,63 +66,134 @@ export default function TodayPage() {
     },
     { done: examCount > 0, label: "Add your exam date sheet", href: "/exams" },
     { done: sessions.length > 0, label: "Generate your study plan", href: "/planner" },
-    { done: data.settings.notifications, label: "Turn on reminders", href: "/settings" },
   ];
-  const onboarding = steps.slice(0, 4).some((s) => !s.done);
+  const onboarding = steps.some((s) => !s.done);
 
   const modeExams = exams.filter((e) => examInMode(e, mode));
-  const [next, ...later] = modeExams;
-  const nextSubject = subject(next?.subjectId);
-  const nextDays = next ? daysBetween(t, next.date) : 0;
+  const shown = modeExams.find((e) => e.id === pickedExam) ?? modeExams[0];
+  const shownSubject = subject(shown?.subjectId);
+  const shownDays = shown ? daysBetween(t, shown.date) : 0;
+  const shownCoverage = shown ? coverage(examSyllabus(shown, topics, units, mode)) : 0;
+
+  const sessionSubject = (s: StudySession) => subject(topic(s.topicId)?.subjectId ?? exams.find((e) => e.id === s.examId)?.subjectId);
+  const label = (s: StudySession) =>
+    s.kind === "revision" ? `Revise for ${sessionSubject(s)?.name ?? "exam"}` : topic(s.topicId)?.title ?? "Topic";
+
+  const toggle = async (s: StudySession) => {
+    if (s.done) {
+      await undoSession(s);
+      return;
+    }
+    const token = await completeSession(s, s.actualMins || s.plannedMins);
+    toast(`Done: ${label(s)}`, { label: "Undo", onClick: () => void undoSession(s, token) });
+  };
+
+  const rebalance = async () => {
+    setBusy(true);
+    try {
+      const res = await replan();
+      toast(`Plan rebalanced: ${res.sessions.length} sessions scheduled`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not rebalance the plan");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 pb-2">
-        <div>
+    <div className="space-y-8">
+      <header className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
           <h1 className="text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">
             {mode === "mid-term" ? "Mid-sem Dashboard" : mode === "end-term" ? "Major Exam Dashboard" : "Study Dashboard"}
           </h1>
-          <p className="mt-1 text-[15px] text-muted">{format(fromDay(t), "EEEE, MMMM d")}</p>
+          <p className="mt-1 text-[15px] text-muted">{format(fromDay(t), "EEEE, d MMMM")}</p>
           <ModePill className="mt-3 md:hidden" />
         </div>
-        <div className="-mr-2 flex md:hidden">
+        <div className="-mr-2 flex shrink-0 md:hidden">
+          <button type="button" onClick={openCommandPalette} className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Search">
+            <Search size={20} />
+          </button>
           <Link href="/progress" className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Progress"><BarChart3 size={20} /></Link>
           <Link href="/settings" className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Settings"><SettingsIcon size={20} /></Link>
         </div>
-        <div className="hidden gap-3 md:flex">
-          <Link href="/subjects" className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium hover:bg-surface-2">
-            <BookOpen size={17} /> Subjects
-          </Link>
-          <Link href="/planner" className="inline-flex h-10 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink hover:opacity-90">
-            <CalendarDays size={17} /> Open planner
-          </Link>
-        </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile tone="indigo" icon={<Clock />} label="Studied today" value={fmtMins(doneMins)} sub={planned ? `of ${fmtMins(planned)} planned` : "nothing planned"} />
-        <StatTile tone="emerald" icon={<TrendingUp />} label="Syllabus covered" value={`${coverage(scoped)}%`} sub={`across ${scoped.length} ${modeName ? `${modeName} ` : ""}topic${scoped.length === 1 ? "" : "s"}`} />
-        <StatTile tone="violet" icon={<Target />} label="Today's progress" value={`${todaysDone}/${todays.length}`} sub="sessions done" />
-        <StatTile tone="amber" icon={<BookOpen />} label="Subjects" value={subjects.length} sub={`${scoped.length} ${modeName ? `${modeName} ` : ""}topics`} />
-      </div>
-
-      {missed > 0 && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-amber-200 bg-mark-soft px-5 py-3.5 text-[15px]">
-          <span className="flex-1">
-            <strong className="font-semibold">{missed} missed session{missed > 1 ? "s" : ""}.</strong> Rebalance to spread {missed > 1 ? "them" : "it"} over the days ahead.
-          </span>
-          <Button size="sm" disabled={busy} onClick={async () => { setBusy(true); try { await replan(); } finally { setBusy(false); } }}>
-            {busy ? "Rebalancing…" : "Rebalance"}
-          </Button>
-        </div>
-      )}
+      {/* The countdown. Chips switch which exam it counts down to. */}
+      <section aria-label="Upcoming exams" className="rounded-2xl border border-border bg-surface p-5 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:p-7">
+        {shown ? (
+          <>
+            {modeExams.length > 1 && (
+              <div role="tablist" aria-label="Choose an exam" className="-mx-1 mb-6 flex gap-2 overflow-x-auto px-1 pb-1">
+                {modeExams.slice(0, 8).map((e) => {
+                  const s = subject(e.subjectId);
+                  const d = daysBetween(t, e.date);
+                  const on = e.id === shown.id;
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={on}
+                      onClick={() => setPickedExam(e.id!)}
+                      className={cn(
+                        "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] transition-colors",
+                        on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-text/80 hover:border-accent/40 hover:text-text",
+                      )}
+                    >
+                      <span className="h-2 w-2 rounded-full" style={{ background: s?.color }} />
+                      <span className="max-w-40 truncate">{s?.code || s?.name}</span>
+                      <span className={cn("tabular-nums", on ? "text-accent/80" : "text-muted")}>{d}d</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
+              <div key={shown.id} className="count-in flex shrink-0 items-end gap-3">
+                <span className={cn("numeral text-[96px] md:text-[120px]", shownDays <= 3 && "mark")}>{shownDays}</span>
+                <span className="pb-2 text-[15px] text-muted">{daysWord(shownDays)}</span>
+              </div>
+              <div className="min-w-0 flex-1 sm:pb-2">
+                <p className="text-xl font-bold leading-snug tracking-tight md:text-2xl">{shownSubject?.name ?? "Exam"}</p>
+                <p className="mt-1 text-sm text-muted">
+                  {examTypeLabel(shown.type)}, {prettyDay(shown.date)}{shown.time && ` at ${shown.time}`}{shown.venue && `, ${shown.venue}`}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+                  <div className="flex min-w-48 flex-1 items-center gap-3">
+                    <Progress value={shownCoverage} className="max-w-56" />
+                    <span className="whitespace-nowrap text-[13px] text-muted"><strong className="font-semibold text-text">{shownCoverage}%</strong> covered</span>
+                  </div>
+                  <Link
+                    href={`/exams/${shown.id}`}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-sm font-medium hover:bg-surface-2"
+                  >
+                    Exam kit <ChevronRight size={16} className="-mr-1 text-muted" />
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div>
+            <p className="text-xl font-bold tracking-tight">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams coming up</p>
+            <p className="mt-1 text-[15px] text-muted">
+              {examCount ? "Nothing upcoming in this exam mode. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
+            </p>
+            <Link href="/exams" className="mt-4 inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-ink hover:opacity-90">
+              Add exams
+            </Link>
+          </div>
+        )}
+      </section>
 
       {onboarding && (
-        <Card title="Get set up">
-          <List className="border-y-0">
+        <section aria-label="Get set up" className="rounded-2xl border border-dashed border-border px-5 py-4">
+          <p className="mb-3 text-[15px] font-semibold">Get set up</p>
+          <ol className="grid gap-2 sm:grid-cols-2">
             {steps.map((s, i) => (
               <li key={i}>
-                <Link href={s.href} className="flex items-center gap-3 py-3 text-[15px] hover:bg-surface-2/60">
+                <Link href={s.href} className="flex items-center gap-3 rounded-lg px-1 py-1.5 text-[15px] hover:bg-surface-2/70">
                   <span
                     className={cn(
                       "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums",
@@ -127,148 +206,92 @@ export default function TodayPage() {
                 </Link>
               </li>
             ))}
-          </List>
-        </Card>
+          </ol>
+        </section>
       )}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* Today's plan */}
-        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_3px_rgb(17_24_39/0.04)]">
-          <div className="p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">Today&apos;s plan</h2>
-                <p className="text-sm text-muted">
-                  {todays.length ? `${todaysDone} of ${todays.length} sessions completed` : "No sessions today"}
-                </p>
-              </div>
-              {todays.length > 0 && <span className="text-2xl font-bold tabular-nums text-accent">{pct}%</span>}
-            </div>
-            {todays.length > 0 && <Progress value={pct} className="mt-4" />}
-          </div>
-          {todays.length === 0 ? (
-            <p className="border-t border-border px-5 py-5 text-[15px] text-muted sm:px-6">
-              {sessions.length ? "Nothing scheduled today. Rest, or get ahead on revision." : <>No plan yet. <Link href="/planner" className="font-medium text-accent underline underline-offset-2">Open the planner</Link> to build one.</>}
-            </p>
-          ) : (
-            <ul className="divide-y divide-border border-t border-border">
-              {todays.map((s) => {
-                const tp = topic(s.topicId);
-                const ex = exams.find((e) => e.id === s.examId);
-                const sub = subject(tp?.subjectId ?? ex?.subjectId);
-                return (
-                  <li key={s.id} className={cn("flex items-center gap-4 px-5 py-4 sm:px-6", s.done && "bg-surface-2/50")}>
-                    <Tick
-                      done={s.done}
-                      label={s.done ? "Mark not done" : "Mark done"}
-                      onClick={() => (s.done ? undoSession(s) : completeSession(s, s.actualMins || s.plannedMins))}
-                    />
-                    <span className="h-10 w-1 shrink-0 rounded-full" style={{ background: sub?.color }} />
-                    <div className="min-w-0 flex-1">
-                      <p className={cn("truncate text-[15px]", s.done ? "text-muted line-through" : "font-semibold")}>
-                        {s.kind === "revision" ? `Revise for ${sub?.name ?? "exam"}` : tp?.title ?? "Topic"}
-                      </p>
-                      <p className="truncate text-[13px] text-muted">{sub?.name}</p>
-                    </div>
-                    <span className="flex items-center gap-1.5 text-[13px] tabular-nums text-muted">
-                      <Clock size={15} /> {fmtMins(s.plannedMins)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+      {/* Today's plan: tick to finish, Start to run the focus timer. */}
+      <section aria-labelledby="plan-heading">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+          <h2 id="plan-heading" className="text-lg font-semibold">Today&apos;s plan</h2>
           {todays.length > 0 && (
-            <Link href="/planner" className="flex items-center justify-end gap-1 border-t border-border px-5 py-3 text-sm font-medium text-accent hover:bg-surface-2/60 sm:px-6">
-              Open planner <ChevronRight size={16} />
-            </Link>
+            <p className="text-sm tabular-nums text-muted">
+              <strong className="font-semibold text-text">{todaysDone} of {todays.length}</strong> done, {fmtMins(doneMins)} of {fmtMins(planned)}
+            </p>
           )}
-        </section>
-
-        <div className="space-y-6">
-          {/* Next exam, as a countdown */}
-          {next ? (
-            <Card title="Next exam">
-              <Link href={`/exams/${next.id}`} className="group block">
-                <div className="flex items-end gap-3">
-                  <span className={cn("numeral text-[72px]", nextDays <= 3 && "mark")}>{nextDays}</span>
-                  <span className="pb-1 text-[15px] leading-tight text-muted">
-                    {nextDays === 0 ? "exam today" : nextDays === 1 ? "day left" : "days left"}
-                  </span>
-                </div>
-                <p className="mt-3 flex items-center gap-2 text-lg font-semibold group-hover:underline group-hover:underline-offset-4">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: nextSubject?.color }} />
-                  {nextSubject?.name ?? "Exam"}
-                </p>
-                <p className="mt-0.5 text-sm text-muted">
-                  {examTypeLabel(next.type)}, {prettyDay(next.date)}{next.time && ` at ${next.time}`}{next.venue && `, ${next.venue}`}
-                </p>
-              </Link>
-              {later.length > 0 && (
-                <ul className="mt-4 space-y-1.5 border-t border-border pt-3 text-sm">
-                  {later.slice(0, 4).map((e) => {
-                    const s = subject(e.subjectId);
-                    return (
-                      <li key={e.id}>
-                        <Link href={`/exams/${e.id}`} className="flex items-center justify-between gap-3 hover:underline hover:underline-offset-2">
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s?.color }} />
-                            <span className="truncate">{s?.name}</span>
-                          </span>
-                          <span className="font-semibold tabular-nums">{daysBetween(t, e.date)}d</span>
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </Card>
-          ) : (
-            <Card title="Next exam">
-              <p className="font-semibold">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams on the calendar</p>
-              <p className="mt-1 text-sm text-muted">
-                {examCount ? "Nothing upcoming for this exam mode. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
-              </p>
-            </Card>
-          )}
-
-          <Card title="Due to revise">
-            <Link href="/revise" className="group flex items-end gap-6">
-              <span className="flex flex-col">
-                <span className={cn("numeral text-5xl", topicsDue > 0 && "mark self-start")}>{topicsDue}</span>
-                <span className="mt-1.5 text-[13px] text-muted">topic{topicsDue === 1 ? "" : "s"}</span>
-              </span>
-              <span className="mb-6 ml-auto text-sm font-medium text-accent underline-offset-2 group-hover:underline">Start</span>
-            </Link>
-          </Card>
-
-          <Card title="Syllabus covered">
-            {subjects.length === 0 ? (
-              <p className="text-[15px] text-muted">No subjects yet.</p>
-            ) : (
-              <ul className="space-y-4">
-                {subjects.map((s) => {
-                  const c = coverage(scoped.filter((x) => x.subjectId === s.id));
-                  return (
-                    <li key={s.id}>
-                      <Link href={`/subjects/${s.id}`} className="block text-sm hover:underline hover:underline-offset-2">
-                        <div className="mb-1.5 flex justify-between gap-3">
-                          <span className="flex min-w-0 items-center gap-2 font-medium">
-                            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
-                            <span className="truncate">{s.name}</span>
-                          </span>
-                          <span className={cn("font-semibold tabular-nums", c < 50 ? "text-warn" : "text-good")}>{c}%</span>
-                        </div>
-                        <Progress value={c} color={s.color} />
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
         </div>
-      </div>
+        {todays.length > 0 && (
+          <div className="mb-3 flex gap-1" aria-hidden>
+            {todays.map((s) => (
+              <span key={s.id} className={cn("h-1.5 flex-1 rounded-full transition-colors duration-300", s.done ? "bg-accent" : "bg-border")} />
+            ))}
+          </div>
+        )}
+        {todays.length === 0 ? (
+          <p className="rounded-2xl border border-border bg-surface px-5 py-5 text-[15px] text-muted">
+            {sessions.length ? "Nothing scheduled today. Rest, or get ahead on revision." : <>No plan yet. <Link href="/planner" className="font-medium text-accent underline underline-offset-2">Open the planner</Link> to build one.</>}
+          </p>
+        ) : (
+          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_3px_rgb(17_24_39/0.04)]">
+            {todays.map((s) => {
+              const sub = sessionSubject(s);
+              return (
+                <li key={s.id} className={cn("flex items-center gap-4 px-4 py-3.5 transition-colors sm:px-5", s.done && "bg-surface-2/50")}>
+                  <Tick done={s.done} label={s.done ? `Mark ${label(s)} not done` : `Mark ${label(s)} done`} onClick={() => toggle(s)} />
+                  <div className="min-w-0 flex-1">
+                    <p className={cn("truncate text-[15px] transition-colors", s.done ? "text-muted line-through" : "font-semibold")}>{label(s)}</p>
+                    <p className="flex items-center gap-1.5 truncate text-[13px] text-muted">
+                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: sub?.color }} />
+                      <span className="truncate">{sub?.name}</span>
+                      {s.kind === "revision" && <span className="shrink-0 text-warn">revision</span>}
+                    </p>
+                  </div>
+                  <span className="text-[13px] tabular-nums text-muted">{fmtMins(s.plannedMins)}</span>
+                  {!s.done && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => s.id != null && setTimer({ id: s.id, label: label(s) })}
+                      aria-label={`Start focus timer for ${label(s)}`}
+                    >
+                      <Play size={14} /> <span className="hidden sm:inline">Start</span>
+                    </Button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* Two quiet nudges, only when there's something to do. */}
+      {(missed > 0 || topicsDue > 0) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {missed > 0 && (
+            <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-mark-soft px-4 py-3">
+              <p className="min-w-0 flex-1 text-[15px]">
+                <strong className="font-semibold">{missed} missed session{missed > 1 ? "s" : ""}</strong>
+                <span className="block text-[13px] text-muted">Spread {missed > 1 ? "them" : "it"} over the days ahead</span>
+              </p>
+              <Button size="sm" disabled={busy} onClick={rebalance}>
+                <RefreshCw size={14} className={cn(busy && "animate-spin")} /> {busy ? "Rebalancing" : "Rebalance"}
+              </Button>
+            </div>
+          )}
+          {topicsDue > 0 && (
+            <Link href="/revise" className="group flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 hover:border-accent/40">
+              <RotateCcw size={18} className="shrink-0 text-accent" />
+              <p className="min-w-0 flex-1 text-[15px]">
+                <strong className="font-semibold">{topicsDue} topic{topicsDue === 1 ? "" : "s"} to revise</strong>
+                <span className="block text-[13px] text-muted">Spaced revision keeps them fresh</span>
+              </p>
+              <span className="text-sm font-medium text-accent group-hover:underline group-hover:underline-offset-2">Start</span>
+            </Link>
+          )}
+        </div>
+      )}
+
+      <Pomodoro sessionId={timer?.id ?? null} label={timer?.label ?? ""} onClose={() => setTimer(null)} />
     </div>
   );
 }

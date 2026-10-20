@@ -159,7 +159,7 @@ export function Progress({ value, className, color }: { value: number; className
   return (
     <div className={cn("h-2 w-full overflow-hidden rounded-full bg-surface-2", className)}>
       <div
-        className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-[width] duration-500"
+        className="h-full rounded-full bg-accent transition-[width] duration-500"
         style={{ width: `${Math.max(0, Math.min(100, value))}%`, background: color }}
       />
     </div>
@@ -180,7 +180,9 @@ export function PageHeader({ title, sub, action }: { title: string; sub?: ReactN
 
 export function Dots({ value, max = 5, onChange, label }: { value: number; max?: number; onChange?: (v: number) => void; label: string }) {
   return (
-    <span className="inline-flex gap-1" role="radiogroup" aria-label={label}>
+    // The dots stay small, but each sits in a 32px button so a thumb picks the one it means.
+    // Negative margin keeps the row aligned with the text around it despite the larger buttons.
+    <span className={cn("inline-flex", onChange && "-mx-2.5 -my-2.5")} role="radiogroup" aria-label={label}>
       {Array.from({ length: max }, (_, i) => (
         <button
           key={i}
@@ -190,8 +192,16 @@ export function Dots({ value, max = 5, onChange, label }: { value: number; max?:
           aria-label={`${label} ${i + 1}`}
           disabled={!onChange}
           onClick={() => onChange?.(i + 1)}
-          className={cn("h-2.5 w-2.5 rounded-full transition-colors", i < value ? "bg-text" : "bg-surface-2 ring-1 ring-border ring-inset")}
-        />
+          className={cn("group grid place-items-center rounded-full", onChange ? "h-8 w-8" : "h-2.5 w-3.5")}
+        >
+          <span
+            className={cn(
+              "h-2.5 w-2.5 rounded-full transition-colors",
+              i < value ? "bg-text" : "bg-surface-2 ring-1 ring-border ring-inset",
+              onChange && "group-hover:ring-2 group-hover:ring-accent/40",
+            )}
+          />
+        </button>
       ))}
     </span>
   );
