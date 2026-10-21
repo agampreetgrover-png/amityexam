@@ -11,6 +11,7 @@ import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Badge, Button, Card, Dots, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
 import { unitMode } from "@/lib/mode";
+import { parseSyllabus, parseTopics } from "@/lib/syllabus-text";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
 
 const newTopic = (subjectId: number, unitId: number, title: string, difficulty = 3): Topic => ({
@@ -78,20 +79,20 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
             <Input placeholder="New unit or module name" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
             <Button type="submit" variant="secondary" className="shrink-0 whitespace-nowrap" disabled={!newUnit.trim()}><Plus size={16} /> Add unit</Button>
           </form>
-          <Button onClick={() => setImportOpen(true)}><Sparkles size={16} /> Import with AI</Button>
+          <Button onClick={() => setImportOpen(true)}><Sparkles size={16} /> Import syllabus</Button>
         </div>
       </Card>
 
       {units.length === 0 ? (
         <Empty icon={<Upload />} title="Add this subject's syllabus">
-          Import it from a PDF, photo or pasted text with AI, or add units by hand. Then tick the units your mid-sem covers.
+          Import it from a PDF, photo or pasted text, or add units by hand. Then tick the units your mid-sem covers.
           <div className="mt-3"><Button size="sm" onClick={() => setImportOpen(true)}><Sparkles size={14} /> Import syllabus</Button></div>
         </Empty>
       ) : (
         units.map((u) => <UnitSection key={u.id} unit={u} topics={topics.filter((t) => t.unitId === u.id)} />)
       )}
 
-      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import syllabus with AI">
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import syllabus">
         <ImportSyllabus
           subjectId={subject.id!}
           subjectName={subject.name}
@@ -113,6 +114,17 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   const [title, setTitle] = useState(unit.title);
   const [newT, setNewT] = useState("");
   const [adding, setAdding] = useState(false);
+
+  const addTopics = async (titles: string[]) => {
+    if (!titles.length || adding) return;
+    setAdding(true);
+    try {
+      await db.topics.bulkAdd(titles.map((t) => newTopic(unit.subjectId, unit.id!, t)));
+      setNewT("");
+    } finally {
+      setAdding(false);
+    }
+  };
 
   const remove = async () => {
     if (!confirm(`Delete "${unit.title}" and its ${topics.length} topics?`)) return;
@@ -171,20 +183,24 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
       )}
       <form
         className="mt-3 flex gap-2"
-        onSubmit={async (e) => {
+        onSubmit={(e) => {
           e.preventDefault();
-          const title = newT.trim();
-          if (!title || adding) return;
-          setAdding(true);
-          try {
-            await db.topics.add(newTopic(unit.subjectId, unit.id!, title));
-            setNewT("");
-          } finally {
-            setAdding(false);
-          }
+          if (newT.trim()) addTopics([newT.trim()]);
         }}
       >
-        <Input placeholder="Add a topic" value={newT} onChange={(e) => setNewT(e.target.value)} className="h-9" />
+        <Input
+          placeholder="Add a topic, or paste a list"
+          value={newT}
+          onChange={(e) => setNewT(e.target.value)}
+          // A one-line input would squash a pasted list into one topic; add each line instead.
+          onPaste={(e) => {
+            const lines = parseTopics(e.clipboardData.getData("text"));
+            if (lines.length < 2) return;
+            e.preventDefault();
+            addTopics(lines);
+          }}
+          className="h-9"
+        />
         <Button size="sm" variant="secondary" type="submit" className="h-9" disabled={!newT.trim()} aria-label="Add topic"><Plus size={14} /></Button>
       </form>
     </Card>
@@ -301,6 +317,14 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
     }
   };
 
+  // Works offline and when the AI's daily limit is used up.
+  const splitHere = () => {
+    const units = parseSyllabus(text);
+    setError(null);
+    if (units.length) setDraft(units);
+    else setError(new Error("No topics found. Put each topic on its own line or separate them with commas."));
+  };
+
   const save = async () => {
     if (!draft || saving) return;
     setSaving(true);
@@ -381,8 +405,12 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
       {reading && <p className="text-sm font-medium">{reading}</p>}
       <Textarea placeholder="Or paste the syllabus text here" value={text} onChange={(e) => setText(e.target.value)} className="min-h-48 text-xs" />
       <AiErrorBox error={error} />
+      {!!error && !!text.trim() && <p className="text-[13px] text-muted">“Add without AI” splits the text into units and topics on this device.</p>}
       <OfflineHint online={online} />
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" onClick={splitHere} disabled={busy || !!reading || !text.trim()}>
+          Add without AI
+        </Button>
         <Button onClick={run} disabled={busy || !!reading || !text.trim() || !online}>
           <Sparkles size={16} /> {busy ? "Reading syllabus…" : "Extract topics"}
         </Button>

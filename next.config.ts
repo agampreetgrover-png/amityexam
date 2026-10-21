@@ -1,17 +1,22 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
 
 // New revision per build so precached app pages refresh after every deploy.
 const revision = randomUUID();
 const PAGES = ["/", "/planner", "/subjects", "/exams", "/revise", "/progress", "/settings", "/~offline"];
+// Listing entries by hand replaces Serwist's default public/ glob, so the pdf.js worker (copied there by
+// postinstall) must be added too, or PDFs can't be read offline. Hashed so it only re-downloads when pdf.js changes.
+const PDF_WORKER = "/pdf.worker.min.mjs";
+const pdfWorkerRevision = createHash("sha256").update(readFileSync(`public${PDF_WORKER}`)).digest("hex").slice(0, 16);
 
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
   swDest: "public/sw.js",
   cacheOnNavigation: true,
   reloadOnOnline: false, // don't wipe in-progress quiz answers when the connection returns
-  additionalPrecacheEntries: PAGES.map((url) => ({ url, revision })),
+  additionalPrecacheEntries: [...PAGES.map((url) => ({ url, revision })), { url: PDF_WORKER, revision: pdfWorkerRevision }],
   disable: process.env.NODE_ENV === "development",
 });
 

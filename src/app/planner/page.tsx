@@ -10,7 +10,6 @@ import { TimelineView } from "@/components/planner/timeline-view";
 import { TodayView } from "@/components/planner/today-view";
 import { WeekView } from "@/components/planner/week-view";
 import { Button, Card, Empty, List, PageHeader, Tabs, cn } from "@/components/ui";
-import { buildIcs } from "@/lib/calendar";
 import { downloadText } from "@/lib/download";
 import { db } from "@/lib/db";
 import { today } from "@/lib/dates";
@@ -76,8 +75,10 @@ export default function PlannerPage() {
     }
   };
 
-  const exportIcs = () => {
+  const exportIcs = async () => {
     try {
+      // The calendar library is only needed for this button, so it loads on click.
+      const { buildIcs } = await import("@/lib/calendar");
       const ics = buildIcs({ exams: data.exams, sessions: data.sessions, subjects: data.subjects, topics: data.topics });
       if (!ics) return setMessage("Nothing upcoming to export yet.");
       downloadText(ics, "amity-exams.ics", "text/calendar;charset=utf-8");

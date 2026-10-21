@@ -10,6 +10,7 @@ import { MATCH_THRESHOLD, subjectScore, type SubjectRef } from "@/lib/drive/clas
 import { examTypeLabel } from "@/lib/exams";
 import { examInMode, modeShort, otherMode, setExamMode, useExamMode } from "@/lib/mode";
 import { replan } from "@/lib/replan";
+import { OPEN_EVENT } from "./command-palette-loader";
 import { toast } from "./toast";
 import { cn } from "./ui";
 
@@ -26,17 +27,13 @@ interface Command {
   run: () => void | Promise<void>;
 }
 
-// Anything can open the palette (nav buttons, the Today header) by dispatching this event.
-const OPEN_EVENT = "open-command-palette";
-export const openCommandPalette = () => window.dispatchEvent(new Event(OPEN_EVENT));
-
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
 
 /** Ctrl/Cmd+K search: jump to any page, subject or exam, or run a common action. */
-export function CommandPalette() {
+export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean }) {
   const router = useRouter();
   const mode = useExamMode();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);

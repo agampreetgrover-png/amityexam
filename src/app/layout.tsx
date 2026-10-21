@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Bricolage_Grotesque } from "next/font/google";
-import { CommandPalette } from "@/components/command-palette";
+import { CommandPaletteLoader } from "@/components/command-palette-loader";
 import { ModeGate } from "@/components/mode-gate";
 import { Toaster } from "@/components/toast";
 import { Nav } from "@/components/nav";
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <Nav />
           <Notifier />
           <DriveSync />
-          <CommandPalette />
+          <CommandPaletteLoader />
           <Toaster />
           <div className="md:pl-64">
             <main className="mx-auto max-w-5xl px-4 pb-28 pt-6 md:px-10 md:pb-16 md:pt-10">{children}</main>

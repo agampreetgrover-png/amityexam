@@ -1,5 +1,5 @@
 import { errorResponse, readJsonBody } from "@/lib/ai/errors";
-import { getProviders } from "@/lib/ai/providers";
+import { AiProviderError, getProviders } from "@/lib/ai/providers";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -30,7 +30,14 @@ export async function POST(req: Request) {
     if ((data.length * 3) / 4 > MAX_BYTES) return Response.json({ error: "File too large (max 15MB)." }, { status: 413 });
     if (!BASE64.test(data)) return Response.json({ error: "File data must be base64." }, { status: 400 });
 
-    const text = await gemini.extract({ mimeType, data }, PROMPT);
+    let text: string;
+    try {
+      text = await gemini.extract({ mimeType, data }, PROMPT);
+    } catch (e) {
+      // Groq can't read files, but Gemini's lite model has its own quota, so a used-up main model doesn't block uploads.
+      if (!(e instanceof AiProviderError) || e.status !== 429) throw e;
+      text = await gemini.extract({ mimeType, data }, PROMPT, { fast: true });
+    }
     return Response.json({ text: text.trim() }, { headers: { "x-ai-provider": "gemini" } });
   } catch (err) {
     return errorResponse(err);

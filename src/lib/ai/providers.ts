@@ -16,7 +16,7 @@ export interface Provider {
   chatHistory: number;
   json(messages: Msg[], opts?: CallOpts): Promise<string>;
   stream(messages: Msg[], opts?: CallOpts): AsyncIterable<string>;
-  extract?(file: { mimeType: string; data: string }, prompt: string): Promise<string>;
+  extract?(file: { mimeType: string; data: string }, prompt: string, opts?: { fast?: boolean }): Promise<string>;
 }
 
 export type ErrorKind = "minute" | "day" | "auth" | "too-large" | "config" | "unavailable" | "bad-output" | "other";
@@ -119,10 +119,10 @@ function gemini(apiKey: string): Provider {
         throw geminiError(e);
       }
     },
-    async extract(file, prompt) {
+    async extract(file, prompt, opts) {
       try {
         const res = await ai.models.generateContent({
-          model: model(false),
+          model: model(opts?.fast),
           contents: [{ role: "user", parts: [{ inlineData: { mimeType: file.mimeType, data: file.data } }, { text: prompt }] }],
           config: { temperature: 0.1, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
         });

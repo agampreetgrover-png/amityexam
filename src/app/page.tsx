@@ -15,7 +15,7 @@ import { coverage, fmtMins } from "@/lib/stats";
 import type { StudySession } from "@/lib/types";
 import { completeSession, undoSession } from "@/components/planner/actions";
 import { Pomodoro } from "@/components/planner/pomodoro";
-import { openCommandPalette } from "@/components/command-palette";
+import { openCommandPalette } from "@/components/command-palette-loader";
 import { ModePill } from "@/components/mode-pill";
 import { toast } from "@/components/toast";
 import { Button, Progress, Tick, cn } from "@/components/ui";

@@ -1,37 +1,14 @@
 "use client";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { cn } from "./ui";
+import { lazy, Suspense } from "react";
 
-type MdNode = { type: string; value?: string; children?: MdNode[] };
-
-/**
- * AI answers put <br> inside table cells, where Markdown has no other way to break a line. Raw HTML stays
- * escaped (it's untrusted), so turn just those tags into real line breaks instead of showing "<br>" as text.
- */
-function remarkBreaks() {
-  const walk = (node: MdNode) => {
-    node.children?.forEach((child, i) => {
-      if (child.type === "html" && /^<br\s*\/?>$/i.test(child.value?.trim() ?? "")) node.children![i] = { type: "break" };
-      else walk(child);
-    });
-  };
-  return walk;
-}
+// react-markdown + remark-gfm are ~45 kB, so they load on first use. Until then the raw text shows.
+const MarkdownView = lazy(() => import("./markdown-view"));
 
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (
-    <div className={cn("prose-ai text-sm", className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
-        components={{
-          // AI output can contain links; open them in a new tab without giving that page access to this one.
-          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
-        }}
-      >
-        {children}
-      </ReactMarkdown>
-    </div>
+    <Suspense fallback={<div className="prose-ai whitespace-pre-wrap text-sm">{children}</div>}>
+      <MarkdownView className={className}>{children}</MarkdownView>
+    </Suspense>
   );
 }

@@ -6,7 +6,6 @@ import { db, getSettings } from "@/lib/db";
 import type { Material } from "@/lib/types";
 import type { SyncEvent } from "./sync";
 import { DEFAULT_DRIVE_SOURCES } from "./sources";
-import { analyseAll } from "@/lib/pyq/analyse";
 
 export interface DriveSyncState {
   running: boolean;
@@ -111,7 +110,8 @@ async function sync(auto: boolean) {
     }
     await db.settings.put({ ...(await getSettings()), lastDriveSync: Date.now() });
     // Split new past papers into questions and sort them by year and topic (runs in the background).
-    void analyseAll();
+    // Imported here so the analyser isn't in every page's bundle just because sync is mounted in the layout.
+    void import("@/lib/pyq/analyse").then((m) => m.analyseAll());
     const { imported, deferred, errors } = state;
     set({
       message: imported

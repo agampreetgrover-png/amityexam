@@ -5,13 +5,19 @@ import { useLiveQuery } from "dexie-react-hooks";
 import Link from "next/link";
 import { AlertTriangle, BookOpen, Clock, Flame } from "lucide-react";
 import { useState } from "react";
-import { CoverageChart, MinutesChart, QuizTrendChart } from "@/components/progress/charts";
+import dynamic from "next/dynamic";
 import { StatTile } from "@/components/progress/stat-tile";
 import { Card, Empty, List, PageHeader, Select } from "@/components/ui";
 import { addDay, fromDay, today } from "@/lib/dates";
 import { db, getSettings } from "@/lib/db";
 import { topicsInScope, useExamMode } from "@/lib/mode";
 import { coverage, fmtMins } from "@/lib/stats";
+
+// recharts is large and only used here: load it after the stats so the page shows up first.
+const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-xl bg-surface-2" />;
+const CoverageChart = dynamic(() => import("@/components/progress/charts").then((m) => m.CoverageChart), { ssr: false, loading: chartSpace });
+const MinutesChart = dynamic(() => import("@/components/progress/charts").then((m) => m.MinutesChart), { ssr: false, loading: chartSpace });
+const QuizTrendChart = dynamic(() => import("@/components/progress/charts").then((m) => m.QuizTrendChart), { ssr: false, loading: chartSpace });
 
 /**
  * Study days in a row, ending today (or yesterday if today has nothing yet).

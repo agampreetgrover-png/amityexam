@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, BookOpen, CalendarDays, GraduationCap, House, RotateCcw, Search, Settings } from "lucide-react";
-import { openCommandPalette } from "./command-palette";
+import { openCommandPalette } from "./command-palette-loader";
 import { ModePill } from "./mode-pill";
 import { cn } from "./ui";
 
