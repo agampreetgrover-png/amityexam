@@ -48,6 +48,30 @@ describe("parseSyllabus", () => {
     ]);
   });
 
+  it("drops label lines above the first unit and weightage after the title", () => {
+    expect(titles("Course Contents/Syllabus:\nModule I: Introduction (20% Weightage)\nTopic a, topic b; topic c\nModule II: Deadlocks (25% Weightage)\nPrevention, avoidance")).toEqual([
+      ["Module I: Introduction", ["Topic a", "topic b", "topic c"]],
+      ["Module II: Deadlocks", ["Prevention", "avoidance"]],
+    ]);
+  });
+
+  it("drops weightage written before or after the number", () => {
+    expect(titles("Unit 1: Sets Weightage: 20%\na\nUnit 2: Logic [Weightage 25%]\nb\nUnit 3: Graphs 20 % weightage\nc\nUnit 4: Trees (WEIGHTAGE - 15%)\nd").map(([t]) => t)).toEqual([
+      "Unit 1: Sets", "Unit 2: Logic", "Unit 3: Graphs", "Unit 4: Trees",
+    ]);
+  });
+
+  it("keeps plain topics above the first heading", () => {
+    expect(titles("Course Code: CSE101\nPaging, segmentation\nUnit 2: Memory\nThrashing")).toEqual([
+      ["Unit 1", ["Paging", "segmentation"]],
+      ["Unit 2: Memory", ["Thrashing"]],
+    ]);
+  });
+
+  it("keeps every line of a list with no headings", () => {
+    expect(titles("Sorting:\nBubble sort\nQuick sort, merge sort")).toEqual([["Unit 1", ["Sorting", "Bubble sort", "Quick sort", "merge sort"]]]);
+  });
+
   it("skips text books and references until the next unit", () => {
     expect(titles("Unit 1\nDeadlocks\nText Books:\nGalvin, OS Concepts\nUnit 2: Memory\nPaging")).toEqual([
       ["Unit 1", ["Deadlocks"]],

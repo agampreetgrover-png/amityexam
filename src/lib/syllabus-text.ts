@@ -21,8 +21,10 @@ export function parseTopics(text: string): string[] {
 const HEADING = /^(?:unit|module|chapter|part|section)\s*[-–:.]?\s*(?:\d{1,2}|[ivx]{1,5})\b/i;
 // Reading lists and outcomes that follow the units in a syllabus PDF; not topics to study.
 const OTHER_SECTION = /^(?:text\s?books?|references?|suggested readings?|course (?:objectives?|outcomes?)|learning outcomes?|examination scheme|evaluation scheme|pedagogy|pre-?requisites?)\b/i;
-// "(20%)", "20%", "[8 hours]", "Weightage: 25%" at the end of a line.
-const LOAD = /\s*[([]?\s*(?:weightage\s*:?\s*)?\d{1,3}\s*(?:%|hours?|hrs?|lectures?)\s*[)\]]?\s*$/i;
+// "(20%)", "20%", "[8 hours]", "Weightage: 25%", "(20% Weightage)" at the end of a line.
+const LOAD = /\s*[([]?\s*(?:weightage\s*[:-]?\s*)?\d{1,3}\s*(?:%|hours?|hrs?|lectures?)(?:\s*weightage)?\s*[)\]]?\s*$/i;
+// Label lines above the first unit, like "Course Contents/Syllabus:" or "Course Code: CSE101".
+const PREAMBLE = /:\s*$|^(?:course\s+(?:contents?|title|code|name)|(?:detailed\s+)?syllabus)\b/i;
 const TABLE_HEADER = /^(?:s\.?\s?no\.?|sr\.?\s?no\.?|modules?|units?|contents?|topics?|weightage|hours|syllabus|details?)$/i;
 
 /** Splits "Paging, segmentation (with TLB); thrashing" on commas and semicolons outside brackets. */
@@ -49,6 +51,8 @@ function splitList(line: string): string[] {
 export function parseSyllabus(text: string): SyllabusResult["units"] {
   const units: SyllabusResult["units"] = [];
   let skip = false;
+  let started = false; // seen a unit heading yet
+  const intro = new Set<string>(); // topics from label lines above the first heading, dropped once one turns up
   const add = (title: string) => {
     if (skip) return;
     if (!units.length) units.push({ title: "Unit 1", topics: [] });
@@ -63,11 +67,17 @@ export function parseSyllabus(text: string): SyllabusResult["units"] {
     for (const line of cells) {
       if (HEADING.test(line)) {
         skip = false;
+        if (!started && units.length) units[0].topics = units[0].topics.filter((t) => !intro.has(t.title));
+        started = true;
         const [title, ...rest] = splitList(line);
         units.push({ title, topics: [] });
         rest.forEach(add);
       } else if (OTHER_SECTION.test(line)) skip = true;
-      else splitList(line).forEach(add);
+      else {
+        const topics = splitList(line);
+        if (!started && (PREAMBLE.test(line) || TABLE_HEADER.test(line))) topics.forEach((t) => intro.add(t));
+        topics.forEach(add);
+      }
     }
   }
   return units.filter((u) => u.topics.length);
