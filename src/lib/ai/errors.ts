@@ -1,6 +1,7 @@
-import { AiProviderError, redact } from "./providers";
+import { AiProviderError, redact, type ProviderName } from "./providers";
 
-export const NO_KEYS = "No AI key set. Add GEMINI_API_KEY or GROQ_API_KEY to .env.local and restart.";
+export const NO_KEYS = "No AI key set. Add GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY to .env.local and restart.";
+const KEY_NAMES: Record<ProviderName, string> = { gemini: "GEMINI_API_KEY", groq: "GROQ_API_KEY", openrouter: "OPENROUTER_API_KEY" };
 
 /** Thrown by readJsonBody; carries the HTTP status to reply with. */
 class BadRequest extends Error {
@@ -36,11 +37,11 @@ export function errorResponse(err: unknown) {
       case "minute":
         return reply("AI rate limit reached. Wait a moment and try again.", 429, err.retryAfter ?? 30);
       case "auth":
-        return reply(`The ${err.provider === "groq" ? "GROQ_API_KEY" : "GEMINI_API_KEY"} was rejected. Check it in .env.local.`, 401);
+        return reply(`The ${KEY_NAMES[err.provider ?? "gemini"]} was rejected. Check it in .env.local.`, 401);
       case "too-large":
         return reply("Input too long for the model. Use less material or a single topic.", 413);
       case "config":
-        return reply(err.message === "No AI key set" ? NO_KEYS : "The configured AI model isn't available. Check GEMINI_MODEL / GROQ_MODEL.", 500);
+        return reply(err.message === "No AI key set" ? NO_KEYS : "The configured AI model isn't available. Check GEMINI_MODEL / GROQ_MODEL / OPENROUTER_MODEL.", 500);
       case "bad-output":
         return reply(err.message, 502); // our own fixed messages
       case "unavailable":

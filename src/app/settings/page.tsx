@@ -223,9 +223,11 @@ export default function SettingsPage() {
   );
 }
 
+const PROVIDER_LABELS: Record<string, string> = { gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter" };
+
 /** Which AI keys the server has (booleans only) and which provider answered last. */
 function AiStatus() {
-  const [status, setStatus] = useState<{ gemini: boolean; groq: boolean } | "error" | null>(null);
+  const [status, setStatus] = useState<{ gemini: boolean; groq: boolean; openrouter?: boolean } | "error" | null>(null);
   const [last, setLast] = useState<ReturnType<typeof getLastProvider>>(null);
   useEffect(() => {
     setLast(getLastProvider()); // read after mount: localStorage only exists in the browser
@@ -245,7 +247,7 @@ function AiStatus() {
   return (
     <Section title="AI" className={group}>
       <p className={desc}>
-        Gemini is used first. Groq takes over automatically when Gemini hits a limit. Keys live in .env.local on this computer.
+        Gemini is used first. Groq, then OpenRouter, take over automatically when it hits a limit. Keys live in .env.local on this computer.
       </p>
       {status === "error" ? (
         <p className="text-sm text-muted">Couldn&apos;t check the AI setup. You may be offline.</p>
@@ -253,11 +255,12 @@ function AiStatus() {
         <ul className="max-w-sm divide-y divide-border border-y border-border text-sm">
           {row("Gemini", status?.gemini)}
           {row("Groq", status?.groq)}
+          {row("OpenRouter", status?.openrouter)}
         </ul>
       )}
       {last && (
         <p className="mt-3 text-sm text-muted">
-          Last answered by {last.provider === "groq" ? "Groq" : "Gemini"}, {new Date(last.at).toLocaleString()}
+          Last answered by {PROVIDER_LABELS[last.provider] ?? "Gemini"}, {new Date(last.at).toLocaleString()}
         </p>
       )}
     </Section>

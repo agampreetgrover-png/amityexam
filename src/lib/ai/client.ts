@@ -10,7 +10,7 @@ export class AiError extends Error {
 
 const PROVIDER_KEY = "amityexams:lastProvider";
 
-/** Which provider (gemini/groq) answered the most recent AI request, and when. */
+/** Which provider (gemini/groq/openrouter) answered the most recent AI request, and when. */
 export function getLastProvider(): { provider: string; at: number } | null {
   try {
     const raw = localStorage.getItem(PROVIDER_KEY);
