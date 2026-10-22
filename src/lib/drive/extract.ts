@@ -100,7 +100,17 @@ export async function fileText(
     if (buf.length > MAX_OCR_BYTES) throw new SkipFile("scanned PDF too large to read with AI");
     if (!gemini?.extract) throw new DeferFile("scanned PDF: add a Gemini key to read it");
     if (!takeOcrSlot()) throw new DeferFile("scanned PDF: queued for a later sync to save AI quota");
-    const read = () => gemini.extract!({ mimeType: "application/pdf", data: buf.toString("base64") }, OCR_PROMPT);
+    const data = buf.toString("base64");
+    // Transcribing is easy work: the lite model does it well and its free quota is far larger (the main
+    // model's is ~20 requests a day), so it goes first and the main model only stands in when it's limited.
+    const read = async () => {
+      try {
+        return await gemini.extract!({ mimeType: "application/pdf", data }, OCR_PROMPT, { fast: true });
+      } catch (e) {
+        if (!(e instanceof AiProviderError) || (e.kind !== "day" && e.kind !== "minute")) throw e;
+        return await gemini.extract!({ mimeType: "application/pdf", data }, OCR_PROMPT);
+      }
+    };
     try {
       let ocr: string;
       try {
