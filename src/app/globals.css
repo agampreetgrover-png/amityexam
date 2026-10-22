@@ -61,9 +61,12 @@ body {
   font-feature-settings: "ss01", "tnum";
 }
 
-:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
+/* In the base layer so utilities like focus-visible:outline-none can override it. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--text);
+    outline-offset: 2px;
+  }
 }
 
 /* Highlighter stroke behind a short run of text. */

@@ -64,7 +64,7 @@ export function List({ className, children }: { className?: string; children: Re
   return <ul className={cn("divide-y divide-border border-y border-border", className)}>{children}</ul>;
 }
 
-const field = "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted/70 focus:border-text";
+const field = "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm transition-colors placeholder:text-muted/70 focus:border-text";
 export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input className={cn(field, "h-10", className)} {...p} />;
 export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea className={cn(field, "min-h-24 leading-relaxed", className)} {...p} />;
 export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => <select className={cn(field, "h-10", className)} {...p} />;
