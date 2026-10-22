@@ -68,7 +68,7 @@ export default function ExamsPage() {
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           <Link
-            href={`/exams/${e.id}`}
+            href={`/exams/view?id=${e.id}`}
             className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 text-[13px] font-medium text-accent hover:bg-accent/10"
           >
             <Briefcase size={14} /> Kit

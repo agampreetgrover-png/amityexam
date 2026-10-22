@@ -47,7 +47,7 @@ export default function SubjectsPage() {
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${s.color}1f`, color: s.color }}>
                     <BookOpen size={19} />
                   </span>
-                  <Link href={`/subjects/${s.id}`} className="min-w-0 flex-1 after:absolute after:inset-0">
+                  <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 flex-1 after:absolute after:inset-0">
                     <span className="flex items-baseline gap-2">
                       <span className="truncate text-[15px] font-semibold">{s.name}</span>
                       {weak > 0 && <Badge className="shrink-0 bg-mark-soft text-warn">{weak} weak</Badge>}

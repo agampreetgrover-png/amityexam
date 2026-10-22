@@ -95,7 +95,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         keywords: s.code,
         subject: { id: s.id!, name: s.name, code: s.code },
         icon: <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />,
-        run: go(`/subjects/${s.id}`),
+        run: go(`/subjects/view?id=${s.id}`),
       });
     }
     const subjectName = new Map((data?.subjects ?? []).map((s) => [s.id, s.name]));
@@ -110,7 +110,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         keywords: "kit exam day",
         subject: subjectRef.get(e.subjectId),
         icon: <GraduationCap size={17} />,
-        run: go(`/exams/${e.id}`),
+        run: go(`/exams/view?id=${e.id}`),
       });
     }
     list.push({

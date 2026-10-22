@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
@@ -29,8 +29,22 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function SubjectPage() {
-  const { id } = useParams<{ id: string }>();
-  const subjectId = Number(id);
+  // The id is a query param, not a path segment, so this one prerendered (and precached) page serves every subject,
+  // offline too. Ids only exist in IndexedDB, so the server could never build a page per subject.
+  return (
+    <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
+      <SubjectFromUrl />
+    </Suspense>
+  );
+}
+
+function SubjectFromUrl() {
+  const id = useSearchParams().get("id");
+  // Keyed so opening another subject starts fresh, as a separate page would.
+  return <Subject key={id} subjectId={id ? Number(id) : NaN} />;
+}
+
+function Subject({ subjectId }: { subjectId: number }) {
   const [tab, setTabState] = useState<TabKey>("syllabus");
   // Tabs stay mounted once opened, so leaving a half-done quiz or a half-typed question and coming back keeps it.
   const [visited, setVisited] = useState<Set<TabKey>>(() => new Set<TabKey>(["syllabus"]));
@@ -51,12 +65,13 @@ export default function SubjectPage() {
     open(key);
     const url = new URL(window.location.href);
     url.searchParams.set("tab", key);
-    window.history.replaceState(window.history.state, "", url);
+    // A string, not the URL object: Serwist's cache-on-navigation hook posts this argument to a worker, and URLs can't be cloned.
+    window.history.replaceState(window.history.state, "", url.href);
   };
 
   const valid = Number.isInteger(subjectId);
 
-  // null = not found; undefined = still loading. A bad id (e.g. /subjects/abc) is treated as not found
+  // null = not found; undefined = still loading. A bad id (e.g. ?id=abc) is treated as not found
   // rather than handed to Dexie, which rejects NaN keys.
   const subject = useLiveQuery(async () => (valid ? ((await db.subjects.get(subjectId)) ?? null) : null), [subjectId, valid]);
   const allUnits = useLiveQuery(() => (valid ? db.units.where({ subjectId }).sortBy("order") : []), [subjectId, valid]) ?? [];

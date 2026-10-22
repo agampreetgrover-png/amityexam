@@ -62,7 +62,7 @@ export default function TodayPage() {
     {
       done: scoped.length > 0,
       label: `Import your ${modeName ? `${modeName} ` : ""}syllabus (AI reads it from a PDF)`,
-      href: subjects[0] ? `/subjects/${subjects[0].id}` : "/subjects",
+      href: subjects[0] ? `/subjects/view?id=${subjects[0].id}` : "/subjects",
     },
     { done: examCount > 0, label: "Add your exam date sheet", href: "/exams" },
     { done: sessions.length > 0, label: "Generate your study plan", href: "/planner" },
@@ -165,7 +165,7 @@ export default function TodayPage() {
                     <span className="whitespace-nowrap text-[13px] text-muted"><strong className="font-semibold text-text">{shownCoverage}%</strong> covered</span>
                   </div>
                   <Link
-                    href={`/exams/${shown.id}`}
+                    href={`/exams/view?id=${shown.id}`}
                     className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-sm font-medium hover:bg-surface-2"
                   >
                     Exam kit <ChevronRight size={16} className="-mr-1 text-muted" />

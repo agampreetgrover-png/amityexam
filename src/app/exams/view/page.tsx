@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Check, Clock, MapPin, Plus, Printer, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
@@ -15,7 +15,22 @@ import { toast } from "@/components/toast";
 import { Button, Card, Empty, Input, List, Tick, cn } from "@/components/ui";
 
 export default function ExamKitPage() {
-  const id = Number(useParams<{ id: string }>().id);
+  // The id is a query param, not a path segment, so this one prerendered (and precached) page serves every exam,
+  // offline too. Ids only exist in IndexedDB, so the server could never build a page per exam.
+  return (
+    <Suspense>
+      <ExamFromUrl />
+    </Suspense>
+  );
+}
+
+function ExamFromUrl() {
+  const id = useSearchParams().get("id");
+  // Keyed so opening another exam starts fresh, as a separate page would.
+  return <ExamKit key={id} id={id ? Number(id) : NaN} />;
+}
+
+function ExamKit({ id }: { id: number }) {
   // A malformed URL id is not a valid IndexedDB key, so treat it as not found.
   const exam = useLiveQuery(async () => (Number.isFinite(id) ? ((await db.exams.get(id)) ?? null) : null), [id]);
   const subject = useLiveQuery(() => (exam ? db.subjects.get(exam.subjectId) : undefined), [exam?.subjectId]);
@@ -162,7 +177,7 @@ export default function ExamKitPage() {
           {sheet ? <Markdown>{sheet.content}</Markdown> : (
             <p className="text-sm text-muted">
               No cheat sheet yet. Generate one from{" "}
-              <Link className="font-medium text-accent underline underline-offset-2" href={`/subjects/${exam.subjectId}`}>{subject?.name ?? "the subject"}, Notes tab</Link>.
+              <Link className="font-medium text-accent underline underline-offset-2" href={`/subjects/view?id=${exam.subjectId}`}>{subject?.name ?? "the subject"}, Notes tab</Link>.
             </p>
           )}
         </Card>
