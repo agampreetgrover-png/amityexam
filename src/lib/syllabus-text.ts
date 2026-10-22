@@ -1,4 +1,11 @@
 import type { SyllabusResult } from "./ai/schemas";
+import type { Topic } from "./types";
+
+/** A fresh, unstudied topic; difficulty is clamped to the 1-5 scale. */
+export const newTopic = (subjectId: number, unitId: number, title: string, difficulty = 3): Topic => ({
+  subjectId, unitId, title, difficulty: Math.min(5, Math.max(1, Math.round(difficulty))), confidence: 3,
+  status: "not-started", ease: 2.5, interval: 0, reps: 0,
+});
 
 // "1.", "1)", "(a)", "a.", "ii.", "-", "*", "•" and similar markers pasted from a PDF or a list.
 const MARKER = /^\s*(?:[-*•▪◦–]|\(?[0-9]{1,3}[.)]|\(?[a-z][.)]|[ivx]{1,4}[.)])\s*/i;

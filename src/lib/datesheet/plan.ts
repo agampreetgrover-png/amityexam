@@ -1,9 +1,8 @@
 // Pure helpers for importing a date sheet: trim the sheet to relevant rows, and turn the
 // AI's findings into reviewable rows with clash detection against existing exams.
 import type { DatesheetResult } from "../ai/schemas";
+import { norm } from "../drive/classify";
 import type { Exam, ExamType, Subject } from "../types";
-
-const norm = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
 
 /** "CSE201 | Database Management Systems" for each subject, in order: the AI answers with these indexes. */
 export const subjectLabels = (subjects: Pick<Subject, "name" | "code">[]) =>

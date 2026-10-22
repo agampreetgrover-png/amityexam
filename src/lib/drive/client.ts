@@ -7,7 +7,7 @@ import type { Material } from "@/lib/types";
 import type { SyncEvent } from "./sync";
 import { DEFAULT_DRIVE_SOURCES } from "./sources";
 
-export interface DriveSyncState {
+interface DriveSyncState {
   running: boolean;
   message: string; // short human status line
   imported: number;

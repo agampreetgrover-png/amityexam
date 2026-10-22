@@ -173,29 +173,36 @@ export function Pomodoro({ sessionId, label, onClose }: { sessionId: number | nu
 
   const total = phase === "work" ? work : brk;
   const pct = total ? ((total - left) / total) * 100 : 0;
+  const isWork = phase === "work";
 
   return (
     <Modal open={sessionId != null} onClose={stop} title="Focus timer">
-      <div className="flex flex-col items-center gap-5 py-2 text-center">
-        <div>
-          <p className={cn("text-sm font-semibold", phase === "work" ? "text-accent" : "text-good")}>
-            {phase === "work" ? "Focus" : "Break"}
+      <div className="flex flex-col items-center gap-6 py-2 text-center">
+        <div className="flex flex-col items-center">
+          <p
+            className={cn(
+              "rounded px-1.5 py-0.5 text-xs font-medium transition-colors duration-150",
+              isWork ? "bg-accent-soft text-accent" : "bg-good/10 text-good",
+            )}
+          >
+            {isWork ? "Focus" : "Break"}
           </p>
-          <p className="mt-0.5 max-w-xs text-sm text-muted">{label}</p>
+          <p className="mt-2 max-w-xs text-sm text-muted">{label}</p>
         </div>
-        <div className="relative grid h-52 w-52 place-items-center">
+        <div className="relative grid h-60 w-60 place-items-center sm:h-64 sm:w-64">
+          {/* Dial: a thin grey track with the elapsed arc drawn over it in the phase colour. */}
           <svg viewBox="0 0 100 100" className="absolute inset-0 -rotate-90" aria-hidden>
-            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--surface-2)" strokeWidth="4" />
+            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--surface-3)" strokeWidth="2.5" />
             <circle
-              cx="50" cy="50" r="46" fill="none"
-              stroke={phase === "work" ? "var(--accent)" : "var(--good)"}
-              strokeWidth="4" strokeLinecap="round"
-              strokeDasharray={2 * Math.PI * 46}
-              strokeDashoffset={2 * Math.PI * 46 * (1 - pct / 100)}
+              cx="50" cy="50" r="45" fill="none"
+              stroke={isWork ? "var(--accent)" : "var(--good)"}
+              strokeWidth="2.5" strokeLinecap="butt"
+              strokeDasharray={2 * Math.PI * 45}
+              strokeDashoffset={2 * Math.PI * 45 * (1 - pct / 100)}
               className="transition-[stroke-dashoffset] duration-1000 ease-linear"
             />
           </svg>
-          <span className="numeral text-[64px]" role="timer">{mmss(Math.max(0, left))}</span>
+          <span className="numeral relative text-[64px]" role="timer">{mmss(Math.max(0, left))}</span>
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           <Button onClick={toggle} className="min-w-28">

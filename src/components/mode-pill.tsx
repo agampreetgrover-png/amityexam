@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowLeftRight } from "lucide-react";
 import { modeShort, otherMode, setExamMode, useExamMode } from "@/lib/mode";
 import { toast } from "./toast";
 import { cn } from "./ui";
@@ -16,16 +15,16 @@ export function ModePill({ className }: { className?: string }) {
     toast(`Switched to ${modeShort(next).toLowerCase()} mode`, { label: "Undo", onClick: () => void setExamMode(mode) });
   };
   return (
-    <div className={cn("inline-flex items-center gap-1 rounded-full bg-accent-soft py-1 pl-3 pr-1 text-[13px]", className)}>
-      <span className="font-semibold text-accent">{modeShort(mode)} mode</span>
+    <div className={cn("inline-flex items-center gap-2 rounded-full border border-border bg-surface py-0.5 pl-3 pr-1 text-[13px]", className)}>
+      <span className="font-medium text-text">{modeShort(mode)} mode</span>
       <button
         type="button"
         onClick={switchMode}
         aria-label={`Switch to ${modeShort(next)} mode`}
         title={`Switch to ${modeShort(next)} mode`}
-        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-accent/80 transition-colors hover:bg-surface hover:text-accent"
+        className="rounded-full px-2 py-0.5 font-medium text-accent transition-colors duration-150 hover:bg-accent-soft"
       >
-        <ArrowLeftRight size={13} aria-hidden /> Switch
+        Switch
       </button>
     </div>
   );

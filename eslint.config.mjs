@@ -18,6 +18,7 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ".claude/**",
       // Generated (gitignored): the built service worker and the copied pdf.js worker.
       "public/sw.js",
       "public/swe-worker*",

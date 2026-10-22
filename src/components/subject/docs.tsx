@@ -72,7 +72,7 @@ export function DraftCard({ gen, busyTitle, onSave }: { gen: ReturnType<typeof u
         </Button>
       )}
     >
-      {canSave && <p className="mb-2 text-xs text-muted">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
+      {canSave && <p className="mb-3 rounded-md border border-mark/40 bg-mark-soft px-3 py-2 text-[13px]">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
       <Markdown>{gen.text || "…"}</Markdown>
     </Card>
   );
@@ -87,20 +87,18 @@ const KIND_LABEL: Record<GeneratedDoc["kind"], string> = { summary: "Notes", che
 /** List of saved generated docs; clicking one opens it in the viewer. */
 export function DocList({ docs, selected, onSelect }: { docs: GeneratedDoc[]; selected?: number; onSelect: (d: GeneratedDoc) => void }) {
   return (
-    <ul className="no-print divide-y divide-border">
+    <ul className="no-print divide-y divide-border border-y border-border">
       {docs.map((d) => (
         <li key={d.id}>
           <button
             onClick={() => onSelect(d)}
             aria-current={selected === d.id ? "true" : undefined}
             className={cn(
-              "-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-lg px-2 py-3 text-left text-[15px] transition-colors hover:bg-surface-2",
-              selected === d.id && "bg-accent-soft font-semibold text-accent hover:bg-accent-soft",
+              "flex w-full items-center gap-3 px-2 py-2.5 text-left text-[15px] transition-colors duration-150 hover:bg-surface-2",
+              selected === d.id && "bg-accent-soft font-medium text-accent hover:bg-accent-soft",
             )}
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent" aria-hidden>
-              <FileText size={15} />
-            </span>
+            <FileText size={16} className={cn("shrink-0", selected === d.id ? "text-accent" : "text-muted")} aria-hidden />
             <span className="min-w-0 flex-1 truncate">{d.title}</span>
             <Badge className="hidden sm:inline-flex">{KIND_LABEL[d.kind]}</Badge>
             <span className="shrink-0 text-xs font-normal text-muted">{new Date(d.createdAt).toLocaleDateString()}</span>
@@ -122,7 +120,8 @@ export function DocViewer({ doc, onDeleted }: { doc: GeneratedDoc; onDeleted: ()
   return (
     <div ref={ref} className="scroll-mt-4">
     <Card
-      title={doc.title}
+      // The open document gets a larger title than the Card's own section heading.
+      title={<span className="block font-display text-[22px] leading-tight md:text-[24px]">{doc.title}</span>}
       action={
         <div className="no-print flex shrink-0">
           <Button variant="ghost" size="sm" onClick={() => window.print()} aria-label="Print"><Printer size={14} /></Button>
@@ -132,7 +131,7 @@ export function DocViewer({ doc, onDeleted }: { doc: GeneratedDoc; onDeleted: ()
             aria-label="Delete"
             onClick={async () => {
               if (!confirm("Delete this document?")) return;
-              await db.docs.delete(doc.id!);
+              await db.docs.delete(doc.id);
               onDeleted();
             }}
           >

@@ -10,7 +10,8 @@ export interface SubjectRef {
 }
 
 const MINOR_WORDS = new Set(["and", "of", "the", "for", "in", "to", "a", "an", "with", "using", "&"]);
-const norm = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+/** Lower case, "&" as "and", and anything but letters and digits as single spaces, for comparing names. */
+export const norm = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
 // Part numbers that tell apart "Applied Mathematics 1" from "… 2", or "Basic Physics - I" from "- II".
 const ROMAN: Record<string, string> = { i: "1", ii: "2", iii: "3", iv: "4", v: "5", vi: "6" };
 const words = (s: string) => norm(s).split(" ").filter(Boolean).map((w) => ROMAN[w] ?? w);
@@ -136,7 +137,7 @@ const MINOR = /\b(minor|mid[ -]?sem|mid[ -]?term|midsem|internal)\b/i;
 const MAJOR = /\b(major|end[ -]?sem|end[ -]?term|endsem|final)\b/i;
 
 const ext = (name: string) => name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
-export const SUPPORTED_EXT = new Set(["pdf", "docx", "pptx", "txt", "md"]);
+const SUPPORTED_EXT = new Set(["pdf", "docx", "pptx", "txt", "md"]);
 
 /** Decide what a Drive file is, or null to skip it. `type` is the Drive entry type (gdoc/gslides are native Google files). */
 export function classify(name: string, path: string[], type: string): { kind: DriveKind; pyqExam?: PyqExam } | null {

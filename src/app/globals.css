@@ -1,35 +1,35 @@
 @import "tailwindcss";
 
-@custom-variant dark (&:where(.dark, .dark *));
-
 /*
-  Light dashboard palette: white cards on a cool off-white page, near-black ink, grey secondary text,
-  and indigo for actions and progress. The highlighter still only marks "needs you today".
-  The app is light-only, so there is no dark-scheme override.
+  Printed date sheet: white paper, near-black ink, hairline rules, and Amity navy for anything
+  you can press or that measures progress. Amber is the only warm colour and still means
+  "needs you within three days". No glows, no gradients, no ambient motion.
 */
 :root {
   color-scheme: light;
-  --bg: #f7f8fc;
+  --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f1f3f8;
-  --border: #e6e8f0;
-  --text: #111827;
-  --muted: #6b7280;
-  --accent: #4f46e5;
+  --surface-2: #f5f6f8;
+  --surface-3: #eceef2;
+  --border: #e3e6eb;
+  --text: #15181e;
+  --muted: #5d6472;
+  --accent: #1b3a7a;
   --accent-ink: #ffffff;
-  --accent-soft: #eef0ff;
-  --mark: #ffe45c;
-  --mark-soft: #fff4d6;
-  --mark-ink: #111827;
-  --good: #10b981;
-  --warn: #ea580c;
-  --bad: #dc2626;
+  --accent-soft: #eef2fa;
+  --mark: #f2b705;
+  --mark-soft: #fff7e0;
+  --mark-ink: #15181e;
+  --good: #1e7f4f;
+  --warn: #b45309;
+  --bad: #b42318;
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-border: var(--border);
   --color-text: var(--text);
   --color-muted: var(--muted);
@@ -38,16 +38,19 @@
   --color-accent-soft: var(--accent-soft);
   --color-mark: var(--mark);
   --color-mark-soft: var(--mark-soft);
-  --color-mark-ink: var(--mark-ink);
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
-  --font-sans: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+  /* "Display" is Plex itself, narrowed: titles and figures share the interface's one family. */
+  --font-display: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", Menlo, monospace;
+  /* Only floating things (dialogs, menus, toasts) cast a shadow; everything on the page sits flat. */
+  --shadow-float: 0 12px 32px -8px rgb(21 24 30 / 0.18), 0 2px 6px rgb(21 24 30 / 0.06);
 }
 
 html {
-  font-optical-sizing: auto;
+  background: var(--bg);
 }
 
 /* Phones: keep focused or scrolled-to items clear of the fixed bottom nav. */
@@ -58,13 +61,16 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font-feature-settings: "ss01", "tnum";
+  font-feature-settings: "tnum";
+  min-height: 100dvh;
 }
+
+::selection { background: #cfdaf2; color: var(--text); }
 
 /* In the base layer so utilities like focus-visible:outline-none can override it. */
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--text);
+    outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
 }
@@ -78,58 +84,113 @@ body {
   box-decoration-break: clone;
 }
 
-/* On big numerals the highlighter is a stroke through the lower half, as if marked by hand. */
-.numeral.mark {
-  background: linear-gradient(transparent 52%, var(--mark) 52%, var(--mark) 90%, transparent 90%);
-  color: inherit;
-  padding: 0 0.06em;
-}
-
-/* Condensed display numerals for countdowns. */
+/* Countdown figures: Plex narrowed to its condensed width, like a printed timetable. */
 .numeral {
+  font-family: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
   font-stretch: 75%;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   line-height: 0.85;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+/* Inside a figure, "urgent" is a thick amber rule under the digits rather than a fill behind them. */
+.numeral .mark, .numeral.mark {
+  background: none;
+  color: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: var(--mark);
+  text-decoration-thickness: 0.09em;
+  text-underline-offset: 0.1em;
 }
 
-/*
-  Motion only answers something the student did: a toast confirming a change,
-  the search palette opening, and the countdown changing when another exam is picked.
-*/
+/* Titles: Plex at semi-condensed width, so headings have a voice without a second typeface. */
+.font-display {
+  font-stretch: 87.5%;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* ───────────────────────── Motion ─────────────────────────
+   Only motion that answers something the student did. Nothing moves on its own. */
+
 @keyframes rise-in {
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: none; }
 }
 @keyframes drop-in {
-  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: none; }
 }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes tick-pop {
+  0% { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+/* Route changes: a short fade so the swap isn't a hard cut. */
+.page-enter { animation: fade-in 140ms ease-out both; }
+
 .toast-in { animation: rise-in 180ms ease-out; }
 .palette-in[open] { animation: drop-in 160ms ease-out; }
-.count-in { animation: rise-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.count-in { animation: fade-in 160ms ease-out; }
+.tick-done { animation: tick-pop 180ms ease-out; }
+
+/* Dialogs fade in and out with the backdrop. */
+dialog.sheet {
+  opacity: 0;
+  transition: opacity 160ms ease-out, overlay 160ms allow-discrete, display 160ms allow-discrete;
+}
+dialog.sheet[open] { opacity: 1; }
+@starting-style {
+  dialog.sheet[open] { opacity: 0; }
+}
+dialog.sheet::backdrop {
+  background: rgb(21 24 30 / 0);
+  transition: background 160ms, overlay 160ms allow-discrete, display 160ms allow-discrete;
+}
+dialog.sheet[open]::backdrop { background: rgb(21 24 30 / 0.4); }
+@starting-style {
+  dialog.sheet[open]::backdrop { background: rgb(21 24 30 / 0); }
+}
+
+/* Disclosure: the content eases open where the browser can animate to auto height. */
+details { interpolate-size: allow-keywords; }
+details::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 200ms ease-out, content-visibility 200ms allow-discrete;
+}
+details[open]::details-content { block-size: auto; }
+summary .chev { transition: transform 160ms ease-out; }
+details[open] > summary .chev { transform: rotate(90deg); }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; animation: none !important; }
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 /* Rendered AI markdown */
-.prose-ai { max-width: 70ch; }
-.prose-ai h1, .prose-ai h2, .prose-ai h3 { font-weight: 650; margin: 1.2em 0 0.4em; line-height: 1.25; }
+.prose-ai { max-width: 70ch; color: var(--text); }
+.prose-ai h1, .prose-ai h2, .prose-ai h3 { font-weight: 600; margin: 1.3em 0 0.45em; line-height: 1.25; }
 .prose-ai h1 { font-size: 1.3rem; }
-.prose-ai h2 { font-size: 1.12rem; }
+.prose-ai h2 { font-size: 1.1rem; }
 .prose-ai h3 { font-size: 1rem; }
-.prose-ai p { margin: 0.55em 0; line-height: 1.65; }
+.prose-ai p { margin: 0.6em 0; line-height: 1.65; }
 .prose-ai ul { list-style: disc; padding-left: 1.25rem; margin: 0.4em 0; }
 .prose-ai ol { list-style: decimal; padding-left: 1.25rem; margin: 0.4em 0; }
 .prose-ai li { margin: 0.25em 0; line-height: 1.6; }
-.prose-ai code { font-family: var(--font-mono); background: var(--surface-2); padding: 0 0.25em; border-radius: 4px; font-size: 0.88em; }
-.prose-ai pre { background: var(--surface-2); padding: 0.75em; border-radius: 8px; overflow-x: auto; }
+.prose-ai a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.prose-ai code { font-family: var(--font-mono); background: var(--surface-2); padding: 0.05em 0.3em; border-radius: 4px; font-size: 0.88em; }
+.prose-ai pre { background: var(--surface-2); border: 1px solid var(--border); padding: 0.8em; border-radius: 6px; overflow-x: auto; }
 .prose-ai pre code { background: none; padding: 0; }
-.prose-ai strong { font-weight: 650; }
+.prose-ai strong { font-weight: 600; }
+.prose-ai blockquote { border-left: 2px solid var(--border); padding-left: 0.9em; color: var(--muted); }
 .prose-ai table { border-collapse: collapse; margin: 0.6em 0; display: block; overflow-x: auto; }
-.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.4em 0.75em 0.4em 0; text-align: left; }
+.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.4em 0.8em 0.4em 0; text-align: left; }
 .prose-ai th { font-weight: 600; }
 
 @media print {

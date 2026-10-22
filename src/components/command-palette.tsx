@@ -78,13 +78,13 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
     const go = (href: string) => () => router.push(href);
     const t = today();
     const list: Command[] = [
-      { id: "p-today", group: "Go to", label: "Today", icon: <House size={17} />, run: go("/") },
-      { id: "p-planner", group: "Go to", label: "Planner", icon: <CalendarDays size={17} />, keywords: "plan schedule week", run: go("/planner") },
-      { id: "p-subjects", group: "Go to", label: "Subjects", icon: <BookOpen size={17} />, keywords: "syllabus notes", run: go("/subjects") },
-      { id: "p-exams", group: "Go to", label: "Exams", icon: <GraduationCap size={17} />, keywords: "date sheet", run: go("/exams") },
-      { id: "p-revise", group: "Go to", label: "Revise", icon: <RotateCcw size={17} />, keywords: "revision due", run: go("/revise") },
-      { id: "p-progress", group: "Go to", label: "Progress", icon: <BarChart3 size={17} />, keywords: "stats charts", run: go("/progress") },
-      { id: "p-settings", group: "Go to", label: "Settings", icon: <Settings size={17} />, keywords: "backup reminders", run: go("/settings") },
+      { id: "p-today", group: "Go to", label: "Today", icon: <House size={16} />, run: go("/") },
+      { id: "p-planner", group: "Go to", label: "Planner", icon: <CalendarDays size={16} />, keywords: "plan schedule week", run: go("/planner") },
+      { id: "p-subjects", group: "Go to", label: "Subjects", icon: <BookOpen size={16} />, keywords: "syllabus notes", run: go("/subjects") },
+      { id: "p-exams", group: "Go to", label: "Exams", icon: <GraduationCap size={16} />, keywords: "date sheet", run: go("/exams") },
+      { id: "p-revise", group: "Go to", label: "Revise", icon: <RotateCcw size={16} />, keywords: "revision due", run: go("/revise") },
+      { id: "p-progress", group: "Go to", label: "Progress", icon: <BarChart3 size={16} />, keywords: "stats charts", run: go("/progress") },
+      { id: "p-settings", group: "Go to", label: "Settings", icon: <Settings size={16} />, keywords: "backup reminders", run: go("/settings") },
     ];
     for (const s of data?.subjects ?? []) {
       list.push({
@@ -109,7 +109,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         hint: d === 0 ? "today" : `${prettyDay(e.date)}, in ${d}d`,
         keywords: "kit exam day",
         subject: subjectRef.get(e.subjectId),
-        icon: <GraduationCap size={17} />,
+        icon: <GraduationCap size={16} />,
         run: go(`/exams/view?id=${e.id}`),
       });
     }
@@ -118,7 +118,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       group: "Actions",
       label: "Rebalance study plan",
       keywords: "replan generate missed",
-      icon: <RefreshCw size={17} />,
+      icon: <RefreshCw size={16} />,
       run: async () => {
         toast("Rebalancing your plan…");
         try {
@@ -136,7 +136,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         group: "Actions",
         label: `Switch to ${modeShort(next).toLowerCase()} mode`,
         keywords: "mid sem major end term mode",
-        icon: <ArrowLeftRight size={17} />,
+        icon: <ArrowLeftRight size={16} />,
         run: async () => {
           await setExamMode(next);
           toast(`Switched to ${modeShort(next).toLowerCase()} mode`);
@@ -171,7 +171,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       onClose={() => setOpen(false)}
       onClick={(e) => e.target === dialog.current && setOpen(false)}
       aria-label="Search"
-      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text shadow-2xl backdrop:bg-[#0d1020]/40 backdrop:backdrop-blur-[2px]"
+      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-lg border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[rgb(21_24_30/0.4)]"
     >
       <div className="flex items-center gap-3 border-b border-border px-4">
         <Search size={18} className="shrink-0 text-muted" aria-hidden />
@@ -191,18 +191,18 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
           aria-activedescendant={results[active] ? `${listId}-${results[active].id}` : undefined}
           autoComplete="off"
           // The open palette already shows where focus is, so the global focus ring would only box in the field.
-          className="h-14 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted/70 focus-visible:outline-none"
+          className="h-14 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-muted/70 focus-visible:outline-none"
         />
-        <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted sm:block">Esc</kbd>
+        <kbd className="hidden rounded border border-border px-1.5 py-0.5 font-sans text-[11px] text-muted sm:block">Esc</kbd>
       </div>
-      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="max-h-[min(60vh,420px)] overflow-y-auto p-2">
-        {results.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">Nothing matches &ldquo;{query}&rdquo;.</li>}
+      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="max-h-[min(60vh,420px)] overflow-y-auto py-1.5">
+        {results.length === 0 && <li className="px-4 py-6 text-sm text-muted">Nothing matches &ldquo;{query}&rdquo;.</li>}
         {results.map((c, i) => {
           const heading = c.group !== lastGroup ? c.group : null;
           lastGroup = c.group;
           return (
             <li key={c.id} role="presentation">
-              {heading && <p className="px-3 pb-1 pt-3 text-xs font-semibold text-muted first:pt-1">{heading}</p>}
+              {heading && <p className="px-4 pb-1 pt-3 text-[12px] font-medium text-muted">{heading}</p>}
               <div
                 id={`${listId}-${c.id}`}
                 data-index={i}
@@ -211,14 +211,15 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
                 onMouseMove={() => active !== i && setActive(i)}
                 onClick={() => run(c)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-[15px]",
-                  i === active ? "bg-accent-soft text-accent" : "text-text",
+                  "relative flex cursor-pointer items-center gap-3 px-4 py-2.5 text-[15px] transition-colors duration-150",
+                  // The active row: a grey fill with a thin navy edge on the left.
+                  i === active && "bg-surface-2 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent",
                 )}
               >
                 <span className={cn("flex w-5 shrink-0 justify-center", i === active ? "text-accent" : "text-muted")}>{c.icon}</span>
                 <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
-                {c.hint && <span className={cn("shrink-0 text-xs", i === active ? "text-accent/80" : "text-muted")}>{c.hint}</span>}
-                {i === active && <CornerDownLeft size={14} className="shrink-0 text-accent/70" aria-hidden />}
+                {c.hint && <span className="shrink-0 text-[13px] tabular-nums text-muted">{c.hint}</span>}
+                {i === active && <CornerDownLeft size={14} className="shrink-0 text-muted" aria-hidden />}
               </div>
             </li>
           );

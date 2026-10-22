@@ -15,7 +15,7 @@ let nextId = 1;
 const listeners = new Set<(t: ToastItem[]) => void>();
 const emit = () => listeners.forEach((l) => l(items));
 
-export function dismissToast(id: number) {
+function dismissToast(id: number) {
   items = items.filter((t) => t.id !== id);
   emit();
 }
@@ -46,8 +46,8 @@ export function Toaster() {
           key={t.id}
           role="status"
           className={cn(
-            "toast-in pointer-events-auto flex max-w-md items-center gap-4 rounded-xl bg-text py-2.5 pl-4 pr-2 text-sm text-white shadow-lg",
-            !t.action && "pr-4",
+            "toast-in pointer-events-auto flex max-w-md items-center gap-4 rounded-md bg-text py-2 pl-4 pr-2 text-sm text-white shadow-float",
+            !t.action && "py-2.5 pr-4",
           )}
         >
           <span>{t.message}</span>
@@ -55,7 +55,7 @@ export function Toaster() {
             <button
               type="button"
               onClick={() => { t.action!.onClick(); dismissToast(t.id); }}
-              className="rounded-lg px-2.5 py-1 font-semibold text-indigo-200 hover:bg-white/10 hover:text-white"
+              className="shrink-0 rounded px-3 py-1 font-bold text-[#b8c8ee] transition-colors duration-150 hover:bg-white/10 focus-visible:outline-[#b8c8ee]"
             >
               {t.action.label}
             </button>

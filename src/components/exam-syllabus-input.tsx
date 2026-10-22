@@ -3,13 +3,9 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { db } from "@/lib/db";
-import { parseTopics } from "@/lib/syllabus-text";
-import type { ExamMode, Topic } from "@/lib/types";
+import { newTopic, parseTopics } from "@/lib/syllabus-text";
+import type { ExamMode } from "@/lib/types";
 import { Button, Input, Textarea } from "./ui";
-
-const newTopic = (subjectId: number, unitId: number, title: string): Topic => ({
-  subjectId, unitId, title, difficulty: 3, confidence: 3, status: "not-started", ease: 2.5, interval: 0, reps: 0,
-});
 
 /**
  * Lets the student type or paste an exam's syllabus right in the exam form.
@@ -64,7 +60,7 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline hover:underline-offset-2"
+        className="inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-accent underline-offset-2 hover:underline"
       >
         <Plus size={15} /> Type or paste topics
       </button>
@@ -73,7 +69,7 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
 
   return (
     // A div, not a nested <form>: this sits inside the exam form, and Enter in the unit name must not save the exam.
-    <div className="space-y-2.5 rounded-lg bg-surface-2/70 p-3">
+    <div className="space-y-2.5 rounded-md border border-border bg-surface-2 p-3">
       <Input
         value={unit}
         onChange={(e) => setUnit(e.target.value)}
@@ -89,9 +85,9 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
         aria-label="Topics, one per line"
         className="min-h-28 bg-surface"
       />
-      {error && <p className="text-xs text-bad" role="alert">{error}</p>}
+      {error && <p className="rounded-md border border-bad/25 bg-bad/5 px-3 py-2 text-[13px] text-bad" role="alert">{error}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted">
+        <p className="text-xs tabular-nums text-muted">
           {titles.length
             ? `${titles.length} topic${titles.length === 1 ? "" : "s"}, added to the subject's syllabus${season === "mid-term" ? " as mid-sem" : ""}`
             : `Added to the subject's syllabus too${season === "mid-term" ? ", marked as mid-sem" : ""}`}

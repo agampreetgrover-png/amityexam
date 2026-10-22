@@ -6,9 +6,9 @@ import Groq from "groq-sdk";
 
 export type Msg = { role: "system" | "user" | "assistant"; content: string };
 export type ProviderName = "gemini" | "groq";
-export type CallOpts = { fast?: boolean; kind?: "json" | "text" | "chat" };
+type CallOpts = { fast?: boolean; kind?: "json" | "text" | "chat" };
 
-export interface Provider {
+interface Provider {
   name: ProviderName;
   /** How much pasted material a prompt may include for this provider. */
   maxContextChars: number;
@@ -19,7 +19,7 @@ export interface Provider {
   extract?(file: { mimeType: string; data: string }, prompt: string, opts?: { fast?: boolean }): Promise<string>;
 }
 
-export type ErrorKind = "minute" | "day" | "auth" | "too-large" | "config" | "unavailable" | "bad-output" | "other";
+type ErrorKind = "minute" | "day" | "auth" | "too-large" | "config" | "unavailable" | "bad-output" | "other";
 
 export class AiProviderError extends Error {
   constructor(

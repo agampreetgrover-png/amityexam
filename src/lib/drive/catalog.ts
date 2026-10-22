@@ -1,5 +1,5 @@
 // Course catalogue from the Drive library's folder names, e.g. "CSE201 - Database Management Systems".
-import { subjectScore } from "./classify";
+import { norm, subjectScore } from "./classify";
 
 export interface Course {
   code: string;
@@ -13,8 +13,6 @@ export function parseCourse(folderName: string): Course | null {
   const m = folderName.match(FOLDER);
   return m ? { code: `${m[1]}${m[2]}`, name: m[3] } : null;
 }
-
-const norm = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
 
 /**
  * The course code for a subject name, or undefined when there's no confident match:

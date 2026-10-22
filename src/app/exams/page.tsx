@@ -9,10 +9,13 @@ import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
 import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
-import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select } from "@/components/ui";
+import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select, cn } from "@/components/ui";
 import { DatesheetImport } from "@/components/exams/datesheet-import";
 import { toast } from "@/components/toast";
 import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
+
+// Days, subject, date and time, venue, actions. Shared by the header row and every exam row so they line up.
+const COLS = "@xl:grid-cols-[3.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1fr)_8.75rem]";
 
 export default function ExamsPage() {
   const exams = useLiveQuery(() => db.exams.orderBy("date").toArray());
@@ -31,47 +34,55 @@ export default function ExamsPage() {
   const upcoming = shown.filter((e) => e.date >= t);
   const past = shown.filter((e) => e.date < t).reverse();
 
-  const row = (e: Exam) => {
+  // One line of the date sheet: the countdown, then what, when and where, then the actions.
+  // The columns follow the table's own width (a container query), so with the sidebar open on a
+  // narrow window the rows stack instead of squeezing five columns into the space.
+  const row = (e: Exam, past = false) => {
     const s = subject(e.subjectId);
     const days = daysBetween(t, e.date);
     const soon = days >= 0 && days <= 3;
+    const where = [e.venue, e.seat && `Seat ${e.seat}`].filter(Boolean).join(", ");
     return (
-      <li
-        key={e.id}
-        className="relative flex items-center gap-3 overflow-hidden rounded-2xl border border-border bg-surface py-4 pl-5 pr-3 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:gap-4 sm:py-5 sm:pl-6 sm:pr-4"
-      >
-        <span className="absolute inset-y-0 left-0 w-1" style={{ background: s?.color }} aria-hidden />
-        <div className="w-14 shrink-0">
+      <li key={e.id} className={cn("grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 px-4 py-3.5 @xl:items-center @xl:gap-x-4", COLS, past && "text-muted")}>
+        <div className="row-span-2 @xl:row-span-1">
           {days >= 0 ? (
-            <div className="numeral text-[40px]" style={{ color: soon ? undefined : s?.color }}>
+            <div className="numeral text-[40px]">
               <span className={soon ? "mark" : undefined}>{days}</span>
             </div>
           ) : (
-            <Check size={26} className="text-good" aria-hidden />
+            <Check size={22} className="text-good" aria-hidden />
           )}
-          <div className="mt-1.5 text-xs text-muted">{days === 0 ? "today" : days > 0 ? (days === 1 ? "day" : "days") : "done"}</div>
+          <div className="mt-1 text-[12px] text-muted">{days === 0 ? "today" : days > 0 ? (days === 1 ? "day" : "days") : "done"}</div>
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 font-semibold">
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s?.color }} />
-            <span className="truncate">{s?.name ?? "Unknown subject"}</span>
-          </h2>
-          <p className="mt-0.5 text-sm text-muted">
-            {examTypeLabel(e.type)}, {prettyDay(e.date)}{e.time && ` at ${e.time}`}
-          </p>
-          {(e.venue || e.seat) && (
-            <p className="mt-0.5 flex items-center gap-1 text-xs text-muted">
-              <MapPin size={12} /> {[e.venue, e.seat && `Seat ${e.seat}`].filter(Boolean).join(", ")}
+        {/* Stacked under the subject on narrow tables; its own three columns on wide ones. */}
+        <div className="min-w-0 space-y-1 @xl:contents @xl:space-y-0">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", past && "opacity-60")} style={{ background: s?.color }} aria-hidden />
+              <span className="truncate">{s?.name ?? "Unknown subject"}</span>
+            </h2>
+            <p className="mt-0.5 text-[13px] text-muted">
+              {examTypeLabel(e.type)}
+              {e.topicIds.length > 0 && `, ${e.topicIds.length} topic${e.topicIds.length === 1 ? "" : "s"} in scope`}
             </p>
-          )}
-          {e.topicIds.length > 0 && <p className="mt-0.5 text-xs text-muted">{e.topicIds.length} topic{e.topicIds.length === 1 ? "" : "s"} in scope</p>}
+          </div>
+          <p className="text-sm tabular-nums">{prettyDay(e.date)}{e.time && `, ${e.time}`}</p>
+          <p className={cn("min-w-0 text-sm text-muted", !where && "hidden @xl:block")}>
+            {where ? (
+              <span className="flex items-center gap-1">
+                <MapPin size={12} className="shrink-0 @xl:hidden" aria-hidden /> <span className="truncate">{where}</span>
+              </span>
+            ) : (
+              <span aria-hidden>–</span>
+            )}
+          </p>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="col-start-2 flex items-center gap-1 @xl:col-start-auto @xl:justify-end">
           <Link
             href={`/exams/view?id=${e.id}`}
-            className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent-soft px-2.5 text-[13px] font-medium text-accent hover:bg-accent/10"
+            className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-[#cfd4dc] hover:bg-surface-2"
           >
-            <Briefcase size={14} /> Kit
+            <Briefcase size={14} className="text-muted" /> Kit
           </Link>
           <Button variant="ghost" size="sm" aria-label="Edit" onClick={() => setEditing(e)}><Pencil size={15} /></Button>
           <Button variant="danger" size="sm" aria-label="Delete" onClick={() => confirm("Delete this exam?") && deleteExam(e.id!)}><Trash2 size={15} /></Button>
@@ -79,6 +90,20 @@ export default function ExamsPage() {
       </li>
     );
   };
+
+  // One bordered table; the header row only appears once there's room for the columns.
+  const table = (list: Exam[], past = false) => (
+    <div className="@container overflow-hidden rounded-lg border border-border">
+      <div aria-hidden className={cn("hidden gap-x-4 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted @xl:grid", COLS)}>
+        <span>Days</span>
+        <span>Subject</span>
+        <span>Date and time</span>
+        <span>Venue</span>
+        <span />
+      </div>
+      <ul className="divide-y divide-border">{list.map((e) => row(e, past))}</ul>
+    </div>
+  );
 
   return (
     <>
@@ -93,33 +118,33 @@ export default function ExamsPage() {
         }
       />
       {subjects?.length === 0 && (
-        <Empty icon={<GraduationCap size={28} />} title="Add a subject first">
+        <Empty icon={<GraduationCap size={20} />} title="Add a subject first">
           Every exam belongs to a subject. <Link className="font-medium text-accent underline underline-offset-2" href="/subjects">Add your subjects</Link>
         </Empty>
       )}
       {mode && (hidden > 0 || showAll) && (
-        <div className="-mt-4 mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted">
+        <div className="-mt-4 mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted">
           <span>
             {showAll ? "Showing every exam" : `Showing ${modeShort(mode).toLowerCase()} exams, ${hidden} other${hidden === 1 ? "" : "s"} hidden`}
           </span>
-          <label className="flex cursor-pointer items-center gap-2">
-            <input type="checkbox" className="accent-[var(--accent)]" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+          <label className="flex cursor-pointer items-center gap-2 transition-colors duration-150 hover:text-text">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             Show all exams
           </label>
         </div>
       )}
       {subjects?.length !== 0 && exams?.length === 0 && (
-        <Empty icon={<GraduationCap size={28} />} title="No exams yet">Add your date sheet so the planner can schedule study time.</Empty>
+        <Empty icon={<GraduationCap size={20} />} title="No exams yet">Add your date sheet so the planner can schedule study time.</Empty>
       )}
       {mode && !!exams?.length && !shown.length && (
-        <Empty icon={<GraduationCap size={28} />} title={`No ${modeShort(mode).toLowerCase()} exams yet`}>
+        <Empty icon={<GraduationCap size={20} />} title={`No ${modeShort(mode).toLowerCase()} exams yet`}>
           Add your {modeShort(mode).toLowerCase()} date sheet so the planner can schedule study time.
         </Empty>
       )}
-      {upcoming.length > 0 && <ul className="space-y-3">{upcoming.map(row)}</ul>}
+      {upcoming.length > 0 && table(upcoming)}
       {past.length > 0 && (
         <Section title="Past exams" className="mt-10">
-          <ul className="space-y-3 opacity-60">{past.map(row)}</ul>
+          {table(past, true)}
         </Section>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit exam" : "Add exam"}>
@@ -207,7 +232,7 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
       {/* A fieldset, not <Field>: Field is a <label>, and a label around many checkboxes toggles the first one on any click. */}
       <fieldset className="space-y-1.5">
         <legend className="mb-1.5 text-[13px] font-medium text-muted">Syllabus for this exam</legend>
-        <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border p-3">
+        <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-border p-3">
           {!hasSyllabus && (
             <p className="text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus for this subject yet. Type or paste it below.</p>
           )}
@@ -226,7 +251,7 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
                   {u.title}
                 </label>
                 {ts.map((t) => (
-                  <label key={t.id} className="ml-5 flex items-center gap-2 text-sm text-muted">
+                  <label key={t.id} className="ml-5 flex items-center gap-2 text-sm text-muted transition-colors duration-150 hover:text-text">
                     <input type="checkbox" className="accent-[var(--accent)]" checked={scope.has(t.id!)} onChange={() => toggle(t.id!)} /> {t.title}
                   </label>
                 ))}

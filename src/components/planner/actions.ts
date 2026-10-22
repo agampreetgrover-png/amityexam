@@ -6,7 +6,7 @@ import type { StudySession, Topic } from "@/lib/types";
 type TopicSnapshot = Pick<Topic, "status" | "lastReviewed" | "nextReview" | "ease" | "interval" | "reps">;
 
 /** What completeSession changed, so undoSession can put it back exactly. */
-export interface UndoToken {
+interface UndoToken {
   sessionId: number;
   session: Pick<StudySession, "done" | "actualMins">;
   topic?: { id: number; prev: TopicSnapshot };

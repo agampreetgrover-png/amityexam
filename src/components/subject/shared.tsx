@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
+import { WifiOff } from "lucide-react";
 import { db } from "@/lib/db";
 import type { ExamMode, Material, Subject, Topic, Unit } from "@/lib/types";
 import { Select } from "../ui";
@@ -15,7 +16,7 @@ export function useMaterials(subjectId: number): Material[] {
 export const noteTexts = (materials: Material[]) => materials.filter((m) => m.kind !== "pyq").map((m) => m.text);
 
 // Mirrors the request limits in AiRequestSchema so big subjects don't get a 400.
-export const MAX_TOPICS = 150;
+const MAX_TOPICS = 150;
 export const MAX_CONTEXT = 400_000;
 export const MAX_TEXT = 100_000;
 const MAX_TITLE = 300;
@@ -52,21 +53,20 @@ export interface TabProps {
   mode: ExamMode;
 }
 
-/** Topic picker grouped by unit; value "" means the whole subject (when allowed). */
+/** Topic picker grouped by unit; value "" means the whole subject. */
 export function TopicSelect({
-  units, topics, value, onChange, allowAll = true, allLabel = "Whole subject", className,
+  units, topics, value, onChange, allLabel = "Whole subject", className,
 }: {
   units: Unit[];
   topics: Topic[];
   value: string;
   onChange: (v: string) => void;
-  allowAll?: boolean;
   allLabel?: string;
   className?: string;
 }) {
   return (
     <Select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
-      {allowAll ? <option value="">{allLabel}</option> : <option value="" disabled>Choose a topic…</option>}
+      <option value="">{allLabel}</option>
       {units.map((u) => (
         <optgroup key={u.id} label={u.title}>
           {topics.filter((t) => t.unitId === u.id).map((t) => (
@@ -79,6 +79,11 @@ export function TopicSelect({
 }
 
 export const OfflineHint = ({ online }: { online: boolean }) =>
-  online ? null : <p className="rounded-lg bg-mark-soft px-3 py-2 text-xs font-medium text-warn">You&apos;re offline. AI features are paused until you reconnect.</p>;
+  online ? null : (
+    <p className="flex items-start gap-2.5 rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text">
+      <WifiOff size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+      You&apos;re offline. AI features are paused until you reconnect.
+    </p>
+  );
 
 export const isAbort = (e: unknown) => e instanceof DOMException && e.name === "AbortError";

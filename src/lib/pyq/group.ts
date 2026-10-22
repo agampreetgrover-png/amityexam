@@ -35,7 +35,7 @@ export function newestFirst<T extends Pick<Material, "paperYear" | "fileName">>(
 /** "Q2(b)" before "Q10": compare question numbers naturally. */
 export const naturalCompare = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 
-export interface YearGroup<P> {
+interface YearGroup<P> {
   year: number | null;
   papers: { paper: P; questions: PyqQuestion[] }[];
 }
@@ -63,7 +63,7 @@ export interface TopicStat {
   hot: boolean; // among the most-asked topics
 }
 
-export interface TopicGroups {
+interface TopicGroups {
   units: { unit: Unit; topics: TopicStat[] }[];
   notInSyllabus: PyqQuestion[]; // checked: matches no topic
   unmatched: PyqQuestion[]; // not mapped to the syllabus yet

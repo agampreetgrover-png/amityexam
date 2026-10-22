@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque } from "next/font/google";
+import { IBM_Plex_Sans } from "next/font/google";
 import { CommandPaletteLoader } from "@/components/command-palette-loader";
 import { ModeGate } from "@/components/mode-gate";
 import { Toaster } from "@/components/toast";
@@ -8,7 +8,8 @@ import { DriveSync } from "@/components/drive-sync";
 import { Notifier } from "@/components/notifier";
 import "./globals.css";
 
-const bricolage = Bricolage_Grotesque({ variable: "--font-bricolage", subsets: ["latin"], axes: ["opsz", "wdth"] });
+// One family throughout. Its width axis gives the condensed countdown figures and the narrower titles.
+const plex = IBM_Plex_Sans({ variable: "--font-plex", subsets: ["latin"], axes: ["wdth"] });
 
 export const metadata: Metadata = {
   title: "Amity Exams",
@@ -18,14 +19,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f7f8fc",
+  themeColor: "#ffffff",
   colorScheme: "light",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${bricolage.variable} font-sans antialiased`}>
+      <body className={`${plex.variable} font-sans antialiased`}>
         {/* First launch asks mid-sem or major before showing the app. */}
         <ModeGate>
           <Nav />

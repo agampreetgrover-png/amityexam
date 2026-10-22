@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { Course } from "@/lib/drive/catalog";
 import { SUBJECT_CATALOG, type CatalogSubject } from "@/lib/subject-catalog";
 import { Input, cn } from "./ui";
 
@@ -14,12 +15,6 @@ const UNIQUE: CatalogSubject[] = Object.values(
     return acc;
   }, {}),
 );
-
-/** A course from the student's own Drive library ("IT307 - Exploring the networks"). */
-export interface Course {
-  code: string;
-  name: string;
-}
 
 /**
  * The student's own courses come first, labelled with their code; the generic list fills in
@@ -167,7 +162,7 @@ export function SubjectPicker({ value, onChange, exclude = [], courses = [], aut
           role="listbox"
           aria-label="Subjects"
           // In flow rather than floating: the dialog body scrolls, which would clip an absolute dropdown.
-          className="mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-border bg-surface p-1 shadow-sm"
+          className="mt-1.5 max-h-64 overflow-y-auto rounded-md border border-border bg-surface p-1"
         >
           {results.map((s, i) => (
             <li
@@ -182,12 +177,12 @@ export function SubjectPicker({ value, onChange, exclude = [], courses = [], aut
               }}
               onMouseEnter={() => setActive(i)}
               className={cn(
-                "flex cursor-pointer items-baseline justify-between gap-3 rounded-lg px-3 py-2 text-sm",
+                "flex cursor-pointer items-baseline justify-between gap-3 rounded px-3 py-2 text-sm transition-colors duration-150",
                 i === active ? "bg-accent-soft text-accent" : "text-text",
               )}
             >
               <span className="min-w-0 truncate font-medium">{s.name}</span>
-              <span className={cn("shrink-0 text-xs", i === active ? "text-accent/80" : "text-muted")}>{s.programme}</span>
+              <span className={cn("shrink-0 text-xs tabular-nums", i === active ? "text-accent/80" : "text-muted")}>{s.programme}</span>
             </li>
           ))}
         </ul>

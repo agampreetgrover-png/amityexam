@@ -36,9 +36,9 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
   if (!subjects) return null;
   if (!subjects.length) {
     return (
-      <Empty icon={<FileSpreadsheet />} title="Add your subjects first">
+      <Empty icon={<FileSpreadsheet size={20} />} title="Add your subjects first">
         The date sheet lists every programme, so the app needs your subjects (ideally with course codes) to pick out your exams.{" "}
-        <Link href="/subjects" className="font-medium text-accent">Go to Subjects</Link>
+        <Link href="/subjects" className="font-medium text-accent hover:underline">Go to Subjects</Link>
       </Empty>
     );
   }
@@ -64,7 +64,7 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
     return (
       <div className="space-y-4">
         <div className="flex items-start gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent"><CalendarCheck size={20} /></span>
+          <CalendarCheck size={18} className="mt-0.5 shrink-0 text-good" aria-hidden />
           <div>
             <p className="font-semibold">{savedSummary(saved)}</p>
             <p className="text-sm text-muted">Rebalance your study plan so it fits the new dates.</p>
@@ -116,12 +116,13 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
         {subjects.length} subject{subjects.length === 1 ? "" : "s"}, matching by course code, and you check them before anything is saved.
       </p>
       <Tabs label="Date sheet source" value={source} onChange={setSource} options={[{ value: "upload", label: "Upload a file" }, { value: "drive", label: "From Drive" }]} />
-      {!online && <p className="text-sm text-warn">You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</p>}
+      {!online && <p className="rounded-md border border-mark/40 bg-mark-soft px-4 py-3 text-sm">You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</p>}
       {source === "upload" ? (
         <label
-          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
+          // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
+          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[#cfd4dc] px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
         >
-          <Upload size={20} />
+          <Upload size={18} className="text-muted" aria-hidden />
           <span><span className="font-medium text-text">Choose a date sheet</span> (.xlsx, .xls, .csv, PDF or photo)</span>
           <input
             type="file"
@@ -179,19 +180,20 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
   }, []);
 
   if (sheets === null) return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Looking in your Drive folders…</p>;
-  if (sheets === "error") return <p className="text-sm text-bad">Couldn&apos;t reach your Drive folders. Check your connection, or upload the file instead.</p>;
-  if (!sheets.length) return <p className="text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
+  if (sheets === "error") return <p className="rounded-md border border-bad/25 bg-bad/5 px-4 py-3 text-sm text-bad">Couldn&apos;t reach your Drive folders. Check your connection, or upload the file instead.</p>;
+  if (!sheets.length) return <p className="rounded-lg border border-dashed border-[#cfd4dc] px-4 py-5 text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
   return (
-    <ul className="divide-y divide-border rounded-xl border border-border">
+    // No overflow clipping here: it would cut off the focus ring around each row's button.
+    <ul className="divide-y divide-border rounded-lg border border-border">
       {sheets.map((s) => (
         <li key={s.id}>
           <button
             type="button"
             disabled={disabled}
             onClick={() => onPick(s, sources)}
-            className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-surface-2 disabled:opacity-60"
+            className="flex w-full items-center gap-3 px-4 py-3 text-left [li:first-child>&]:rounded-t-[7px] [li:last-child>&]:rounded-b-[7px] transition-colors duration-150 hover:bg-surface-2 disabled:opacity-60"
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Cloud size={16} /></span>
+            <Cloud size={16} className="shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{s.name}</span>
               {s.path.length > 0 && <span className="block truncate text-xs text-muted">{s.path.join(" / ")}</span>}
@@ -270,17 +272,19 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
         Found {mine.length} exam{mine.length === 1 ? "" : "s"} for your subjects in <span className="font-medium text-text">{fileName}</span>. Check the dates, then save.
       </p>
       {!mine.length && (
-        <p className="text-sm text-warn">
+        <p className="rounded-md border border-mark/40 bg-mark-soft px-4 py-3 text-sm">
           None of your subjects were found. Make sure each subject has its course code (e.g. CSE201), or check this is your programme&apos;s date sheet.
         </p>
       )}
-      <ul className="space-y-2">
+      {/* A hairline table: ticked rows carry a navy rule down their left edge. The padding keeps focus rings clear of the clipped corners. */}
+      {visible.length > 0 && <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
         {visible.map((r) => (
-          <li key={r.key} className={`rounded-xl border p-3 ${r.include ? "border-accent/30 bg-accent-soft/40" : "border-border"}`}>
+          <li key={r.key} className="relative p-3">
+            {r.include && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
             <div className="flex items-start gap-3">
               <input
                 type="checkbox"
-                className="mt-2.5"
+                className="mt-3 h-4 w-4 accent-[var(--accent)]"
                 aria-label="Include this exam"
                 checked={r.include}
                 disabled={r.subjectId == null}
@@ -318,7 +322,7 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
             {r.duplicate && <p className="mt-2 pl-7 text-xs text-muted">Already in your exams on {prettyDay(r.date)}.</p>}
             {r.clash && (
               <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs">
-                <span className="flex items-center gap-1 text-warn"><AlertTriangle size={13} /> You already have this exam on {prettyDay(r.clash.date)}.</span>
+                <span className="flex items-center gap-1 text-warn"><AlertTriangle size={13} className="shrink-0" /> You already have this exam on {prettyDay(r.clash.date)}.</span>
                 <Select aria-label="What to do" className="h-8 w-auto py-0 text-xs" value={r.action} onChange={(e) => patch(r.key, { action: e.target.value as ImportRow["action"] })}>
                   <option value="update">Update it to this date</option>
                   <option value="add">Add as a new exam</option>
@@ -327,9 +331,9 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
             )}
           </li>
         ))}
-      </ul>
+      </ul>}
       {skipped > 0 && (
-        <button type="button" className="text-sm text-muted underline-offset-2 hover:underline" onClick={() => setShowSkipped(!showSkipped)}>
+        <button type="button" className="rounded-md text-sm text-muted underline-offset-2 transition-colors duration-150 hover:text-text hover:underline" onClick={() => setShowSkipped(!showSkipped)}>
           {showSkipped ? "Hide" : "Show"} {skipped} exam{skipped === 1 ? "" : "s"} that didn&apos;t match your subjects
         </button>
       )}

@@ -4,20 +4,42 @@ import { format } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
 import Link from "next/link";
 import { AlertTriangle, BookOpen, Clock, Flame } from "lucide-react";
-import { useState } from "react";
-import dynamic from "next/dynamic";
+import { useEffect, useState } from "react";
 import { StatTile } from "@/components/progress/stat-tile";
-import { Card, Empty, List, PageHeader, Select } from "@/components/ui";
+import { Card, Empty, PageHeader, Section, Select } from "@/components/ui";
 import { addDay, fromDay, today } from "@/lib/dates";
 import { db, getSettings } from "@/lib/db";
-import { topicsInScope, useExamMode } from "@/lib/mode";
+import { topicsInScope } from "@/lib/mode";
 import { coverage, fmtMins } from "@/lib/stats";
 
-// recharts is large and only used here: load it after the stats so the page shows up first.
-const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-xl bg-surface-2" />;
-const CoverageChart = dynamic(() => import("@/components/progress/charts").then((m) => m.CoverageChart), { ssr: false, loading: chartSpace });
-const MinutesChart = dynamic(() => import("@/components/progress/charts").then((m) => m.MinutesChart), { ssr: false, loading: chartSpace });
-const QuizTrendChart = dynamic(() => import("@/components/progress/charts").then((m) => m.QuizTrendChart), { ssr: false, loading: chartSpace });
+// recharts is large and only used here: it loads alongside the stats, and placeholders hold its space until it's in.
+const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-md bg-surface-2" />;
+
+type Charts = typeof import("@/components/progress/charts");
+let loadedCharts: Charts | null = null; // kept for the session, so coming back to Progress draws the charts at once
+
+/**
+ * The charts module, loaded into state rather than through next/dynamic. dynamic() suspends, and React keeps a
+ * Suspense fallback up for at least 300 ms once it's shown, so the charts appeared late on every visit.
+ */
+function useCharts() {
+  const [charts, setCharts] = useState(loadedCharts);
+  useEffect(() => {
+    if (charts) return;
+    let live = true;
+    import("@/components/progress/charts").then(
+      (m) => {
+        loadedCharts = m;
+        if (live) setCharts(m);
+      },
+      () => {}, // offline without the chunk cached: the placeholders stay
+    );
+    return () => {
+      live = false;
+    };
+  }, [charts]);
+  return charts;
+}
 
 /**
  * Study days in a row, ending today (or yesterday if today has nothing yet).
@@ -37,28 +59,35 @@ function streak(days: Set<string>, offDays: number[], plannedDays: Set<string>) 
   return n;
 }
 
-const link = "font-medium text-text underline underline-offset-2";
+const link = "text-accent underline underline-offset-2";
 
 export default function ProgressPage() {
   const [quizSubject, setQuizSubject] = useState<number | "all">("all");
   const t = today();
+  const loaded = useCharts();
+  // Units and the exam mode come in the same query, so the page draws once with everything rather than again as each arrives.
   const data = useLiveQuery(async () => {
-    const [subjects, topics, allSessions, quizzes, settings] = await Promise.all([
+    const [subjects, topics, units, allSessions, quizzes, settings] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
+      db.units.toArray(),
       db.sessions.toArray(),
       db.quizzes.orderBy("createdAt").toArray(),
       getSettings(),
     ]);
     const sessions = allSessions.filter((s) => s.done);
     const plannedDays = new Set(allSessions.map((s) => s.date));
-    return { subjects, topics, sessions, quizzes, plannedDays, offDays: settings.offDays };
+    return { subjects, topics, units, sessions, quizzes, plannedDays, offDays: settings.offDays, mode: settings.examMode };
   });
-  const mode = useExamMode();
-  const units = useLiveQuery(() => db.units.toArray());
+  // Charts draw in the task after the stats, so the numbers show first instead of waiting on recharts.
+  const [statsShown, setStatsShown] = useState(false);
+  useEffect(() => {
+    if (data) setStatsShown(true);
+  }, [data]);
+  const charts = statsShown ? loaded : null;
 
-  if (!data || !units) return <PageHeader title="Progress" sub="Loading…" />;
-  const { subjects, topics, sessions, quizzes } = data;
+  if (!data) return <PageHeader title="Progress" sub="Loading…" />;
+  const { subjects, topics, units, sessions, quizzes, mode } = data;
 
   if (!subjects.length) {
     return (
@@ -105,13 +134,13 @@ export default function ProgressPage() {
   return (
     <>
       <PageHeader title="Progress" sub="How your preparation is going" />
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatTile tone="indigo" icon={<Clock />} label="Time studied" value={fmtMins(totalMins)} sub={`over ${studyDays.size} day${studyDays.size === 1 ? "" : "s"}`} />
-          <StatTile tone="emerald" icon={<Flame />} label="Day streak" value={days} sub={days === 1 ? "day in a row" : "days in a row"} />
-          <StatTile tone="violet" icon={<BookOpen />} label="Topics revised" value={`${revised}/${scoped.length}`} sub={`${scoped.filter((x) => x.status === "studied").length} studied, not yet revised`} />
+          <StatTile tone="accent" icon={<Clock />} label="Time studied" value={fmtMins(totalMins)} sub={`over ${studyDays.size} day${studyDays.size === 1 ? "" : "s"}`} />
+          <StatTile tone="good" icon={<Flame />} label="Day streak" value={days} sub={days === 1 ? "day in a row" : "days in a row"} />
+          <StatTile tone="accent" icon={<BookOpen />} label="Topics revised" value={`${revised}/${scoped.length}`} sub={`${scoped.filter((x) => x.status === "studied").length} studied, not yet revised`} />
           <StatTile
-            tone="amber"
+            tone="warn"
             icon={<AlertTriangle />}
             label="Weak topics"
             value={weak.length}
@@ -121,18 +150,18 @@ export default function ProgressPage() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card title="Syllabus coverage">
-            {scoped.length ? <CoverageChart data={coverageData} /> : <Empty title="No topics yet">Add {mode ? "this exam's" : "a"} syllabus to a subject.</Empty>}
-            <p className="mt-1 text-xs text-muted">
+            {scoped.length ? (charts ? <charts.CoverageChart data={coverageData} /> : chartSpace()) : <Empty title="No topics yet">Add {mode ? "this exam's" : "a"} syllabus to a subject.</Empty>}
+            <p className="mt-2 text-[13px] text-muted">
               {mode && `${mode === "mid-term" ? "Mid-sem" : "Major"} syllabus only. `}Studied topics count half. Revised topics count in full.
             </p>
             {scoped.length > 0 && withoutSyllabus.length > 0 && (
-              <p className="mt-1 text-xs text-muted">No {seasonName} syllabus yet: {withoutSyllabus.map((s) => s.name).join(", ")}</p>
+              <p className="mt-1 text-[13px] text-muted">No {seasonName} syllabus yet: {withoutSyllabus.map((s) => s.name).join(", ")}</p>
             )}
           </Card>
 
           <Card title="Study minutes, last 14 days">
             {recentMins ? (
-              <MinutesChart data={minutesData} />
+              charts ? <charts.MinutesChart data={minutesData} /> : chartSpace()
             ) : (
               <Empty title={totalMins ? "No study in the last 14 days" : "No study logged yet"}>Mark sessions done in the Planner.</Empty>
             )}
@@ -153,29 +182,39 @@ export default function ProgressPage() {
             </Select>
           }
         >
-          {quizData.length ? <QuizTrendChart data={quizData} /> : <Empty title="No quizzes taken">Take a practice quiz from a subject&apos;s Quiz tab.</Empty>}
+          {quizData.length ? (charts ? <charts.QuizTrendChart data={quizData} /> : chartSpace()) : <Empty title="No quizzes taken">Take a practice quiz from a subject&apos;s Quiz tab.</Empty>}
         </Card>
 
-        <Card title="Weak topics" action={weak.length > 0 && <span className="text-sm text-muted">{weak.length}</span>}>
+        <Section title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
           {weak.length ? (
-            <List className="border-y-0">
-              {weak.map((x) => {
-                const s = subjectName.get(x.subjectId);
-                return (
-                  <li key={x.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                    <Link href={`/subjects/${x.subjectId}`} className="flex min-w-0 items-center gap-2 hover:underline">
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s?.color }} />
-                      <span className="truncate">{x.title}</span>
-                    </Link>
-                    <span className="shrink-0 text-xs text-muted">{s?.name}, confidence {x.confidence}/5</span>
-                  </li>
-                );
-              })}
-            </List>
+            <div className="overflow-hidden rounded-lg border border-border">
+              <div className="flex items-center gap-3 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted">
+                <span aria-hidden className="w-[3px] shrink-0" />
+                <span className="flex-1">Topic</span>
+                <span className="hidden w-40 sm:block">Subject</span>
+                <span className="w-20 text-right">Confidence</span>
+              </div>
+              <ul className="divide-y divide-border">
+                {weak.map((x) => {
+                  const s = subjectName.get(x.subjectId);
+                  return (
+                    <li key={x.id} className="flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-surface-2">
+                      <span aria-hidden className="h-5 w-[3px] shrink-0 rounded-full" style={{ background: s?.color }} />
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/subjects/view?id=${x.subjectId}`} className="block truncate font-medium text-text hover:text-accent hover:underline">{x.title}</Link>
+                        <p className="truncate text-[13px] text-muted sm:hidden">{s?.name}</p>
+                      </div>
+                      <span className="hidden w-40 truncate text-[13px] text-muted sm:block">{s?.name}</span>
+                      <span className="w-20 shrink-0 text-right text-[13px] tabular-nums text-muted">{x.confidence}/5</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : (
             <p className="text-sm text-muted">No weak topics flagged. Low confidence or quiz scores under 60% show up here.</p>
           )}
-        </Card>
+        </Section>
       </div>
     </>
   );

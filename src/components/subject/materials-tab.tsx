@@ -67,6 +67,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
   return (
     <div className="space-y-8">
       <Card>
+        {/* The type is chosen first; uploads and pastes are filed under it. */}
         <div className="flex flex-wrap items-end gap-2">
           <Field label="Type">
             <Select value={kind} onChange={(e) => setKind(e.target.value as MaterialKind)} className="w-48">
@@ -78,8 +79,11 @@ export function MaterialsTab({ subject, mode }: TabProps) {
               <ExamSelect value={exam} onChange={setExam} className="w-36" />
             </Field>
           )}
-          <label className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-medium text-accent-ink hover:opacity-90 focus-within:outline-2 focus-within:outline-text">
-            <Upload size={16} /> Upload files
+        </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+          <label className="flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[#cfd4dc] px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+            <Upload size={18} className="shrink-0 text-muted" aria-hidden />
+            <span className="font-medium text-text">Upload files</span>
             <input
               type="file"
               multiple
@@ -91,21 +95,22 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           </label>
           <Button
             variant="secondary"
+            className="sm:h-auto sm:px-5"
             onClick={() => { setPaste((p) => p ?? { name: "", kind, exam, text: "" }); setPasteOpen(true); }}
           >
             <Plus size={16} /> Paste text
           </Button>
         </div>
-        <p className="mt-3 max-w-prose text-xs leading-relaxed text-muted">
+        <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-muted">
           PDFs are read in your browser and only the text is kept. Scanned PDFs and photos of notes are transcribed by AI. Upload past papers as
           &ldquo;Previous year paper&rdquo; to use them for predictions.
         </p>
-        {busy && <p className="mt-2 text-sm font-medium">{busy}</p>}
+        {busy && <p className="mt-2 text-sm font-medium text-accent">{busy}</p>}
         <div className="mt-2"><AiErrorBox error={error} /></div>
       </Card>
 
       {materials.length === 0 ? (
-        <Empty icon={<FileText />} title="No material yet">
+        <Empty icon={<FileText size={20} />} title="No material yet">
           Notes, slides and past papers from your Google Drive folders appear here automatically after a sync (Settings → Google Drive). You can also upload your own.
           Every AI tool for this subject uses them.
         </Empty>
@@ -115,30 +120,29 @@ export function MaterialsTab({ subject, mode }: TabProps) {
             {materials.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 sm:flex-nowrap">
                 {m.source ? (
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent" title="Synced from Google Drive">
-                    <Cloud size={16} />
-                  </span>
+                  <span className="flex w-4 shrink-0 text-muted" title="Synced from Google Drive"><Cloud size={16} /></span>
                 ) : (
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center"><FileText size={18} className="text-muted" /></span>
+                  <span className="flex w-4 shrink-0 text-muted" aria-hidden><FileText size={16} /></span>
                 )}
                 {/* On phones the name gets the whole first line; the controls wrap underneath. */}
-                <div className="min-w-0 flex-1 basis-[calc(100%-2.75rem)] sm:basis-auto">
+                <div className="min-w-0 flex-1 basis-[calc(100%-1.75rem)] sm:basis-auto">
                   <p className="truncate text-[15px] font-medium">{m.fileName}</p>
-                  <p className="flex flex-wrap gap-x-3 text-xs text-muted">
-                    {m.source && <span className="truncate">Drive{m.source.path?.length ? ` · ${m.source.path.at(-1)}` : ""}{m.source.ocr ? " · read by AI" : ""}</span>}
+                  <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
+                    {m.source && <span className="truncate">Drive{m.source.path?.length ? ` / ${m.source.path.at(-1)}` : ""}</span>}
+                    {m.source?.ocr && <span>Read by AI</span>}
                     <span>{m.text.length.toLocaleString()} characters</span>
                     <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                   </p>
                 </div>
                 {/* Type (and, for past papers, which exam) can be fixed after upload instead of deleting and re-uploading. */}
-                <div className="ml-11 flex flex-wrap items-center gap-1 sm:ml-0 sm:shrink-0 sm:flex-nowrap">
+                <div className="ml-7 flex flex-wrap items-center gap-1 sm:ml-0 sm:shrink-0 sm:flex-nowrap">
                   <Select
                     value={m.kind}
                     aria-label={`Type of ${m.fileName}`}
                     className="h-8 w-auto py-0 text-xs"
                     onChange={async (e) => {
                       const next = e.target.value as MaterialKind;
-                      await db.materials.update(m.id!, next === "pyq" && !m.pyqExam ? { kind: next, pyqExam: mode } : { kind: next });
+                      await db.materials.update(m.id, next === "pyq" && !m.pyqExam ? { kind: next, pyqExam: mode } : { kind: next });
                       if (next === "pyq") analyseSubject(subjectId);
                     }}
                   >
@@ -158,7 +162,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Open in Google Drive"
-                    className="inline-flex h-8 items-center justify-center rounded-lg px-2.5 text-muted hover:bg-surface-2 hover:text-text"
+                    className="inline-flex h-8 items-center justify-center rounded-md px-2.5 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
                   >
                     <ExternalLink size={14} />
                   </a>

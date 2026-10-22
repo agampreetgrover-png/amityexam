@@ -73,7 +73,8 @@ export default function TodayPage() {
   const shown = modeExams.find((e) => e.id === pickedExam) ?? modeExams[0];
   const shownSubject = subject(shown?.subjectId);
   const shownDays = shown ? daysBetween(t, shown.date) : 0;
-  const shownCoverage = shown ? coverage(examSyllabus(shown, topics, units, mode)) : 0;
+  const examCoverage = (e: (typeof exams)[number]) => coverage(examSyllabus(e, topics, units, mode));
+  const shownCoverage = shown ? examCoverage(shown) : 0;
 
   const sessionSubject = (s: StudySession) => subject(topic(s.topicId)?.subjectId ?? exams.find((e) => e.id === s.examId)?.subjectId);
   const label = (s: StudySession) =>
@@ -101,30 +102,64 @@ export default function TodayPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <header className="flex items-start justify-between gap-4">
+    <div className="space-y-10">
+      <header className="flex items-start justify-between gap-4 border-b border-border pb-5">
         <div className="min-w-0">
-          <h1 className="text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">
+          <p className="text-sm text-muted">{format(fromDay(t), "EEEE, d MMMM")}</p>
+          <h1 className="mt-1 font-display text-[28px] leading-tight md:text-[32px]">
             {mode === "mid-term" ? "Mid-sem Dashboard" : mode === "end-term" ? "Major Exam Dashboard" : "Study Dashboard"}
           </h1>
-          <p className="mt-1 text-[15px] text-muted">{format(fromDay(t), "EEEE, d MMMM")}</p>
           <ModePill className="mt-3 md:hidden" />
         </div>
         <div className="-mr-2 flex shrink-0 md:hidden">
-          <button type="button" onClick={openCommandPalette} className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Search">
+          <button type="button" onClick={openCommandPalette} className="rounded-md p-2 text-muted hover:bg-surface-2 hover:text-text" aria-label="Search">
             <Search size={20} />
           </button>
-          <Link href="/progress" className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Progress"><BarChart3 size={20} /></Link>
-          <Link href="/settings" className="rounded-lg p-2 text-muted hover:bg-surface-2" aria-label="Settings"><SettingsIcon size={20} /></Link>
+          <Link href="/progress" className="rounded-md p-2 text-muted hover:bg-surface-2 hover:text-text" aria-label="Progress"><BarChart3 size={20} /></Link>
+          <Link href="/settings" className="rounded-md p-2 text-muted hover:bg-surface-2 hover:text-text" aria-label="Settings"><SettingsIcon size={20} /></Link>
         </div>
       </header>
 
-      {/* The countdown. Chips switch which exam it counts down to. */}
-      <section aria-label="Upcoming exams" className="rounded-2xl border border-border bg-surface p-5 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:p-7">
+      {/* The date sheet: the chosen exam counted down in large figures, every upcoming exam of this mode listed beneath.
+          Picking a row switches which exam the countdown follows. */}
+      <section aria-labelledby="exams-heading">
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <h2 id="exams-heading" className="text-[15px] font-semibold">Upcoming exams</h2>
+          <Link href="/exams" className="text-sm font-medium text-accent hover:underline">All exams</Link>
+        </div>
         {shown ? (
-          <>
+          <div className="overflow-hidden rounded-lg border border-border">
+            <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-[auto_1fr] sm:items-end sm:p-6">
+              <div key={shown.id} className="count-in flex items-end gap-3">
+                <span className="numeral text-[88px] md:text-[104px]">
+                  <span className={cn(shownDays <= 3 && "mark")}>{shownDays}</span>
+                </span>
+                <span className="pb-1.5 text-sm text-muted">{daysWord(shownDays)}</span>
+              </div>
+              <div className="min-w-0 sm:pb-1.5">
+                <p className="flex items-center gap-2 text-xl font-semibold leading-snug">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: shownSubject?.color }} />
+                  <span className="min-w-0">{shownSubject?.name ?? "Exam"}</span>
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {examTypeLabel(shown.type)}, {prettyDay(shown.date)}{shown.time && ` at ${shown.time}`}{shown.venue && `, ${shown.venue}`}
+                </p>
+                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+                  <div className="flex min-w-48 flex-1 items-center gap-3">
+                    <Progress value={shownCoverage} className="max-w-56" />
+                    <span className="whitespace-nowrap text-[13px] text-muted"><strong className="font-semibold text-text">{shownCoverage}%</strong> of syllabus covered</span>
+                  </div>
+                  <Link
+                    href={`/exams/view?id=${shown.id}`}
+                    className="inline-flex h-8 items-center gap-1 rounded-md border border-border px-3 text-[13px] font-medium transition-colors hover:bg-surface-2"
+                  >
+                    Exam kit <ChevronRight size={15} className="-mr-1 text-muted" />
+                  </Link>
+                </div>
+              </div>
+            </div>
             {modeExams.length > 1 && (
-              <div role="tablist" aria-label="Choose an exam" className="-mx-1 mb-6 flex gap-2 overflow-x-auto px-1 pb-1">
+              <div role="tablist" aria-label="Choose an exam" className="divide-y divide-border border-t border-border">
                 {modeExams.slice(0, 8).map((e) => {
                   const s = subject(e.subjectId);
                   const d = daysBetween(t, e.date);
@@ -137,50 +172,33 @@ export default function TodayPage() {
                       aria-selected={on}
                       onClick={() => setPickedExam(e.id!)}
                       className={cn(
-                        "flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] transition-colors",
-                        on ? "border-accent bg-accent-soft font-semibold text-accent" : "border-border text-text/80 hover:border-accent/40 hover:text-text",
+                        "grid w-full grid-cols-[3rem_1fr_auto] items-center gap-x-4 border-l-2 px-5 py-2.5 text-left transition-colors sm:grid-cols-[3rem_1fr_9rem_4rem] sm:px-6",
+                        on ? "border-accent bg-accent-soft" : "border-transparent hover:bg-surface-2",
                       )}
                     >
-                      <span className="h-2 w-2 rounded-full" style={{ background: s?.color }} />
-                      <span className="max-w-40 truncate">{s?.code || s?.name}</span>
-                      <span className={cn("tabular-nums", on ? "text-accent/80" : "text-muted")}>{d}d</span>
+                      <span className="numeral text-[26px]"><span className={cn(d <= 3 && "mark")}>{d}</span></span>
+                      <span className="min-w-0">
+                        <span className={cn("flex items-center gap-2 truncate text-sm", on ? "font-semibold text-accent" : "font-medium")}>
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s?.color }} />
+                          <span className="truncate">{s?.name}</span>
+                        </span>
+                        <span className="block truncate text-[13px] text-muted">{s?.code ? `${s.code}, ` : ""}{examTypeLabel(e.type)}</span>
+                      </span>
+                      <span className="hidden text-[13px] tabular-nums text-muted sm:block">{prettyDay(e.date)}{e.time && `, ${e.time}`}</span>
+                      <span className="text-right text-[13px] tabular-nums text-muted">{examCoverage(e)}%</span>
                     </button>
                   );
                 })}
               </div>
             )}
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
-              <div key={shown.id} className="count-in flex shrink-0 items-end gap-3">
-                <span className={cn("numeral text-[96px] md:text-[120px]", shownDays <= 3 && "mark")}>{shownDays}</span>
-                <span className="pb-2 text-[15px] text-muted">{daysWord(shownDays)}</span>
-              </div>
-              <div className="min-w-0 flex-1 sm:pb-2">
-                <p className="text-xl font-bold leading-snug tracking-tight md:text-2xl">{shownSubject?.name ?? "Exam"}</p>
-                <p className="mt-1 text-sm text-muted">
-                  {examTypeLabel(shown.type)}, {prettyDay(shown.date)}{shown.time && ` at ${shown.time}`}{shown.venue && `, ${shown.venue}`}
-                </p>
-                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-                  <div className="flex min-w-48 flex-1 items-center gap-3">
-                    <Progress value={shownCoverage} className="max-w-56" />
-                    <span className="whitespace-nowrap text-[13px] text-muted"><strong className="font-semibold text-text">{shownCoverage}%</strong> covered</span>
-                  </div>
-                  <Link
-                    href={`/exams/view?id=${shown.id}`}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-border px-3 text-sm font-medium hover:bg-surface-2"
-                  >
-                    Exam kit <ChevronRight size={16} className="-mr-1 text-muted" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </>
+          </div>
         ) : (
-          <div>
-            <p className="text-xl font-bold tracking-tight">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams coming up</p>
-            <p className="mt-1 text-[15px] text-muted">
+          <div className="rounded-lg border border-dashed border-[#cfd4dc] px-5 py-6">
+            <p className="font-semibold">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams coming up</p>
+            <p className="mt-1 text-sm text-muted">
               {examCount ? "Nothing upcoming in this exam mode. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
             </p>
-            <Link href="/exams" className="mt-4 inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-ink hover:opacity-90">
+            <Link href="/exams" className="mt-4 inline-flex h-9 items-center rounded-md bg-accent px-3.5 text-sm font-medium text-accent-ink hover:bg-[#15306a]">
               Add exams
             </Link>
           </div>
@@ -188,16 +206,16 @@ export default function TodayPage() {
       </section>
 
       {onboarding && (
-        <section aria-label="Get set up" className="rounded-2xl border border-dashed border-border px-5 py-4">
-          <p className="mb-3 text-[15px] font-semibold">Get set up</p>
-          <ol className="grid gap-2 sm:grid-cols-2">
+        <section aria-label="Get set up" className="rounded-lg border border-border bg-surface-2 px-5 py-4">
+          <p className="mb-2 text-[15px] font-semibold">Get set up</p>
+          <ol className="grid gap-1 sm:grid-cols-2">
             {steps.map((s, i) => (
               <li key={i}>
-                <Link href={s.href} className="flex items-center gap-3 rounded-lg px-1 py-1.5 text-[15px] hover:bg-surface-2/70">
+                <Link href={s.href} className="flex items-center gap-3 rounded-md px-1.5 py-1.5 text-sm hover:bg-surface-3/70">
                   <span
                     className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums",
-                      s.done ? "bg-good text-white" : "border border-border text-muted",
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums",
+                      s.done ? "bg-good text-white" : "border border-[#b9bfca] text-muted",
                     )}
                   >
                     {s.done ? "✓" : i + 1}
@@ -212,8 +230,8 @@ export default function TodayPage() {
 
       {/* Today's plan: tick to finish, Start to run the focus timer. */}
       <section aria-labelledby="plan-heading">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
-          <h2 id="plan-heading" className="text-lg font-semibold">Today&apos;s plan</h2>
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 id="plan-heading" className="text-[15px] font-semibold">Today&apos;s plan</h2>
           {todays.length > 0 && (
             <p className="text-sm tabular-nums text-muted">
               <strong className="font-semibold text-text">{todaysDone} of {todays.length}</strong> done, {fmtMins(doneMins)} of {fmtMins(planned)}
@@ -223,27 +241,27 @@ export default function TodayPage() {
         {todays.length > 0 && (
           <div className="mb-3 flex gap-1" aria-hidden>
             {todays.map((s) => (
-              <span key={s.id} className={cn("h-1.5 flex-1 rounded-full transition-colors duration-300", s.done ? "bg-accent" : "bg-border")} />
+              <span key={s.id} className={cn("h-1 flex-1 rounded-full transition-colors duration-300", s.done ? "bg-accent" : "bg-surface-3")} />
             ))}
           </div>
         )}
         {todays.length === 0 ? (
-          <p className="rounded-2xl border border-border bg-surface px-5 py-5 text-[15px] text-muted">
+          <p className="rounded-lg border border-border px-5 py-4 text-sm text-muted">
             {sessions.length ? "Nothing scheduled today. Rest, or get ahead on revision." : <>No plan yet. <Link href="/planner" className="font-medium text-accent underline underline-offset-2">Open the planner</Link> to build one.</>}
           </p>
         ) : (
-          <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_3px_rgb(17_24_39/0.04)]">
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
             {todays.map((s) => {
               const sub = sessionSubject(s);
               return (
-                <li key={s.id} className={cn("flex items-center gap-4 px-4 py-3.5 transition-colors sm:px-5", s.done && "bg-surface-2/50")}>
+                <li key={s.id} className={cn("flex items-center gap-4 px-4 py-3 transition-colors sm:px-5", s.done && "bg-surface-2")}>
                   <Tick done={s.done} label={s.done ? `Mark ${label(s)} not done` : `Mark ${label(s)} done`} onClick={() => toggle(s)} />
                   <div className="min-w-0 flex-1">
-                    <p className={cn("truncate text-[15px] transition-colors", s.done ? "text-muted line-through" : "font-semibold")}>{label(s)}</p>
+                    <p className={cn("truncate text-[15px]", s.done ? "text-muted line-through" : "font-medium")}>{label(s)}</p>
                     <p className="flex items-center gap-1.5 truncate text-[13px] text-muted">
                       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: sub?.color }} />
                       <span className="truncate">{sub?.name}</span>
-                      {s.kind === "revision" && <span className="shrink-0 text-warn">revision</span>}
+                      {s.kind === "revision" && <span className="shrink-0 rounded bg-mark-soft px-1.5 text-[11px] font-medium text-warn">revision</span>}
                     </p>
                   </div>
                   <span className="text-[13px] tabular-nums text-muted">{fmtMins(s.plannedMins)}</span>
@@ -268,8 +286,8 @@ export default function TodayPage() {
       {(missed > 0 || topicsDue > 0) && (
         <div className="grid gap-3 sm:grid-cols-2">
           {missed > 0 && (
-            <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-mark-soft px-4 py-3">
-              <p className="min-w-0 flex-1 text-[15px]">
+            <div className="flex items-center gap-3 rounded-lg border border-mark/40 bg-mark-soft px-4 py-3">
+              <p className="min-w-0 flex-1 text-sm">
                 <strong className="font-semibold">{missed} missed session{missed > 1 ? "s" : ""}</strong>
                 <span className="block text-[13px] text-muted">Spread {missed > 1 ? "them" : "it"} over the days ahead</span>
               </p>
@@ -279,13 +297,13 @@ export default function TodayPage() {
             </div>
           )}
           {topicsDue > 0 && (
-            <Link href="/revise" className="group flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 hover:border-accent/40">
-              <RotateCcw size={18} className="shrink-0 text-accent" />
-              <p className="min-w-0 flex-1 text-[15px]">
+            <Link href="/revise" className="group flex items-center gap-3 rounded-lg border border-border px-4 py-3 transition-colors hover:bg-surface-2">
+              <RotateCcw size={17} className="shrink-0 text-muted" />
+              <p className="min-w-0 flex-1 text-sm">
                 <strong className="font-semibold">{topicsDue} topic{topicsDue === 1 ? "" : "s"} to revise</strong>
                 <span className="block text-[13px] text-muted">Spaced revision keeps them fresh</span>
               </p>
-              <span className="text-sm font-medium text-accent group-hover:underline group-hover:underline-offset-2">Start</span>
+              <span className="text-sm font-medium text-accent group-hover:underline">Start</span>
             </Link>
           )}
         </div>

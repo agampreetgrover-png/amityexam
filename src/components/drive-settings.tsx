@@ -7,7 +7,7 @@ import { db, getSettings } from "@/lib/db";
 import { runDriveSync, useDriveSync } from "@/lib/drive/client";
 import { DEFAULT_DRIVE_SOURCES, folderIdFromLink } from "@/lib/drive/sources";
 import type { Settings } from "@/lib/types";
-import { Button, Field, Input, Modal, Section, Select } from "./ui";
+import { Button, Field, Input, Modal, Section, Select, cn } from "./ui";
 
 const folderUrl = (id: string) => `https://drive.google.com/drive/folders/${id}`;
 
@@ -58,25 +58,25 @@ export function DriveSettings() {
   };
 
   return (
-    <Section title="Google Drive">
-      <p className="mb-4 max-w-prose text-sm text-muted">
+    <Section title="Google Drive" className="py-8 first:pt-0 last:pb-0">
+      <p className="-mt-1 mb-5 max-w-prose text-sm text-muted">
         Notes, slides and past papers for your subjects are pulled from these shared folders. New files are fetched when you open the app.
         Past papers are tagged mid-sem or major from their names, and scanned ones are read by Gemini, up to 10 per open to save your AI quota.
       </p>
 
-      <ul className="mb-3 divide-y divide-border rounded-xl border border-border bg-surface">
+      <ul className="mb-4 max-w-xl divide-y divide-border border-y border-border">
         {sources.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 px-3 py-2.5">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Cloud size={16} /></span>
+          <li key={s.id} className="flex items-center gap-3 py-2.5">
+            <Cloud size={16} className="shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.label}</span>
-            <a href={folderUrl(s.id)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${s.label} in Drive`} className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-text">
+            <a href={folderUrl(s.id)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${s.label} in Drive`} className="rounded-md p-2 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-accent">
               <ExternalLink size={14} />
             </a>
             <button
               type="button"
               aria-label={`Remove ${s.label}`}
               onClick={() => confirm(`Stop syncing "${s.label}"? Files already imported stay.`) && save({ driveSources: sources.filter((x) => x.id !== s.id) })}
-              className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-bad"
+              className="-mr-2 rounded-md p-2 text-muted transition-colors duration-150 hover:bg-bad/10 hover:text-bad"
             >
               <X size={14} />
             </button>
@@ -88,9 +88,9 @@ export function DriveSettings() {
         <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste another shared Drive folder link" aria-label="Drive folder link" />
         <Button type="submit" variant="secondary" disabled={!link.trim() || checking}>{checking ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add</Button>
       </form>
-      {linkError && <p className="text-sm text-bad">{linkError}</p>}
+      {linkError && <p className="mt-1 text-sm text-bad">{linkError}</p>}
       {settings.driveSources && (
-        <button type="button" className="text-xs text-muted underline-offset-2 hover:underline" onClick={() => save({ driveSources: undefined })}>
+        <button type="button" className="mt-1.5 text-xs text-muted underline-offset-2 transition-colors duration-150 hover:text-text hover:underline" onClick={() => save({ driveSources: undefined })}>
           Reset to the default folders
         </button>
       )}
@@ -100,18 +100,38 @@ export function DriveSettings() {
           {sync.running ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {sync.running ? "Syncing…" : "Sync now"}
         </Button>
         <Button variant="secondary" onClick={() => setLinking(true)}><Link2 size={16} /> Link a folder to a subject</Button>
-        <label className="ml-1 flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={settings.driveSync !== false} onChange={(e) => save({ driveSync: e.target.checked })} />
+        <label className="ml-1 flex cursor-pointer items-center gap-2 text-sm text-muted transition-colors duration-150 hover:text-text">
+          <input type="checkbox" className="h-4 w-4 accent-accent" checked={settings.driveSync !== false} onChange={(e) => save({ driveSync: e.target.checked })} />
           Sync when the app opens
         </label>
       </div>
 
-      <div className="mt-3 space-y-1 text-sm" role="status">
-        {sync.message && <p className={sync.running ? "truncate font-medium" : ""}>{sync.message}</p>}
-        <p className="text-muted">
-          {counts?.imported ?? 0} files imported{counts?.skipped ? ` · ${counts.skipped} skipped (books, labs, unsupported or too large)` : ""}
-          {settings.lastDriveSync ? ` · last synced ${new Date(settings.lastDriveSync).toLocaleString()}` : ""}
-        </p>
+      <div className="mt-5 space-y-2 text-sm" role="status">
+        {sync.message && (
+          <p className={cn("flex items-center gap-2", sync.running && "font-medium")}>
+            {sync.running && <Loader2 size={14} className="shrink-0 animate-spin text-muted" aria-hidden />}
+            <span className={cn("min-w-0", sync.running && "truncate")}>{sync.message}</span>
+          </p>
+        )}
+        {/* Sync status as a small definition list: what came in, what was passed over, and when. */}
+        <dl className="max-w-xl divide-y divide-border border-y border-border">
+          <div className="flex items-baseline justify-between gap-3 py-2">
+            <dt className="text-muted">Files imported</dt>
+            <dd className="font-medium tabular-nums">{counts?.imported ?? 0}</dd>
+          </div>
+          {!!counts?.skipped && (
+            <div className="flex items-baseline justify-between gap-3 py-2">
+              <dt className="min-w-0 text-muted">Skipped <span className="text-xs">(books, labs, unsupported or too large)</span></dt>
+              <dd className="font-medium tabular-nums">{counts.skipped}</dd>
+            </div>
+          )}
+          {settings.lastDriveSync && (
+            <div className="flex items-baseline justify-between gap-3 py-2">
+              <dt className="text-muted">Last synced</dt>
+              <dd className="text-right tabular-nums">{new Date(settings.lastDriveSync).toLocaleString()}</dd>
+            </div>
+          )}
+        </dl>
         {sync.remaining > 0 && !sync.running && <p className="text-warn">{sync.remaining} more files found. They&apos;ll come in on the next sync.</p>}
         {sync.errors.length > 0 && (
           <div>
@@ -165,7 +185,7 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     if (!subject || !folderId || saving) return;
     setSaving(true);
-    await db.subjects.update(subject.id!, { driveFolderIds: [...linked, folderId] });
+    await db.subjects.update(subject.id, { driveFolderIds: [...linked, folderId] });
     onDone();
     runDriveSync();
   };
@@ -196,12 +216,12 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
       </Field>
       {linked.size > 0 && (
         <div className="text-sm">
-          <p className="mb-1 font-medium">Already linked</p>
-          <ul className="space-y-1">
+          <p className="mb-2 text-[13px] font-medium text-muted">Already linked</p>
+          <ul className="divide-y divide-border border-y border-border">
             {[...linked].map((id) => (
-              <li key={id} className="flex items-center justify-between gap-2 text-muted">
+              <li key={id} className="flex items-center justify-between gap-2 py-2">
                 <span className="truncate">{(groups !== "error" && groups?.flatMap((g) => g.folders).find((f) => f.id === id)?.name) || id}</span>
-                <button type="button" className="text-xs hover:text-bad" onClick={() => db.subjects.update(subject!.id!, { driveFolderIds: [...linked].filter((x) => x !== id) })}>
+                <button type="button" className="-mr-2 shrink-0 rounded-md px-2 py-1 text-xs text-muted transition-colors duration-150 hover:bg-bad/10 hover:text-bad" onClick={() => db.subjects.update(subject!.id, { driveFolderIds: [...linked].filter((x) => x !== id) })}>
                   Unlink
                 </button>
               </li>

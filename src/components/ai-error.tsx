@@ -16,9 +16,9 @@ export function AiErrorBox({ error }: { error: unknown }) {
   }, [error, retry]);
   if (!error) return null;
   return (
-    <div role="alert" className="flex items-start gap-2 border-l-2 border-bad py-1 pl-3 text-sm text-bad">
-      <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-      <span className="whitespace-pre-line">
+    <div role="alert" className="flex items-start gap-2.5 rounded-md border border-bad/25 bg-bad/5 px-4 py-3 text-sm leading-relaxed text-bad">
+      <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+      <span className="min-w-0 whitespace-pre-line break-words tabular-nums">
         {error instanceof Error ? error.message : String(error)}
         {left > 0 && ` You can retry in ${left}s.`}
       </span>

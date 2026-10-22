@@ -32,7 +32,7 @@ export function topicMinutes(t: Topic): number {
 }
 
 /** Topics an exam covers: explicit list, or every topic of the subject. */
-export function examTopics(exam: Exam, topics: Topic[]): Topic[] {
+function examTopics(exam: Exam, topics: Topic[]): Topic[] {
   if (exam.topicIds.length) {
     const ids = new Set(exam.topicIds);
     return topics.filter((t) => t.id != null && ids.has(t.id));

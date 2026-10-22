@@ -3,7 +3,7 @@ import { AiProviderError, redact } from "./providers";
 export const NO_KEYS = "No AI key set. Add GEMINI_API_KEY or GROQ_API_KEY to .env.local and restart.";
 
 /** Thrown by readJsonBody; carries the HTTP status to reply with. */
-export class BadRequest extends Error {
+class BadRequest extends Error {
   constructor(message: string, public status: number) {
     super(message);
   }

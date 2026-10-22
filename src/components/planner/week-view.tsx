@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { Button, Card, cn } from "@/components/ui";
+import { Button, cn } from "@/components/ui";
 import { addDay, prettyDay, today, weekday } from "@/lib/dates";
 import { fmtMins } from "@/lib/stats";
 import type { Exam, StudySession } from "@/lib/types";
@@ -22,36 +22,48 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
   const t = today();
 
   return (
-    <Card
-      title={`${prettyDay(days[0])} to ${prettyDay(days[6])}`}
-      action={
+    <section>
+      <div className="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h2 className="text-[15px] font-semibold tabular-nums">{prettyDay(days[0])} to {prettyDay(days[6])}</h2>
         <div className="flex gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setStart(addDay(start, -7))} aria-label="Previous week"><ChevronLeft size={16} /></Button>
-          <Button variant="ghost" size="sm" onClick={() => setStart(weekStart(today()))}>This week</Button>
-          <Button variant="ghost" size="sm" onClick={() => setStart(addDay(start, 7))} aria-label="Next week"><ChevronRight size={16} /></Button>
+          <Button variant="secondary" size="sm" onClick={() => setStart(addDay(start, -7))} aria-label="Previous week"><ChevronLeft size={16} /></Button>
+          <Button variant="secondary" size="sm" onClick={() => setStart(weekStart(today()))}>This week</Button>
+          <Button variant="secondary" size="sm" onClick={() => setStart(addDay(start, 7))} aria-label="Next week"><ChevronRight size={16} /></Button>
         </div>
-      }
-    >
-      <div className="-mx-4 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6">
-        <div className="grid min-w-[840px] grid-cols-7 gap-px overflow-hidden rounded-xl border border-border bg-border">
+      </div>
+      {/* Seven columns don't fit a phone, so the grid scrolls sideways inside its own box. */}
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="grid min-w-[840px] grid-cols-7 divide-x divide-border">
           {days.map((d) => {
             const list = sessions.filter((s) => s.date === d);
             const total = list.reduce((a, s) => a + s.plannedMins, 0);
             const examsToday = exams.filter((e) => e.date === d);
             const isToday = d === t;
             return (
-              <div key={d} className={cn("min-h-40 p-2.5", isToday ? "bg-accent-soft/60" : "bg-surface")}>
-                <p className={cn("text-[13px] font-semibold", isToday && "text-accent")}>
-                  <span className={cn(isToday && "mark")}>{prettyDay(d)}</span>
-                </p>
-                <p className={cn("mb-2.5 text-xs tabular-nums", total > dailyMinutes ? "text-bad" : "text-muted")}>
-                  {fmtMins(total)} of {fmtMins(dailyMinutes)}
-                </p>
-                <ul className="space-y-1.5">
+              <div key={d} className="flex min-h-44 flex-col">
+                {/* Header strip; today's column carries a navy rule along its top. */}
+                <div
+                  className={cn(
+                    "border-b border-border bg-surface-2 px-2.5 pb-2 pt-2",
+                    isToday && "border-t-2 border-t-accent pt-1.5",
+                  )}
+                  aria-current={isToday ? "date" : undefined}
+                >
+                  <p className={cn("text-[13px]", isToday ? "font-semibold text-accent" : "font-medium text-text")}>
+                    {prettyDay(d)}
+                  </p>
+                  <p className={cn("mt-0.5 text-xs tabular-nums", total > dailyMinutes ? "font-medium text-bad" : "text-muted")}>
+                    {fmtMins(total)} of {fmtMins(dailyMinutes)}
+                  </p>
+                </div>
+                <ul className="space-y-1.5 p-2">
                   {examsToday.map((e) => (
-                    <li key={`e${e.id}`} className="rounded-lg border border-accent/25 bg-accent-soft px-1.5 py-1 text-xs font-semibold text-accent">
+                    <li
+                      key={`e${e.id}`}
+                      className="rounded border border-accent px-1.5 py-1 text-xs font-semibold leading-snug text-accent"
+                    >
                       {lookup.subjects.get(e.subjectId)?.name ?? "Exam"} exam
-                      {e.time && <span className="block font-normal text-muted">{e.time}</span>}
+                      {e.time && <span className="block font-normal tabular-nums">{e.time}</span>}
                     </li>
                   ))}
                   {list.map((s) => {
@@ -59,12 +71,15 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
                     return (
                       <li
                         key={s.id}
-                        className={cn("rounded-md border-l-[3px] bg-surface-2/70 py-1 pl-2 pr-1 text-xs leading-snug", s.done && "text-muted line-through")}
+                        className={cn(
+                          "border-l-2 py-0.5 pl-2 text-xs leading-snug",
+                          s.done && "text-muted line-through decoration-muted/60 opacity-70",
+                        )}
                         style={{ borderColor: subject?.color ?? "var(--muted)" }}
                         title={title}
                       >
                         <span className="line-clamp-2">{title}</span>
-                        <span className="text-muted">{fmtMins(s.plannedMins)}</span>
+                        <span className="tabular-nums text-muted">{fmtMins(s.plannedMins)}</span>
                       </li>
                     );
                   })}
@@ -74,6 +89,6 @@ export function WeekView({ sessions, exams, lookup, dailyMinutes }: {
           })}
         </div>
       </div>
-    </Card>
+    </section>
   );
 }

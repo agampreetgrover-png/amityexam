@@ -15,44 +15,49 @@ function SessionRow({ s, lookup, onStart }: { s: StudySession; lookup: Lookup; o
   const [mins, setMins] = useState(String(s.actualMins || s.plannedMins));
 
   return (
-    <li className={cn("px-4 py-4 sm:px-6", s.done && "bg-surface-2/50")}>
-      <div className="flex items-center gap-3 sm:gap-4">
-        <div>
-          <Tick
-            done={s.done}
-            label={s.done ? "Undo, mark not done" : "Mark done"}
-            onClick={() => {
-              if (s.done) undoSession(s);
-              else { setMins(String(s.actualMins || s.plannedMins)); setFinishing(true); }
-            }}
-          />
-        </div>
-        <span className="h-10 w-1 shrink-0 rounded-full" style={{ background: subject?.color ?? "var(--muted)" }} />
+    <li className="py-3 pl-1 pr-1 transition-colors duration-150 hover:bg-surface-2 sm:pl-2 sm:pr-2">
+      <div className="flex items-center gap-3">
+        <Tick
+          done={s.done}
+          label={s.done ? "Undo, mark not done" : "Mark done"}
+          onClick={() => {
+            if (s.done) undoSession(s);
+            else { setMins(String(s.actualMins || s.plannedMins)); setFinishing(true); }
+          }}
+        />
+        {/* Subject colour as a thin rule at the start of the row. */}
+        <span
+          aria-hidden
+          className={cn("h-9 w-[3px] shrink-0 rounded-sm", s.done && "opacity-40")}
+          style={{ background: subject?.color ?? "var(--muted)" }}
+        />
         <div className="min-w-0 flex-1">
-          <p className={cn("text-[15px] leading-snug", s.done ? "text-muted line-through" : "font-semibold")}>{title}</p>
+          <p className={cn("truncate text-[15px] leading-snug", s.done ? "text-muted line-through decoration-muted/60" : "font-medium")}>{title}</p>
           <p className="mt-0.5 flex min-w-0 items-center gap-2 text-[13px] text-muted">
             <span className="truncate">{sub}</span>
-            {s.kind === "revision" && <span className="shrink-0 rounded-md bg-mark-soft px-1.5 py-px text-[11px] font-semibold text-warn">Revision</span>}
+            {s.kind === "revision" && (
+              <span className="shrink-0 rounded bg-mark-soft px-1.5 py-px text-xs font-medium text-warn">Revision</span>
+            )}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <span className="mr-1 text-[13px] tabular-nums text-muted">
-            {s.actualMins > 0 ? `${fmtMins(s.actualMins)} of ${fmtMins(s.plannedMins)}` : fmtMins(s.plannedMins)}
-          </span>
+        <span className="shrink-0 text-right text-[13px] tabular-nums text-muted">
+          {s.actualMins > 0 ? `${fmtMins(s.actualMins)} of ${fmtMins(s.plannedMins)}` : fmtMins(s.plannedMins)}
+        </span>
+        <div className="flex shrink-0 justify-end sm:w-[84px]">
           {s.done ? (
             <Button variant="ghost" size="sm" onClick={() => undoSession(s)} aria-label="Undo">
               <Undo2 size={16} />
             </Button>
           ) : (
             <Button variant="secondary" size="sm" onClick={() => onStart(s, title)} aria-label={`Start focus timer for ${title}`}>
-              <Play size={15} /> <span className="hidden sm:inline">Start</span>
+              <Play size={14} /> <span className="hidden sm:inline">Start</span>
             </Button>
           )}
         </div>
       </div>
       {finishing && !s.done && (
         <form
-          className="ml-[52px] mt-3 flex flex-wrap items-center gap-2 sm:ml-[60px]"
+          className="ml-[46px] mt-3 flex flex-wrap items-center gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             await completeSession(s, Number(mins) || 0);
@@ -79,8 +84,6 @@ export function TodayView({ sessions, hasPlan, lookup, dailyMinutes, onStart }: 
   dailyMinutes: number;
   onStart: (s: StudySession, label: string) => void;
 }) {
-  const planned = sessions.reduce((a, s) => a + s.plannedMins, 0);
-  const done = sessions.filter((s) => s.done).reduce((a, s) => a + s.actualMins, 0);
   if (!sessions.length) {
     return (
       <Empty title="Nothing planned for today">
@@ -88,25 +91,27 @@ export function TodayView({ sessions, hasPlan, lookup, dailyMinutes, onStart }: 
       </Empty>
     );
   }
+  const planned = sessions.reduce((a, s) => a + s.plannedMins, 0);
+  const done = sessions.filter((s) => s.done).reduce((a, s) => a + s.actualMins, 0);
   // Extra minutes on one session (a long focus sitting) mustn't push today past 100%.
   const doneCapped = sessions.filter((s) => s.done).reduce((a, s) => a + Math.min(s.actualMins, s.plannedMins), 0);
   const pct = planned ? Math.min(100, Math.round((doneCapped / planned) * 100)) : 0;
   const count = sessions.filter((s) => s.done).length;
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-[0_1px_3px_rgb(17_24_39/0.04)]">
-      <div className="p-4 sm:p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold">Today</h2>
-            <p className="text-sm tabular-nums text-muted">
-              {count} of {sessions.length} done, {fmtMins(done)} of {fmtMins(planned)}, daily cap {fmtMins(dailyMinutes)}
-            </p>
-          </div>
-          <span className="text-2xl font-bold tabular-nums text-accent">{pct}%</span>
+    <section>
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold">Today</h2>
+          <p className="mt-1 text-[13px] tabular-nums text-muted">
+            {count} of {sessions.length} done, {fmtMins(done)} of {fmtMins(planned)}, daily cap {fmtMins(dailyMinutes)}
+          </p>
         </div>
-        <Progress value={pct} className="mt-4" />
+        <p className={cn("numeral shrink-0 text-[40px]", pct >= 100 && "text-good")}>
+          {pct}<span className="text-[24px] text-muted">%</span>
+        </p>
       </div>
-      <List className="border-b-0">
+      <Progress value={pct} className="mb-4 mt-3" />
+      <List>
         {sessions.map((s) => <SessionRow key={s.id} s={s} lookup={lookup} onStart={onStart} />)}
       </List>
     </section>

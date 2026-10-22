@@ -9,7 +9,7 @@ import { pyqMode, topicsInScope } from "../mode";
 import type { ExamMode, Material, PyqQuestion } from "../types";
 import { needsMapping, newestFirst, paperYear } from "./group";
 
-export interface PyqAnalysisState {
+interface PyqAnalysisState {
   running: boolean;
   message: string;
   done: number;
@@ -41,7 +41,7 @@ interface PaperResult {
 }
 
 // "pyq" and "pyqmap" are JSON actions on /api/ai; their shapes are checked here before use.
-const callJson = aiJson as unknown as (action: string, body: AiRequest) => Promise<unknown>;
+const callJson = (action: "pyq" | "pyqmap", body: AiRequest): Promise<unknown> => aiJson(action, body);
 
 const MAX_PAPER_CHARS = 60_000; // a paper is a few pages; anything longer is mostly OCR noise
 const MAP_BATCH = 40;
@@ -135,7 +135,7 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
 async function savePaper(paper: Material, result: PaperResult) {
   const year = result.year ?? paperYear(paper);
   await db.transaction("rw", db.materials, db.pyqQuestions, async () => {
-    const current = await db.materials.get(paper.id!);
+    const current = await db.materials.get(paper.id);
     if (!current) return; // deleted while the AI was reading it
     // Which exam: the tag (Drive or the student) wins, then what the paper itself says, then its file name.
     // It's written back to the paper so the major/mid-sem split stays put.
@@ -153,7 +153,7 @@ async function savePaper(paper: Material, result: PaperResult) {
         marks: q.marks ?? undefined,
       })),
     );
-    await db.materials.update(paper.id!, {
+    await db.materials.update(paper.id, {
       analysedAt: Date.now(),
       ...(result.year ? { paperYear: result.year } : {}),
       ...(!current.pyqExam && exam ? { pyqExam: exam } : {}),
@@ -228,7 +228,7 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
           const q = typeof m.i === "number" ? batch[m.i] : undefined;
           if (!q) continue; // questions the AI skipped stay unmapped and are retried next time
           const t = typeof m.t === "number" && m.t >= 0 && m.t < scoped.length ? scoped[m.t].id! : null;
-          await db.pyqQuestions.update(q.id!, { topicId: t });
+          await db.pyqQuestions.update(q.id, { topicId: t });
           mapped++;
         }
       });
@@ -265,22 +265,6 @@ const finalMessage = (papers: number, mapped: number, stopped: boolean) =>
       : papers || mapped
         ? [papers && `${papers} paper${papers === 1 ? "" : "s"} analysed`, mapped && `${mapped} question${mapped === 1 ? "" : "s"} matched to topics`].filter(Boolean).join(" · ")
         : "",
-  });
-
-/** Split up to `max` unread past papers into questions (all subjects when `subjectId` is undefined). */
-export const analysePapers = (subjectId?: number, { max = 8 } = {}) =>
-  exclusive(async () => {
-    const r = await analysePapersStep(subjectId, max);
-    finalMessage(r.analysed, 0, r.stopped);
-    return r;
-  });
-
-/** Match a subject's not-yet-matched questions to its syllabus topics. */
-export const mapTopics = (subjectId: number) =>
-  exclusive(async () => {
-    const r = await mapTopicsStep(subjectId);
-    finalMessage(0, r.mapped, r.stopped);
-    return r;
   });
 
 /** Analyse a subject's new papers, then match their questions to topics. */

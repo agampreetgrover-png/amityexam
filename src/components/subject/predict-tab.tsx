@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { aiModeFields, modeShort, pyqMatchesMode } from "@/lib/mode";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Card, Empty } from "../ui";
+import { Button, Empty, Section } from "../ui";
 import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
 import { MAX_CONTEXT, OfflineHint, topicTitles, useOnline, type TabProps } from "./shared";
 
@@ -39,12 +39,12 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
   };
 
   return (
-    <div className="space-y-6">
-      <Card className="no-print" title="Predict exam questions">
-        <p className="max-w-prose text-[15px] leading-relaxed">
+    <div className="space-y-8">
+      <Section className="no-print" title="Predict exam questions">
+        <p className="max-w-prose text-[15px] leading-relaxed text-text">
           Compares your previous year papers with the syllabus to find repeated questions, how marks are usually split, and the questions most likely to come up.
         </p>
-        <p className="mt-2 max-w-prose text-xs leading-relaxed text-muted">
+        <p className="mt-3 max-w-prose break-words text-[13px] leading-relaxed text-muted tabular-nums">
           {pyqs.length
             ? `Using ${pyqs.length} ${modeShort(mode).toLowerCase()} paper${pyqs.length === 1 ? "" : "s"}: ${pyqs.map((p) => p.fileName).join(", ")}${
                 skipped ? ` (${skipped} other paper${skipped === 1 ? "" : "s"} not for this exam, or of unknown type, left out)` : ""
@@ -53,13 +53,13 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
                 skipped ? ` (${skipped} paper${skipped === 1 ? " is" : "s are"} for the other exam or of unknown type.)` : ""
               }`}
         </p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-5 flex gap-2">
           {gen.busy ? <StopButton onClick={gen.stop} /> : (
             <Button onClick={generate} disabled={!online || (!pyqs.length && !topics.length)}><Sparkles size={16} /> Predict questions</Button>
           )}
         </div>
-        <div className="mt-2 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
-      </Card>
+        <div className="mt-4 max-w-prose space-y-2 empty:hidden"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
+      </Section>
 
       <DraftCard
         gen={gen}
@@ -73,9 +73,10 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
 
       {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
 
-      <Card className="no-print" title="Past predictions">
-        {docs.length ? <DocList docs={docs} selected={viewing?.id} onSelect={setViewing} /> : <Empty icon={<TrendingUp />} title="No predictions yet" />}
-      </Card>
+      {/* Past predictions are a plain list on the page, under the generator. */}
+      <Section className="no-print" title="Past predictions">
+        {docs.length ? <DocList docs={docs} selected={viewing?.id} onSelect={setViewing} /> : <Empty icon={<TrendingUp size={18} />} title="No predictions yet" />}
+      </Section>
     </div>
   );
 }

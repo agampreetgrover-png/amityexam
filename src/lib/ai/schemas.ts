@@ -42,7 +42,7 @@ const lenientArray = <T extends z.ZodTypeAny>(item: T) =>
     .catch([])
     .transform((xs) => xs.flatMap((x) => {
       const r = item.safeParse(x);
-      return r.success ? [r.data as z.infer<T>] : [];
+      return r.success ? [r.data] : [];
     }));
 
 const PyqQuestionSchema = z.object({

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Check, Clock, MapPin, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Moon, Plus, Printer, Trash2 } from "lucide-react";
 import { Suspense, useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
@@ -12,7 +12,7 @@ import { useExamMode } from "@/lib/mode";
 import { examSyllabus } from "@/lib/planner";
 import { Markdown } from "@/components/markdown";
 import { toast } from "@/components/toast";
-import { Button, Card, Empty, Input, List, Tick, cn } from "@/components/ui";
+import { Badge, Button, Card, Empty, Input, List, Select, Tick, cn } from "@/components/ui";
 
 export default function ExamKitPage() {
   // The id is a query param, not a path segment, so this one prerendered (and precached) page serves every exam,
@@ -69,23 +69,32 @@ function ExamKit({ id }: { id: number }) {
 
   return (
     <>
-      <Link href="/exams" className="no-print mb-6 inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-accent"><ArrowLeft size={14} /> Exams</Link>
+      <Link
+        href="/exams"
+        className="no-print mb-6 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text"
+      >
+        <ArrowLeft size={14} /> Exams
+      </Link>
 
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-6">
-        <div className="flex items-end gap-5">
-          <div>
+      {/* The countdown leads, like the days column of a printed date sheet, marked in amber once it's three days or less. */}
+      <header className="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-border pb-6">
+        <div className="flex min-w-0 items-stretch gap-5 md:gap-6">
+          <div className="shrink-0">
             {days < 0 ? (
-              <Check size={72} className="text-good" aria-hidden />
+              <Check size={56} strokeWidth={1.75} className="text-good" aria-hidden />
             ) : (
-              <div className="numeral text-[88px] md:text-[112px]" style={{ color: days > 3 ? subject?.color : undefined }}>
+              <div className="numeral text-[72px] md:text-[88px]">
                 <span className={days <= 3 ? "mark" : undefined}>{days}</span>
               </div>
             )}
-            <p className="mt-2 text-sm text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
+            <p className="mt-2 text-[13px] text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
           </div>
-          <div className="min-w-0 pb-6">
-            <h1 className="text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">{subject?.name ?? "Exam"}</h1>
-            <p className="mt-1 text-sm text-muted">{examTypeLabel(exam.type)}, {prettyDay(exam.date)}</p>
+          <div className="flex min-w-0 flex-col justify-center border-l border-border pl-5 md:pl-6">
+            <h1 className="break-words font-display text-[28px] leading-tight md:text-[32px]">{subject?.name ?? "Exam"}</h1>
+            <p className="mt-1 flex items-center gap-2 text-[15px] text-muted">
+              {subject?.color && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: subject.color }} />}
+              {examTypeLabel(exam.type)}, {prettyDay(exam.date)}
+            </p>
           </div>
         </div>
         <Button variant="secondary" className="no-print" onClick={() => window.print()}><Printer size={16} /> Print kit</Button>
@@ -93,23 +102,34 @@ function ExamKit({ id }: { id: number }) {
 
       <div className="space-y-6">
         <Card title="Exam details">
-          <div className="space-y-1.5 text-[15px]">
+          {/* Ruled label and value rows, like the particulars block on an admit card. */}
+          <dl className="divide-y divide-border border-y border-border text-[15px]">
             {exam.time && (
-              <p className="flex items-center gap-2"><Clock size={15} className="text-muted" /> Starts {exam.time}{exam.durationMins ? `, ${exam.durationMins} min` : ""}</p>
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
+                <dt className="text-[13px] leading-6 text-muted">Starts</dt>
+                <dd className="tabular-nums">{exam.time}{exam.durationMins ? `, ${exam.durationMins} min` : ""}</dd>
+              </div>
             )}
             {(exam.venue || exam.seat) && (
-              <p className="flex items-center gap-2"><MapPin size={15} className="text-muted" /> {[exam.venue, exam.seat && `Seat ${exam.seat}`].filter(Boolean).join(", ")}</p>
+              <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
+                <dt className="text-[13px] leading-6 text-muted">Venue</dt>
+                <dd className="break-words">{[exam.venue, exam.seat && `Seat ${exam.seat}`].filter(Boolean).join(", ")}</dd>
+              </div>
             )}
-            <p className="text-muted">
-              {scope.length} topic{scope.length === 1 ? "" : "s"} in the syllabus. {notDone.length} not started, {weak.length} weak.
-            </p>
-          </div>
-          {exam.notes && <p className="mt-4 max-w-prose border-l-2 border-accent/40 pl-3 text-sm leading-relaxed">{exam.notes}</p>}
+            <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
+              <dt className="text-[13px] leading-6 text-muted">Syllabus</dt>
+              <dd>{scope.length} topic{scope.length === 1 ? "" : "s"} in the syllabus. {notDone.length} not started, {weak.length} weak.</dd>
+            </div>
+          </dl>
+          {exam.notes && <p className="mt-4 max-w-prose border-l-2 border-border pl-3 text-sm leading-relaxed">{exam.notes}</p>}
         </Card>
 
         {days <= 1 && days >= 0 && (
-          <Card title="The night before">
-            <ul className="max-w-prose list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed">
+          <Card
+            className="border-mark/50 bg-mark-soft"
+            title={<span className="flex items-center gap-2"><Moon size={16} className="text-warn" aria-hidden /> The night before</span>}
+          >
+            <ul className="max-w-prose list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed marker:text-muted">
               <li>Don&apos;t start new topics. Skim the cheat sheet and the weak topics below.</li>
               <li>Pack the checklist tonight and keep the admit card in your bag.</li>
               <li>Sleep 7–8 hours. Memory consolidates while you sleep.</li>
@@ -128,10 +148,10 @@ function ExamKit({ id }: { id: number }) {
                   label={item.done ? `Unpack ${item.text}` : `Pack ${item.text}`}
                   onClick={() => setChecklist((list) => list.map((c, j) => (j === i ? { ...c, done: !c.done } : c)))}
                 />
-                <span className={item.done ? "text-muted line-through" : ""}>{item.text}</span>
+                <span className={cn("min-w-0 break-words transition-colors duration-150", item.done && "text-muted line-through decoration-muted/60")}>{item.text}</span>
                 <button
                   // Always visible on touch screens; on a mouse it appears on hover or keyboard focus.
-                  className="no-print ml-auto rounded p-1.5 text-muted hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                  className="no-print ml-auto shrink-0 rounded-md p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   aria-label={`Remove ${item.text}`}
                   onClick={async () => {
                     await setChecklist((list) => list.filter((_, j) => j !== i));
@@ -164,14 +184,14 @@ function ExamKit({ id }: { id: number }) {
         <Card
           title="Last-minute cheat sheet"
           action={sheets && sheets.length > 1 && (
-            <select
-              className="no-print h-8 rounded-lg border border-border bg-surface px-2 text-sm"
+            <Select
+              className="no-print h-8 w-auto max-w-[11rem] px-2 py-0"
               value={Math.min(sheetIdx, sheets.length - 1)}
               onChange={(e) => setSheetIdx(Number(e.target.value))}
               aria-label="Choose cheat sheet"
             >
               {sheets.map((s, i) => <option key={s.id} value={i}>{s.title}</option>)}
-            </select>
+            </Select>
           )}
         >
           {sheet ? <Markdown>{sheet.content}</Markdown> : (
@@ -187,11 +207,11 @@ function ExamKit({ id }: { id: number }) {
           action={<Link className="no-print text-sm font-medium text-accent underline-offset-2 hover:underline" href="/revise">Revise</Link>}
         >
           {weak.length ? (
-            <List className="border-y-0">
+            <List className="border-b-0">
               {weak.map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <span>{t.title}</span>
-                  <span className="shrink-0 text-xs text-warn">confidence {t.confidence}/5</span>
+                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-[15px]">
+                  <span className="min-w-0 break-words">{t.title}</span>
+                  <Badge className="shrink-0 bg-bad/10 tabular-nums text-bad">confidence {t.confidence}/5</Badge>
                 </li>
               ))}
             </List>

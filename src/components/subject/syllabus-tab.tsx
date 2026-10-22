@@ -11,13 +11,8 @@ import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Badge, Button, Card, Dots, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
 import { unitMode } from "@/lib/mode";
-import { parseSyllabus, parseTopics } from "@/lib/syllabus-text";
+import { newTopic, parseSyllabus, parseTopics } from "@/lib/syllabus-text";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
-
-const newTopic = (subjectId: number, unitId: number, title: string, difficulty = 3): Topic => ({
-  subjectId, unitId, title, difficulty: Math.min(5, Math.max(1, Math.round(difficulty))), confidence: 3,
-  status: "not-started", ease: 2.5, interval: 0, reps: 0,
-});
 
 /**
  * Remove topics and everything pointing at them in one transaction.
@@ -63,11 +58,11 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Card>
         <header className="mb-4">
-          <h2 className="text-lg font-semibold">Syllabus</h2>
-          <p className="text-[13px] text-muted">
+          <h2 className="text-[15px] font-semibold">Syllabus</h2>
+          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">
             {mid
               ? "The full syllabus. Tick “In mid-sem” on the units your mid-sem covers; only those count while you prepare for it."
               : "The full syllabus for the major exam. Tick “In mid-sem” on the units the mid-sem covers."}
@@ -84,7 +79,7 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
       </Card>
 
       {units.length === 0 ? (
-        <Empty icon={<Upload />} title="Add this subject's syllabus">
+        <Empty icon={<Upload size={20} />} title="Add this subject's syllabus">
           Import it from a PDF, photo or pasted text, or add units by hand. Then tick the units your mid-sem covers.
           <div className="mt-3"><Button size="sm" onClick={() => setImportOpen(true)}><Sparkles size={14} /> Import syllabus</Button></div>
         </Empty>
@@ -128,7 +123,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
 
   const remove = async () => {
     if (!confirm(`Delete "${unit.title}" and its ${topics.length} topics?`)) return;
-    await deleteTopics(topics.map((t) => t.id!), unit.id!);
+    await deleteTopics(topics.map((t) => t.id!), unit.id);
   };
 
   // Re-seed the draft each time so a rename made elsewhere isn't overwritten by a stale value.
@@ -137,47 +132,48 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
     setEditing(!editing);
   };
 
+  // A unit is an unboxed group on the page: its heading and controls, then its topics as hairline rows.
   return (
-    <Card
-      title={
-        editing ? (
-          <form
-            className="flex gap-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (title.trim()) await db.units.update(unit.id!, { title: title.trim() });
-              setEditing(false);
-            }}
-          >
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" autoFocus />
-            <Button size="sm" type="submit" aria-label="Save"><Check size={14} /></Button>
-          </form>
-        ) : (
-          <span className="flex items-baseline gap-2">
-            {unit.title}
-            <span className="text-[13px] font-normal text-muted">{topics.length} topic{topics.length === 1 ? "" : "s"}</span>
-          </span>
-        )
-      }
-      action={
+    <section>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h2 className="min-w-0 flex-1 basis-56 text-[15px] font-semibold">
+          {editing ? (
+            <form
+              className="flex gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (title.trim()) await db.units.update(unit.id, { title: title.trim() });
+                setEditing(false);
+              }}
+            >
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-9 font-semibold" autoFocus />
+              <Button size="sm" type="submit" className="h-9" aria-label="Save"><Check size={14} /></Button>
+            </form>
+          ) : (
+            <span className="flex flex-wrap items-baseline gap-x-2.5">
+              <span className="min-w-0 break-words">{unit.title}</span>
+              <span className="text-[13px] font-normal text-muted">{topics.length} topic{topics.length === 1 ? "" : "s"}</span>
+            </span>
+          )}
+        </h2>
         <div className="flex shrink-0 items-center">
-          <label className="mr-1 flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-[13px] font-medium text-muted hover:bg-surface-2">
+          {/* A chip that turns navy while the unit counts towards the mid-sem. */}
+          <label className="mr-1.5 flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text has-[:checked]:border-accent/30 has-[:checked]:bg-accent-soft has-[:checked]:text-accent">
             <input
               type="checkbox"
-              className="h-4 w-4 accent-[var(--accent)]"
+              className="h-3.5 w-3.5 accent-[var(--accent)]"
               aria-label={`${unit.title} is in the mid-sem`}
               checked={unitMode(unit) === "mid-term"}
-              onChange={(e) => db.units.update(unit.id!, { exam: e.target.checked ? "mid-term" : "end-term" })}
+              onChange={(e) => db.units.update(unit.id, { exam: e.target.checked ? "mid-term" : "end-term" })}
             />
             In mid-sem
           </label>
           <Button variant="ghost" size="sm" onClick={toggleEdit} aria-label="Rename unit"><Pencil size={14} /></Button>
           <Button variant="danger" size="sm" onClick={remove} aria-label="Delete unit"><Trash2 size={14} /></Button>
         </div>
-      }
-    >
+      </div>
       {topics.length > 0 && (
-        <List className="border-t-0">
+        <List>
           {topics.map((t) => <TopicRow key={t.id} topic={t} />)}
         </List>
       )}
@@ -201,9 +197,9 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
           }}
           className="h-9"
         />
-        <Button size="sm" variant="secondary" type="submit" className="h-9" disabled={!newT.trim()} aria-label="Add topic"><Plus size={14} /></Button>
+        <Button size="sm" variant="secondary" type="submit" className="h-9 w-9 shrink-0 px-0" disabled={!newT.trim()} aria-label="Add topic"><Plus size={14} /></Button>
       </form>
-    </Card>
+    </section>
   );
 }
 
@@ -237,22 +233,23 @@ function TopicRow({ topic }: { topic: Topic }) {
             <Button size="sm" type="submit" aria-label="Save"><Check size={14} /></Button>
           </form>
         ) : (
-          <span className="text-[15px]">
+          <span className="text-[15px] leading-snug">
             {topic.title} {topic.weak && <Badge className="ml-1 bg-bad/10 text-bad">weak</Badge>}
           </span>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-4 text-xs text-muted">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
         <span className="flex items-center gap-1.5">Difficulty <Dots label="Difficulty" value={topic.difficulty} onChange={(v) => db.topics.update(id, { difficulty: v })} /></span>
         <span className="flex items-center gap-1.5">
           Confidence
           <Dots label="Confidence" value={topic.confidence} onChange={async (v) => { await db.topics.update(id, { confidence: v }); await refreshWeak([id]); }} />
         </span>
+        {/* Status reads at a glance: green when revised, navy when studied, quiet until then. */}
         <Select
           value={topic.status}
           onChange={(e) => db.topics.update(id, { status: e.target.value as TopicStatus })}
           className={cn(
-            "h-8 w-auto py-0 text-xs font-medium",
+            "h-8 w-auto py-0 pl-2.5 text-xs font-medium",
             topic.status === "revised" ? "text-good" : topic.status === "studied" ? "text-accent" : "text-muted",
           )}
           aria-label="Status"
@@ -392,8 +389,9 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
 
   return (
     <div className="space-y-3">
-      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border p-5 text-sm text-muted transition-colors hover:border-accent/40 hover:bg-accent-soft hover:text-accent">
-        <Upload size={16} /> Upload the syllabus as a PDF, photo or text file
+      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[#cfd4dc] p-4 text-sm text-muted transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 hover:text-text">
+        <Upload size={18} className="shrink-0" aria-hidden />
+        Upload the syllabus as a PDF, photo or text file
         <input
           type="file"
           accept="application/pdf,.txt,.md,image/*"

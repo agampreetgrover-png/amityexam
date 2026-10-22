@@ -5,7 +5,7 @@ import { AlertTriangle, Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { StatTile } from "@/components/progress/stat-tile";
-import { Button, Card, Dots, Empty, List } from "@/components/ui";
+import { Badge, Button, cn, Dots, Empty, Section } from "@/components/ui";
 import { db, getSettings } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { topicsInScope } from "@/lib/mode";
@@ -29,9 +29,10 @@ async function markRevised(t: Topic, confidence: number) {
   await refreshWeak([t.id]);
 }
 
+const PAGE = 50; // due topics rendered before "Show all"
+
 /** When a topic is due, with overdue ones called out so they don't read like "due today". */
-function when(t: Topic) {
-  const d = today();
+function when(t: Topic, d: string) {
   if (!t.nextReview) return t.status === "studied" ? "first revision" : "not studied yet";
   if (t.nextReview < d) {
     const n = daysBetween(t.nextReview, d);
@@ -40,7 +41,7 @@ function when(t: Topic) {
   return t.nextReview === d ? "due today" : `due ${prettyDay(t.nextReview)}`;
 }
 
-function TopicRow({ t, subject }: { t: Topic; subject?: { name: string; color: string } }) {
+function TopicRow({ t, d, subject }: { t: Topic; d: string; subject?: { name: string; color: string } }) {
   const [picking, setPicking] = useState(false);
   const [conf, setConf] = useState(t.confidence);
   // A second tap while saving would apply the spaced-repetition step twice.
@@ -55,25 +56,25 @@ function TopicRow({ t, subject }: { t: Topic; subject?: { name: string; color: s
     }
   };
   return (
-    <li className="py-3.5">
+    <li className={cn("px-4 py-3 transition-colors duration-150", picking ? "bg-surface-2" : "hover:bg-surface-2")}>
       <div className="flex items-center gap-3">
-        <span className="h-10 w-1 shrink-0 rounded-full" style={{ background: subject?.color }} />
+        <span aria-hidden className="h-9 w-[3px] shrink-0 rounded-full" style={{ background: subject?.color }} />
         <div className="min-w-0 flex-1">
-          <Link href={`/subjects/${t.subjectId}`} className="text-[15px] font-semibold hover:underline hover:underline-offset-2">{t.title}</Link>
+          <Link href={`/subjects/view?id=${t.subjectId}`} prefetch={false} className="break-words text-[15px] font-medium text-text transition-colors duration-150 hover:text-accent hover:underline">{t.title}</Link>
           <p className="mt-0.5 text-[13px] text-muted">
-            {subject?.name}, {when(t)}
-            {t.weak && <span className="ml-2 rounded-md bg-bad/10 px-1.5 py-px text-[11px] font-semibold text-bad">weak</span>}
+            {subject?.name}, {when(t, d)}
+            {t.weak && <Badge className="ml-2 bg-bad/10 text-bad">weak</Badge>}
           </p>
         </div>
         {!picking && (
-          <Button size="sm" variant="secondary" onClick={() => setPicking(true)}>
+          <Button size="sm" variant="secondary" className="shrink-0" onClick={() => setPicking(true)}>
             <Check size={15} /> Revised
           </Button>
         )}
       </div>
       {picking && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 pl-4">
-          <span className="text-sm text-muted">How confident are you now?</span>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 pl-[15px]">
+          <span className="text-[13px] text-muted">How confident are you now?</span>
           <Dots value={conf} onChange={setConf} label="Confidence" />
           <Button size="sm" onClick={save} disabled={saving}>Save</Button>
           <Button size="sm" variant="ghost" onClick={() => setPicking(false)}>Cancel</Button>
@@ -88,7 +89,8 @@ export function TopicRevision() {
   const data = useLiveQuery(async () => {
     const isDue = (x: Topic) => (x.nextReview ? x.nextReview <= t : x.status === "studied");
     const [candidates, subjects, units, settings] = await Promise.all([
-      db.topics.filter((x) => isDue(x) || !!x.weak).toArray(),
+      // One getAll and an in-memory filter: Dexie's .filter() steps a cursor through every row.
+      db.topics.toArray().then((all) => all.filter((x) => isDue(x) || !!x.weak)),
       db.subjects.toArray(),
       db.units.toArray(),
       getSettings(),
@@ -102,35 +104,45 @@ export function TopicRevision() {
     return { topics, weakLater, subjects: new Map(subjects.map((s) => [s.id!, s])) };
   }, [t]);
 
+  const [showAll, setShowAll] = useState(false);
   const weak = data ? data.topics.filter((x) => x.weak).length : 0;
   const first = data ? data.topics.filter((x) => !x.nextReview).length : 0;
+  // A long backlog renders in pages so opening Revise stays quick; weak and overdue topics sort first anyway.
+  const shown = data ? (showAll ? data.topics : data.topics.slice(0, PAGE)) : [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {data && (
         <div className="grid grid-cols-2 gap-4">
-          <StatTile tone="indigo" icon={<RotateCcw />} label="Due to revise" value={data.topics.length} sub={`${first} first revision${first === 1 ? "" : "s"}`} />
-          <StatTile tone="amber" icon={<AlertTriangle />} label="Weak and due" value={weak} sub={weak ? "listed first" : "none flagged"} />
+          <StatTile tone="accent" icon={<RotateCcw />} label="Due to revise" value={data.topics.length} sub={`${first} first revision${first === 1 ? "" : "s"}`} />
+          <StatTile tone="warn" icon={<AlertTriangle />} label="Weak and due" value={weak} sub={weak ? "listed first" : "none flagged"} />
         </div>
       )}
-      <Card title="Topics to revise" action={data && data.topics.length > 0 && <span className="text-sm text-muted">{data.topics.length} due</span>}>
+      <Section title="Topics to revise" action={data && data.topics.length > 0 && <span className="text-[13px] tabular-nums text-muted">{data.topics.length} due</span>}>
         {!data ? (
           <p className="text-sm text-muted">Loading…</p>
         ) : data.topics.length ? (
-          <List className="border-y-0">
-            {data.topics.map((x) => <TopicRow key={x.id} t={x} subject={data.subjects.get(x.subjectId)} />)}
-          </List>
+          <>
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+              {shown.map((x) => <TopicRow key={x.id} t={x} d={t} subject={data.subjects.get(x.subjectId)} />)}
+            </ul>
+            {shown.length < data.topics.length && (
+              <Button variant="ghost" size="sm" className="mt-2" onClick={() => setShowAll(true)}>
+                Show all {data.topics.length}
+              </Button>
+            )}
+          </>
         ) : (
           <Empty title="No topics due for revision">Topics show up here after you study them, spaced out over time.</Empty>
         )}
-      </Card>
+      </Section>
       {data && data.weakLater.length > 0 && (
-        <Card title="Weak, not due yet" action={<span className="text-sm text-muted">{data.weakLater.length}</span>}>
-          <p className="-mt-1 mb-1 text-[13px] text-muted">Revise these early to lift your confidence before the exam.</p>
-          <List className="border-y-0">
-            {data.weakLater.map((x) => <TopicRow key={x.id} t={x} subject={data.subjects.get(x.subjectId)} />)}
-          </List>
-        </Card>
+        <Section title="Weak, not due yet" action={<span className="text-[13px] tabular-nums text-muted">{data.weakLater.length}</span>}>
+          <p className="-mt-1 mb-3 text-[13px] text-muted">Revise these early to lift your confidence before the exam.</p>
+          <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+            {data.weakLater.map((x) => <TopicRow key={x.id} t={x} d={t} subject={data.subjects.get(x.subjectId)} />)}
+          </ul>
+        </Section>
       )}
     </div>
   );

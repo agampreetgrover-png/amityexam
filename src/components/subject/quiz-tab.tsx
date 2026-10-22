@@ -1,8 +1,8 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Sparkles, XCircle } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, PenLine, Sparkles, XCircle } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { refreshWeak } from "@/lib/weak";
@@ -10,7 +10,7 @@ import { aiJson } from "@/lib/ai/client";
 import { aiModeFields } from "@/lib/mode";
 import type { QuizAttempt, QuizQuestion } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Badge, Button, Card, Empty, Field, List, Progress, Select, Textarea, cn } from "../ui";
+import { Badge, Button, Card, Empty, Field, List, Progress, Section, Select, Textarea, cn } from "../ui";
 import { matchOption, norm } from "./quiz-match";
 import { noteTexts, OfflineHint, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
@@ -113,40 +113,44 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
   if (questions && graded) {
     const score = Math.round((graded.reduce((a, r) => a + r.score, 0) / questions.length) * 100);
     return (
-      <div className="space-y-6">
-        <Card>
-          <header className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="mb-3 text-[15px] font-semibold">Quiz score</p>
-              <p className={cn("numeral text-7xl", scoreColor(score))}>{score}%</p>
-              <p className="mt-2 text-[15px] text-muted">
-                {score >= 80 ? "Strong. Move on to the next topic." : score >= 60 ? "Decent. Revise the ones you missed." : "Weak area. It's been flagged for extra study."}
-              </p>
-            </div>
-            <Button onClick={reset}>New quiz</Button>
-          </header>
-          <Progress value={score} className="mt-5" />
-        </Card>
-        <Card title="Answers">
-          <List className="border-y-0">
+      <div className="space-y-8">
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-[15px] font-semibold">Quiz score</h2>
+            {/* Fades in once, as the answer to pressing Submit. */}
+            <p className={cn("numeral count-in mt-4 text-[64px]", scoreColor(score))}>{score}%</p>
+            <p className="mt-3 text-[15px] text-muted">
+              {score >= 80 ? "Strong. Move on to the next topic." : score >= 60 ? "Decent. Revise the ones you missed." : "Weak area. It's been flagged for extra study."}
+            </p>
+            <Progress value={score} className="mt-4 max-w-sm" />
+          </div>
+          <Button onClick={reset}>New quiz</Button>
+        </header>
+        <Section title="Answers">
+          <List>
             {questions.map((q, i) => {
               const g = graded[i];
               const ok = g.score >= 0.99;
               return (
-                <li key={i} className="flex gap-3 py-4">
-                  {ok ? <CheckCircle2 className="mt-0.5 shrink-0 text-good" size={18} aria-label="Correct" /> : <XCircle className={cn("mt-0.5 shrink-0", g.score > 0 ? "text-warn" : "text-bad")} size={18} aria-label={g.score > 0 ? "Partly correct" : "Wrong"} />}
-                  <div className="min-w-0 space-y-1.5 text-sm leading-relaxed">
-                    <p className="text-[15px] font-medium">{i + 1}. {q.question}</p>
-                    <p><span className="text-muted">Your answer:</span> {responses[i] || <em className="text-muted">left blank</em>}</p>
-                    {!ok && <p><span className="text-muted">Correct answer:</span> {q.answer}</p>}
-                    {q.type === "short" && <p className="text-muted">Scored {Math.round(g.score * 100)}%{g.feedback && `. ${g.feedback}`}</p>}
-                    {q.explanation && <p className="text-muted">{q.explanation}</p>}
-                  </div>
-                </li>
+                <AnswerRow
+                  key={i}
+                  n={i + 1}
+                  q={q}
+                  verdict={ok ? "correct" : g.score > 0 ? "partial" : "wrong"}
+                  given={responses[i]}
+                  givenTone={!ok && responses[i] && (g.score > 0 ? "text-warn" : "text-bad")}
+                >
+                  {!ok && (
+                    <p className="break-words rounded-md border border-good/25 bg-good/5 px-3 py-2">
+                      <span className="text-muted">Correct answer:</span> {q.answer}
+                    </p>
+                  )}
+                  {q.type === "short" && <p className="text-muted">Scored <span className="tabular-nums">{Math.round(g.score * 100)}%</span>{g.feedback && `. ${g.feedback}`}</p>}
+                </AnswerRow>
               );
             })}
           </List>
-        </Card>
+        </Section>
       </div>
     );
   }
@@ -160,14 +164,14 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
     const needsAi = questions.some((x, i) => x.type === "short" && responses[i]?.trim());
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between text-sm text-muted">
-          <span>Question {page + 1} of {questions.length}</span>
+        <div className="flex items-center justify-between text-sm text-muted tabular-nums">
+          <span>Question <span className="font-semibold text-text">{page + 1}</span> of {questions.length}</span>
           <span>{answered} answered</span>
         </div>
         <Progress value={((page + 1) / questions.length) * 100} />
-        <Card>
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <p className="text-[17px] font-medium leading-snug">{q.question}</p>
+        <Card className="sm:p-6">
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <p className="text-[18px] font-medium leading-snug">{q.question}</p>
             <Badge className="shrink-0">{q.type === "mcq" ? "Choose one" : "Short answer"}</Badge>
           </div>
           {q.type === "mcq" ? (
@@ -176,8 +180,10 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                 <label
                   key={oi}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-[15px] transition-colors",
-                    responses[page] === o ? "border-accent bg-accent-soft font-medium" : "border-border hover:bg-surface-2",
+                    "flex cursor-pointer items-start gap-3 rounded-md border px-3.5 py-3 text-[15px] leading-relaxed transition-colors duration-150",
+                    responses[page] === o
+                      ? "border-accent bg-accent-soft font-medium text-text"
+                      : "border-border bg-surface text-text hover:border-[#cfd4dc] hover:bg-surface-2",
                   )}
                 >
                   <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} className="mt-1 accent-[var(--accent)]" />
@@ -191,7 +197,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         </Card>
         <AiErrorBox error={error} />
         {needsAi && !online && page === questions.length - 1 && (
-          <p className="text-xs text-warn">You&apos;re offline. Written answers are marked by AI, so submit once you&apos;re back online.</p>
+          <p className="rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text">You&apos;re offline. Written answers are marked by AI, so submit once you&apos;re back online.</p>
         )}
         <div className="flex items-center justify-between gap-2">
           <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0}><ChevronLeft size={16} /> Previous</Button>
@@ -208,7 +214,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 
   // ---- Setup
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Card title="New practice quiz">
         {topics.length === 0 ? (
           <p className="text-sm text-muted">Add topics in the Syllabus tab first.</p>
@@ -237,12 +243,14 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                         aria-pressed={picked.includes(t.id!)}
                         onClick={() => toggle(t.id!)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] transition-colors",
-                          picked.includes(t.id!) ? "border-accent bg-accent text-accent-ink" : "border-border text-muted hover:text-text",
+                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] transition-colors duration-150",
+                          picked.includes(t.id!)
+                            ? "border-accent bg-accent-soft font-medium text-accent"
+                            : "border-border bg-surface text-muted hover:bg-surface-2 hover:text-text",
                         )}
                       >
                         {t.title}
-                        {t.weak && <span className={cn("text-[11px] font-medium", picked.includes(t.id!) ? "opacity-80" : "text-warn")}>weak</span>}
+                        {t.weak && <span className="text-xs font-medium text-bad">weak</span>}
                       </button>
                     ))}
                   </div>
@@ -268,14 +276,14 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
             <Sparkles size={16} /> {busy || (picked.length ? `Start quiz on ${picked.length} topic${picked.length === 1 ? "" : "s"}` : "Pick topics to start")}
           </Button>
         </div>
-        <div className="mt-2 space-y-2"><OfflineHint online={online} /><AiErrorBox error={error} /></div>
+        <div className="mt-3 space-y-2 empty:hidden"><OfflineHint online={online} /><AiErrorBox error={error} /></div>
       </Card>
 
-      <Card title="Past attempts">
+      <Section title="Past attempts">
         {attempts.length === 0 ? (
-          <Empty icon={<ClipboardList />} title="No quizzes taken yet" />
+          <Empty icon={<ClipboardList size={18} />} title="No quizzes taken yet" />
         ) : (
-          <List className="border-y-0">
+          <List>
             {attempts.map((a) => (
               <li key={a.id}>
                 <button
@@ -283,20 +291,20 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   onClick={() => setReviewing(a)}
                   disabled={!a.questions.length}
                   aria-label={`Review the ${a.score}% quiz from ${new Date(a.createdAt).toLocaleDateString()}`}
-                  className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-4 rounded-lg px-2 py-3 text-left text-sm transition-colors hover:bg-surface-2 disabled:pointer-events-none"
+                  className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-4 rounded-md px-2 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 disabled:pointer-events-none"
                 >
-                  <span className={cn("w-12 text-[17px] font-semibold tabular-nums", scoreColor(a.score))}>{a.score}%</span>
+                  <span className={cn("numeral w-16 shrink-0 text-[28px]", scoreColor(a.score))}>{a.score}%</span>
                   <span className="min-w-0 flex-1 truncate">
                     {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
                   </span>
-                  <span className="shrink-0 text-xs text-muted">{a.questions.length} questions, {new Date(a.createdAt).toLocaleDateString()}</span>
+                  <span className="shrink-0 text-[13px] tabular-nums text-muted">{a.questions.length} questions, {new Date(a.createdAt).toLocaleDateString()}</span>
                   {a.questions.length > 0 && <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />}
                 </button>
               </li>
             ))}
           </List>
         )}
-      </Card>
+      </Section>
     </div>
   );
 }
@@ -305,38 +313,78 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 function AttemptReview({ attempt, topics, onBack }: { attempt: QuizAttempt; topics: TabProps["topics"]; onBack: () => void }) {
   const names = attempt.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ");
   return (
-    <div className="space-y-6">
-      <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2"><ArrowLeft size={14} /> Back to quizzes</Button>
-      <Card>
-        <p className="mb-3 text-[15px] font-semibold">Quiz from {new Date(attempt.createdAt).toLocaleDateString()}</p>
-        <p className={cn("numeral text-7xl", scoreColor(attempt.score))}>{attempt.score}%</p>
-        {names && <p className="mt-2 text-[15px] text-muted">{names}</p>}
-        <Progress value={attempt.score} className="mt-5" />
-      </Card>
-      <Card title="Answers">
-        <List className="border-y-0">
+    <div className="space-y-8">
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2.5"><ArrowLeft size={14} /> Back to quizzes</Button>
+        <header className="border-b border-border pb-6">
+          <h2 className="text-[15px] font-semibold">Quiz from {new Date(attempt.createdAt).toLocaleDateString()}</h2>
+          <p className={cn("numeral mt-4 text-[64px]", scoreColor(attempt.score))}>{attempt.score}%</p>
+          {names && <p className="mt-3 text-[15px] text-muted">{names}</p>}
+          <Progress value={attempt.score} className="mt-4 max-w-sm" />
+        </header>
+      </div>
+      <Section title="Answers">
+        <List>
           {attempt.questions.map((q, i) => {
             const given = attempt.responses[i] ?? "";
             const mcq = q.type === "mcq";
             const ok = mcq && norm(given) === norm(q.answer);
             return (
-              <li key={i} className="flex gap-3 py-4">
-                {mcq ? (
-                  ok ? <CheckCircle2 className="mt-0.5 shrink-0 text-good" size={18} aria-label="Correct" /> : <XCircle className="mt-0.5 shrink-0 text-bad" size={18} aria-label="Wrong" />
-                ) : (
-                  <span className="mt-1 h-4 w-4 shrink-0 rounded-full border-2 border-border" aria-label="Written answer" />
+              <AnswerRow key={i} n={i + 1} q={q} verdict={mcq ? (ok ? "correct" : "wrong") : "written"} given={given} givenTone={mcq && !ok && given && "text-bad"}>
+                {!ok && (
+                  <p className={cn("break-words rounded-md border px-3 py-2", mcq ? "border-good/25 bg-good/5" : "border-border bg-surface-2")}>
+                    <span className="text-muted">{mcq ? "Correct answer:" : "Model answer:"}</span> {q.answer}
+                  </p>
                 )}
-                <div className="min-w-0 space-y-1.5 text-sm leading-relaxed">
-                  <p className="text-[15px] font-medium">{i + 1}. {q.question}</p>
-                  <p><span className="text-muted">Your answer:</span> {given || <em className="text-muted">left blank</em>}</p>
-                  {!ok && <p><span className="text-muted">{mcq ? "Correct answer:" : "Model answer:"}</span> {q.answer}</p>}
-                  {q.explanation && <p className="text-muted">{q.explanation}</p>}
-                </div>
-              </li>
+              </AnswerRow>
             );
           })}
         </List>
-      </Card>
+      </Section>
     </div>
+  );
+}
+
+/** One marked question: the question and how it went, the student's answer, any correction, then the explanation. */
+function AnswerRow({ n, q, verdict, given, givenTone, children }: {
+  n: number;
+  q: QuizQuestion;
+  verdict: VerdictKind;
+  given: string;
+  /** Colours the student's answer when it was wrong or only partly right. */
+  givenTone?: string | false;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="py-4">
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-[15px] font-medium leading-relaxed"><span className="tabular-nums text-muted">{n}.</span> {q.question}</p>
+        <Verdict kind={verdict} />
+      </div>
+      <div className="mt-2 space-y-2 text-sm leading-relaxed">
+        <p className={cn("break-words", givenTone)}>
+          <span className="text-muted">Your answer:</span> {given || <em className="text-muted">left blank</em>}
+        </p>
+        {children}
+        {q.explanation && <p className="text-muted">{q.explanation}</p>}
+      </div>
+    </li>
+  );
+}
+
+type VerdictKind = "correct" | "partial" | "wrong" | "written";
+
+/** How one answer went: a small icon plus a word, so the result never rests on colour alone. */
+function Verdict({ kind }: { kind: VerdictKind }) {
+  const v = {
+    correct: { Icon: CheckCircle2, label: "Correct", tone: "text-good" },
+    partial: { Icon: XCircle, label: "Partly correct", tone: "text-warn" },
+    wrong: { Icon: XCircle, label: "Wrong", tone: "text-bad" },
+    written: { Icon: PenLine, label: "Written answer", tone: "text-muted" },
+  }[kind];
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1 whitespace-nowrap pt-0.5 text-[13px] font-medium", v.tone)}>
+      <v.Icon size={15} aria-hidden /> {v.label}
+    </span>
   );
 }

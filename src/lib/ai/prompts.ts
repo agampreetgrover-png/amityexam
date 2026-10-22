@@ -1,7 +1,8 @@
+import type { Msg } from "./providers";
 import type { AiRequest, JsonAction, TextAction } from "./schemas";
 
 /** Per-provider limits on how much material goes into a prompt (~4 chars per token). */
-export interface PromptLimits {
+interface PromptLimits {
   maxChars: number;
   chatHistory: number;
 }
@@ -29,8 +30,6 @@ const topicLine = (r: AiRequest) =>
   fence([r.subject && `Subject: ${r.subject}`, r.topics?.length && `Topics: ${r.topics.join("; ")}`, modeLine(r)].filter(Boolean).join("\n"));
 
 const notes = (r: AiRequest, n: number) => (r.context ? `\n\nStudent's notes / material:\n"""\n${clip(r.context, n)}\n"""` : "");
-
-type Msg = { role: "system" | "user" | "assistant"; content: string };
 
 export function buildJsonPrompt(action: JsonAction, r: AiRequest, { maxChars }: PromptLimits): Msg[] {
   const sys = `${SYSTEM}\nRespond ONLY with valid JSON matching the requested shape.`;

@@ -15,6 +15,10 @@ import { Button, Field, Input, PageHeader, Section, Tabs, cn } from "@/component
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Settings groups sit on the page separated by rules, like sections of a printed form.
+const group = "py-8 first:pt-0 last:pb-0";
+const desc = "-mt-1 mb-5 max-w-prose text-sm text-muted";
+
 type NumKey = "dailyMinutes" | "sessionMins" | "revisionDays" | "pomodoroWork" | "pomodoroBreak";
 const LIMITS: Record<NumKey, [number, number]> = {
   dailyMinutes: [30, 960],
@@ -101,9 +105,9 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" />
-      <div className="divide-y divide-border [&>section]:py-8 [&>section:first-child]:pt-0">
-        <Section title="Exam mode">
-          <p className="mb-4 max-w-prose text-sm text-muted">
+      <div className="divide-y divide-border">
+        <Section title="Exam mode" className={group}>
+          <p className={desc}>
             The dashboard, exams list, planner and AI tools follow this. Mid-sem and major each have their own syllabus: upload each one on a subject&apos;s Syllabus tab while in that mode.
           </p>
           <Tabs
@@ -115,17 +119,19 @@ export default function SettingsPage() {
           <p className="mt-3 text-xs text-muted">After switching, open the Planner and press Rebalance.</p>
         </Section>
 
-        <Section title="Study plan">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <Section title="Study plan" className={group}>
+          <p className={desc}>How much the planner schedules each day, and which days it leaves free.</p>
+          <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
             <Field label="Study time per day (minutes)" hint={`${(settings.dailyMinutes / 60).toFixed(1)} hours`}>
               <Input key={`dailyMinutes-${settings.dailyMinutes}`} {...num("dailyMinutes")} step={15} />
             </Field>
             <Field label="Longest single study block (minutes)"><Input key={`sessionMins-${settings.sessionMins}`} {...num("sessionMins")} step={15} /></Field>
             <Field label="Revision days before each exam"><Input key={`revisionDays-${settings.revisionDays}`} {...num("revisionDays")} /></Field>
           </div>
-          <fieldset className="mt-4">
-            <legend className="mb-1.5 text-[13px] font-medium text-muted">Days off</legend>
-            <div className="flex flex-wrap gap-1.5">
+          <fieldset className="mt-5">
+            <legend className="mb-2 text-[13px] font-medium text-muted">Days off</legend>
+            {/* One segmented row: each day is a cell, and a day off is filled navy. */}
+            <div className="grid w-full max-w-sm grid-cols-7 divide-x divide-border overflow-hidden rounded-md border border-border">
               {DAYS.map((d, i) => {
                 const on = settings.offDays.includes(i);
                 return (
@@ -135,8 +141,9 @@ export default function SettingsPage() {
                     aria-pressed={on}
                     onClick={() => set({ offDays: on ? settings.offDays.filter((x) => x !== i) : [...settings.offDays, i] })}
                     className={cn(
-                      "h-9 w-12 rounded-lg border text-sm transition-colors",
-                      on ? "border-text bg-text font-semibold text-bg" : "border-border bg-surface text-muted hover:text-text",
+                      // The ring is drawn inside the cell, since the row clips anything outside it.
+                      "h-9 min-w-0 text-sm transition-colors duration-150 focus-visible:outline-offset-[-2px]",
+                      on ? "bg-accent font-medium text-accent-ink" : "bg-surface text-muted hover:bg-surface-2 hover:text-text",
                     )}
                   >
                     {d}
@@ -148,15 +155,16 @@ export default function SettingsPage() {
           <p className="mt-4 text-xs text-muted">After changing these, open the Planner and press Rebalance.</p>
         </Section>
 
-        <Section title="Pomodoro">
+        <Section title="Pomodoro" className={group}>
+          <p className={desc}>Lengths of the focus timer and the break after it.</p>
           <div className="grid max-w-sm grid-cols-2 gap-4">
             <Field label="Focus (min)"><Input key={`pomodoroWork-${settings.pomodoroWork}`} {...num("pomodoroWork")} /></Field>
             <Field label="Break (min)"><Input key={`pomodoroBreak-${settings.pomodoroBreak}`} {...num("pomodoroBreak")} /></Field>
           </div>
         </Section>
 
-        <Section title="Reminders">
-          <p className="mb-4 max-w-prose text-sm text-muted">
+        <Section title="Reminders" className={group}>
+          <p className={desc}>
             While the app is open you get a daily digest and an alert the day before each exam. For reminders when it&apos;s closed,
             export your plan to Google Calendar from the Planner.
           </p>
@@ -178,8 +186,8 @@ export default function SettingsPage() {
 
         <DriveSettings />
 
-        <Section title="Your data">
-          <p className="mb-4 max-w-prose text-sm text-muted">
+        <Section title="Your data" className={group}>
+          <p className={desc}>
             Everything is stored only on this device. Export a backup regularly, and use export and import to move between phone and laptop.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -226,29 +234,32 @@ function AiStatus() {
       .then(setStatus, () => setStatus("error"));
   }, []);
   const row = (name: string, on?: boolean) => (
-    <li className="flex justify-between gap-3 py-1">
-      <span>{name}</span>
-      <span className={on ? "text-good" : "text-muted"}>{on ? "Configured" : "Not set"}</span>
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <span className="font-medium">{name}</span>
+      <span className={cn("inline-flex items-center gap-2", on ? "text-good" : "text-muted")}>
+        <span aria-hidden className={cn("h-1.5 w-1.5 rounded-full", on ? "bg-good" : "bg-muted/50")} />
+        {on ? "Configured" : "Not set"}
+      </span>
     </li>
   );
   return (
-    <Section title="AI">
+    <Section title="AI" className={group}>
+      <p className={desc}>
+        Gemini is used first. Groq takes over automatically when Gemini hits a limit. Keys live in .env.local on this computer.
+      </p>
       {status === "error" ? (
         <p className="text-sm text-muted">Couldn&apos;t check the AI setup. You may be offline.</p>
       ) : (
-        <ul className="max-w-xs text-sm">
+        <ul className="max-w-sm divide-y divide-border border-y border-border text-sm">
           {row("Gemini", status?.gemini)}
           {row("Groq", status?.groq)}
         </ul>
       )}
       {last && (
-        <p className="mt-2 text-sm text-muted">
+        <p className="mt-3 text-sm text-muted">
           Last answered by {last.provider === "groq" ? "Groq" : "Gemini"}, {new Date(last.at).toLocaleString()}
         </p>
       )}
-      <p className="mt-3 max-w-prose text-xs text-muted">
-        Gemini is used first. Groq takes over automatically when Gemini hits a limit. Keys live in .env.local on this computer.
-      </p>
     </Section>
   );
 }

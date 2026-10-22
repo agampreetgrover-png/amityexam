@@ -8,7 +8,7 @@ import { aiModeFields, modeShort } from "@/lib/mode";
 import { retrieve } from "@/lib/retrieve";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Card, Empty, Field, Select } from "../ui";
+import { Button, Card, Empty, Field, Section, Select } from "../ui";
 import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
 import { MAX_CONTEXT, noteTexts, OfflineHint, topicQuery, TopicSelect, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
@@ -52,7 +52,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Card className="no-print" title="Write notes">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
           <Field label="Topic">
@@ -70,8 +70,8 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
             <Button onClick={generate} disabled={!online}><Sparkles size={16} /> Write notes</Button>
           )}
         </div>
-        {!materials.length && <p className="mt-3 text-xs text-muted">No materials uploaded, so notes will come from general knowledge.</p>}
-        <div className="mt-2 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
+        {!materials.length && <p className="mt-3 text-[13px] text-muted">No materials uploaded, so notes will come from general knowledge.</p>}
+        <div className="mt-3 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
       </Card>
 
       <DraftCard
@@ -87,7 +87,8 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
 
       {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
 
-      <Card
+      {/* Saved notes are a plain list on the page; only the generator above is a panel. */}
+      <Section
         className="no-print"
         title="Saved notes"
         action={<TopicSelect units={units} topics={topics} value={filter === "all" ? "" : filter} onChange={(v) => setFilter(v || "all")} className="h-8 w-auto max-w-[60%] text-xs" />}
@@ -95,9 +96,9 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
         {shown.length ? (
           <DocList docs={shown} selected={viewing?.id} onSelect={setViewing} />
         ) : (
-          <Empty icon={<FileText />} title="Nothing saved yet">Write short notes or a cheat sheet above.</Empty>
+          <Empty icon={<FileText size={20} />} title="Nothing saved yet">Write short notes or a cheat sheet above.</Empty>
         )}
-      </Card>
+      </Section>
     </div>
   );
 }

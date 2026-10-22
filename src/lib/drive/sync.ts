@@ -4,7 +4,7 @@ import { DeferFile, fileText, SkipFile } from "./extract";
 import { crawl, listFolder, type CrawledFile } from "./list";
 import type { DriveSource } from "./sources";
 
-export interface SyncRequest {
+interface SyncRequest {
   subjects: SubjectRef[];
   known: string[]; // Drive file ids already imported or permanently skipped
   sources: DriveSource[];

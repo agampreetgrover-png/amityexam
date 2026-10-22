@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
-import { Empty, Progress, Tabs, cn } from "@/components/ui";
+import { Empty, Progress, Tabs } from "@/components/ui";
 import { SyllabusTab } from "@/components/subject/syllabus-tab";
 import { MaterialsTab } from "@/components/subject/materials-tab";
 import { PyqsTab } from "@/components/subject/pyqs-tab";
@@ -89,31 +89,33 @@ function Subject({ subjectId }: { subjectId: number }) {
 
   return (
     <div>
-      <Link href="/subjects" className="no-print mb-4 inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-accent">
+      <Link href="/subjects" className="no-print mb-4 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text">
         <ArrowLeft size={14} /> Subjects
       </Link>
-      <header className="no-print mb-6 flex flex-wrap items-end gap-x-6 gap-y-4">
+      <header className="no-print mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-baseline gap-3 text-[28px] font-bold leading-tight tracking-tight md:text-[34px]">
-            <span className="h-3 w-3 shrink-0 -translate-y-0.5 rounded-full" style={{ background: subject.color }} />
+          <h1 className="flex items-baseline gap-2.5 font-display text-[28px] leading-tight md:text-[32px]">
+            {/* The subject's colour as a small dot beside its name. */}
+            <span aria-hidden className="h-2.5 w-2.5 shrink-0 -translate-y-[0.12em] rounded-full" style={{ background: subject.color }} />
             <span className="min-w-0 break-words">{subject.name}</span>
           </h1>
-          <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-muted">
+          <p className="mt-1 flex flex-wrap gap-x-3 text-[15px] text-muted">
             {subject.code && <span>{subject.code}</span>}
             {subject.credits ? <span>{subject.credits} credits</span> : null}
             <span>{topics.length} {modeShort(mode).toLowerCase()} topic{topics.length === 1 ? "" : "s"}</span>
           </p>
         </div>
-        <div className="w-full rounded-2xl border border-border bg-surface px-4 py-3 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:w-56">
-          <div className="mb-1.5 flex justify-between text-[13px]">
-            <span className="text-muted">Syllabus covered</span>
-            <span className={cn("font-semibold tabular-nums", pct < 50 ? "text-warn" : "text-good")}>{pct}%</span>
+        <div className="w-full sm:w-52">
+          <div className="mb-1.5 flex items-baseline justify-between gap-3">
+            <span className="text-[13px] text-muted">Syllabus covered</span>
+            <span className="text-sm font-semibold tabular-nums">{pct}%</span>
           </div>
           <Progress value={pct} color={subject.color} />
         </div>
       </header>
 
-      <div className="no-print -mx-4 mb-6 overflow-x-auto px-4 md:mx-0 md:px-0">
+      {/* Scrolls sideways on phones instead of wrapping the tab row. The vertical padding keeps focus rings from being clipped by the scroller. */}
+      <div className="no-print -mx-4 mb-5 overflow-x-auto px-4 py-1 md:mx-0 md:px-0">
         <Tabs
           label="Subject sections"
           value={tab}

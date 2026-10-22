@@ -1,11 +1,11 @@
 // Server-only: download a public Drive file and turn it into plain text.
-import JSZip from "jszip";
-import mammoth from "mammoth";
+import path from "node:path";
+import { Worker } from "node:worker_threads";
 import { AiProviderError, getProviders } from "@/lib/ai/providers";
 
 const MAX_BYTES = 40 * 1024 * 1024; // skip anything bigger (usually full textbooks)
 const MAX_OCR_BYTES = 15 * 1024 * 1024; // Gemini inline-data limit with headroom
-export const MAX_TEXT = 400_000; // same cap the AI routes accept for `context`
+const MAX_TEXT = 400_000; // same cap the AI routes accept for `context`
 const MAX_PDF_PAGES = 150; // longer PDFs are textbooks, not notes
 
 /** Permanently ignore this file (wrong type, too big, empty). */
@@ -33,48 +33,39 @@ async function fetchBytes(url: string, signal?: AbortSignal): Promise<Buffer> {
   return buf;
 }
 
-async function pdfText(buf: Buffer): Promise<{ text: string; pages: number }> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const task = pdfjs.getDocument({ data: new Uint8Array(buf), disableFontFace: true, useSystemFonts: false, useWorkerFetch: false });
-  const doc = await task.promise;
-  const pages: string[] = [];
-  for (let i = 1; i <= doc.numPages; i++) {
-    const content = await (await doc.getPage(i)).getTextContent();
-    let line = "";
-    const lines: string[] = [];
-    for (const item of content.items) {
-      if (!("str" in item)) continue;
-      line += item.str;
-      if (item.hasEOL) {
-        lines.push(line);
-        line = "";
-      } else line += " ";
-    }
-    if (line.trim()) lines.push(line);
-    pages.push(lines.join("\n"));
-  }
-  const numPages = doc.numPages;
-  await task.destroy();
-  return { text: pages.join("\n\n").replace(/[ \t]+/g, " ").trim(), pages: numPages };
-}
+type Parsed = { text: string; pages: number };
 
-async function pptxText(buf: Buffer): Promise<string> {
-  const zip = await JSZip.loadAsync(buf);
-  const slides = Object.keys(zip.files)
-    .map((f) => f.match(/^ppt\/slides\/slide(\d+)\.xml$/))
-    .filter((m): m is RegExpMatchArray => !!m)
-    .sort((a, b) => Number(a[1]) - Number(b[1]));
-  const out: string[] = [];
-  for (const m of slides) {
-    const xml = await zip.file(m[0])!.async("string");
-    // Each <a:p> is a paragraph; <a:t> holds its text runs.
-    const paras = [...xml.matchAll(/<a:p>([\s\S]*?)<\/a:p>/g)]
-      .map((p) => [...p[1].matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((t) => t[1]).join(""))
-      .map((s) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").trim())
-      .filter(Boolean);
-    if (paras.length) out.push(`## Slide ${m[1]}\n${paras.join("\n")}`);
+// PDF, DOCX and PPTX parsing runs in a worker thread (extract-worker.mjs). pdf.js has no real worker on
+// Node, so on the main thread a sync's parsing would hold up every page request the server handles.
+let worker: Worker | null = null;
+const waiting = new Map<number, { resolve: (p: Parsed) => void; reject: (e: Error) => void }>();
+let nextId = 0;
+
+function parse(ext: "pdf" | "docx" | "pptx", buf: Buffer): Promise<Parsed> {
+  if (!worker) {
+    // Loaded from disk, not bundled: Next would rewrite a bundled worker URL to a /_next/ path that doesn't exist.
+    const w = new Worker(path.join(process.cwd(), "src/lib/drive/extract-worker.mjs"));
+    w.unref(); // never keeps the server process alive on its own
+    w.on("message", ({ id, result, error }: { id: number; result?: Parsed; error?: string }) => {
+      const job = waiting.get(id);
+      waiting.delete(id);
+      if (error !== undefined) job?.reject(new Error(error));
+      else job?.resolve(result!);
+    });
+    const fail = (e: Error) => {
+      if (worker === w) worker = null; // the next file starts a fresh worker
+      for (const job of waiting.values()) job.reject(e);
+      waiting.clear();
+    };
+    w.on("error", fail);
+    w.on("exit", (code) => fail(new Error(`text extractor stopped (${code})`)));
+    worker = w;
   }
-  return out.join("\n\n");
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    waiting.set(id, { resolve, reject });
+    worker!.postMessage({ id, ext, data: buf });
+  });
 }
 
 const OCR_PROMPT =
@@ -97,11 +88,10 @@ export async function fileText(
 
   const buf = await fetchBytes(`https://drive.usercontent.google.com/download?id=${entry.id}&export=download&confirm=t`, signal);
   const ext = entry.name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
-  if (ext === "docx") return { text: clip((await mammoth.extractRawText({ buffer: buf })).value.trim()), ocr: false };
-  if (ext === "pptx") return { text: clip(await pptxText(buf)), ocr: false };
+  if (ext === "docx" || ext === "pptx") return { text: clip((await parse(ext, buf)).text.trim()), ocr: false };
   if (ext === "txt" || ext === "md") return { text: clip(buf.toString("utf8").trim()), ocr: false };
   if (ext === "pdf") {
-    const { text, pages } = await pdfText(buf);
+    const { text, pages } = await parse("pdf", buf);
     // Lecture notes and papers are short; a PDF this long is a textbook and would crowd out the notes as AI context.
     if (pages > MAX_PDF_PAGES) throw new SkipFile(`looks like a full book (${pages} pages)`);
     // Under ~40 characters per page means scanned images, not real text.

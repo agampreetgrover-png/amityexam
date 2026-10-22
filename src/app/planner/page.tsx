@@ -93,9 +93,9 @@ export default function PlannerPage() {
       <>
         <PageHeader title="Planner" />
         <Empty title="Add your subjects and exams first">
-          The planner needs {!data.topics.length && <Link href="/subjects" className="font-medium text-accent underline underline-offset-2">subjects with topics</Link>}
+          The planner needs {!data.topics.length && <Link href="/subjects" className="text-accent underline underline-offset-2">subjects with topics</Link>}
           {!data.topics.length && !data.exams.length && " and "}
-          {!data.exams.length && <Link href="/exams" className="font-medium text-accent underline underline-offset-2">exam dates</Link>} to build a schedule.
+          {!data.exams.length && <Link href="/exams" className="text-accent underline underline-offset-2">exam dates</Link>} to build a schedule.
         </Empty>
       </>
     );
@@ -116,13 +116,13 @@ export default function PlannerPage() {
         }
       />
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         {message && (
-          <p className="rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-muted shadow-[0_1px_3px_rgb(17_24_39/0.04)]" role="status">{message}</p>
+          <p className="rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text" role="status">{message}</p>
         )}
 
         {stale > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-accent/25 bg-accent-soft px-5 py-3.5 text-[15px]">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text">
             <span>
               <span className="font-semibold">Your plan is still for the other exam.</span>{" "}
               Rebalance to plan for your {modeShort(mode!)} exams instead.
@@ -132,9 +132,9 @@ export default function PlannerPage() {
         )}
 
         {missed.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-amber-200 bg-mark-soft px-5 py-3.5 text-[15px]">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-md border border-mark/40 bg-mark-soft px-4 py-3 text-sm text-text">
             <span>
-              <span className="font-semibold">{missed.length} missed session{missed.length > 1 ? "s" : ""}.</span>{" "}
+              <span className="font-semibold text-warn">{missed.length} missed session{missed.length > 1 ? "s" : ""}.</span>{" "}
               Rebalance to fit that work into the days you have left.
             </span>
             <Button size="sm" onClick={runReplan} disabled={busy}>Rebalance</Button>
@@ -153,13 +153,13 @@ export default function PlannerPage() {
                       {topic?.title ?? "Topic"}
                       {exam && <span className="ml-2 text-muted">{lookup.subjects.get(exam.subjectId)?.name}</span>}
                     </span>
-                    <span className="shrink-0 text-muted">{fmtMins(u.minutes)} short</span>
+                    <span className="shrink-0 tabular-nums text-warn">{fmtMins(u.minutes)} short</span>
                   </li>
                 );
               })}
             </List>
-            <p className="text-xs text-muted">
-              Add study hours in <Link href="/settings" className="font-medium text-accent underline underline-offset-2">Settings</Link>, mark topics you already know as studied, or lower their difficulty.
+            <p className="text-[13px] text-muted">
+              Add study hours in <Link href="/settings" className="text-accent underline underline-offset-2">Settings</Link>, mark topics you already know as studied, or lower their difficulty.
             </p>
           </Card>
         )}
@@ -169,7 +169,7 @@ export default function PlannerPage() {
         )}
         {!hasUpcoming && mode && (
           <Empty title={`No upcoming ${modeShort(mode)} exams`}>
-            Add your {modeShort(mode)} dates on the <Link href="/exams" className="font-medium text-accent underline underline-offset-2">Exams</Link> page to build a plan.
+            Add your {modeShort(mode)} dates on the <Link href="/exams" className="text-accent underline underline-offset-2">Exams</Link> page to build a plan.
           </Empty>
         )}
 

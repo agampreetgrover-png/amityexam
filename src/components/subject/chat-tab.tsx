@@ -87,16 +87,16 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
 
   return (
     <div className="flex h-[calc(100dvh-17rem)] min-h-96 flex-col md:h-[calc(100dvh-18rem)]">
-      <div className="mb-2 flex min-h-8 items-center justify-between gap-2 text-xs text-muted">
-        <span>{materials.length ? `Answers use your ${materials.length} uploaded file${materials.length === 1 ? "" : "s"}` : "No materials uploaded, so answers are general"}</span>
-        {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear}><Trash2 size={13} /> Clear chat</Button>}
+      <div className="mb-2 flex min-h-8 items-center justify-between gap-2 text-[13px] text-muted">
+        <span className="min-w-0">{materials.length ? `Answers use your ${materials.length} uploaded file${materials.length === 1 ? "" : "s"}` : "No materials uploaded, so answers are general"}</span>
+        {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto rounded-2xl border border-border bg-surface p-4 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:p-5">
+      <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-border bg-surface p-4 sm:p-5">
         {messages.length === 0 && streaming === null ? (
-          <div className="flex h-full flex-col items-start justify-center gap-2 px-1">
-            <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent"><MessageCircle size={20} /></span>
-            <p className="font-semibold">Ask about anything in {subject.name}</p>
+          <div className="flex h-full flex-col items-start justify-center gap-1.5 px-1">
+            <MessageCircle size={18} className="mb-1 text-muted" aria-hidden />
+            <p className="text-[15px] font-semibold">Ask about anything in {subject.name}</p>
             <p className="max-w-prose text-sm text-muted">
               For example, &ldquo;Explain normalization with an example&rdquo; or &ldquo;Difference between TCP and UDP for 5 marks&rdquo;.
             </p>
@@ -111,10 +111,15 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
       </div>
 
       {/* On phones the composer sticks above the bottom bar, so it's reachable without scrolling past the header. */}
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 bg-bg pb-1 pt-1 md:static md:pb-0 md:pt-0">
+      {/* The strip behind it is solid white with a top rule, so scrolled content passes under it instead of showing through. */}
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 border-t border-border bg-surface pb-1 pt-2 md:static md:border-t-0 md:bg-transparent md:pb-0 md:pt-0">
         <OfflineHint online={online} />
         <AiErrorBox error={error} />
-        <form className="flex items-end gap-2" onSubmit={(e) => { e.preventDefault(); send(); }}>
+        {/* The composer is one bordered box; the textarea inside is borderless, so focus rings the whole box instead. */}
+        <form
+          className="flex items-end gap-2 rounded-lg border border-border bg-surface p-1.5 transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgb(27_58_122/0.12)]"
+          onSubmit={(e) => { e.preventDefault(); send(); }}
+        >
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -127,13 +132,15 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
             }}
             placeholder={touch ? "Ask a question" : "Ask a question. Enter sends, Shift+Enter adds a line."}
             aria-label="Your question"
-            className="min-h-11 flex-1 resize-none"
+            className="min-h-11 flex-1 resize-none border-transparent bg-transparent px-2.5 text-[15px] hover:border-transparent focus:border-transparent focus:bg-transparent focus:shadow-none focus-visible:outline-none"
             rows={2}
           />
           {streaming !== null ? (
-            <Button type="button" variant="secondary" className="h-11" onClick={() => ctrl.current?.abort()} aria-label="Stop"><Square size={16} /></Button>
+            <Button type="button" variant="secondary" className="h-11 w-11 shrink-0 px-0" onClick={() => ctrl.current?.abort()} aria-label="Stop"><Square size={16} /></Button>
           ) : (
-            <Button type="submit" className="h-11" disabled={!input.trim() || !online} aria-label="Send"><Send size={16} /></Button>
+            <Button type="submit" className="h-11 min-w-11 shrink-0 px-0 sm:px-4" disabled={!input.trim() || !online} aria-label="Send">
+              <Send size={16} /><span className="hidden sm:inline">Send</span>
+            </Button>
           )}
         </form>
       </div>
@@ -144,8 +151,15 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
 function Bubble({ role, content }: { role: "user" | "assistant"; content: string }) {
   return (
     <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
-      <div className={cn("max-w-[88%]", role === "user" ? "rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-accent-ink" : "rounded-2xl rounded-bl-md border border-border bg-bg px-3.5 py-1")}>
-        {role === "user" ? <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p> : <Markdown>{content}</Markdown>}
+      <div
+        className={cn(
+          "min-w-0 max-w-[88%]",
+          role === "user"
+            ? "rounded-lg bg-accent-soft px-4 py-2.5 text-text"
+            : "rounded-lg bg-surface-2 px-4 py-1.5",
+        )}
+      >
+        {role === "user" ? <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{content}</p> : <Markdown>{content}</Markdown>}
       </div>
     </div>
   );

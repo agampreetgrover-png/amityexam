@@ -6,8 +6,8 @@ import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db, deleteSubject } from "@/lib/db";
 import { coverage, SUBJECT_COLORS } from "@/lib/stats";
-import type { Subject } from "@/lib/types";
-import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Progress, cn } from "@/components/ui";
+import type { Subject, Topic } from "@/lib/types";
+import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Progress } from "@/components/ui";
 import { SubjectPicker } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
@@ -32,55 +32,20 @@ export default function SubjectsPage() {
         </Empty>
       )}
       {!!subjects?.length && (
-        <ul className="grid gap-4 sm:grid-cols-2">
-          {subjects.map((s) => {
-            const ts = topics?.filter((t) => t.subjectId === s.id) ?? [];
-            const cov = coverage(ts);
-            const weak = ts.filter((t) => t.weak).length;
-            return (
-              <li
-                key={s.id}
-                className="relative overflow-hidden rounded-2xl border border-border bg-surface p-5 shadow-[0_1px_3px_rgb(17_24_39/0.04)] transition-shadow hover:shadow-[0_4px_14px_rgb(17_24_39/0.07)]"
-              >
-                <span className="absolute inset-x-0 top-0 h-1" style={{ background: s.color }} aria-hidden />
-                <div className="flex items-start gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: `${s.color}1f`, color: s.color }}>
-                    <BookOpen size={19} />
-                  </span>
-                  <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 flex-1 after:absolute after:inset-0">
-                    <span className="flex items-baseline gap-2">
-                      <span className="truncate text-[15px] font-semibold">{s.name}</span>
-                      {weak > 0 && <Badge className="shrink-0 bg-mark-soft text-warn">{weak} weak</Badge>}
-                    </span>
-                    <span className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
-                      {s.code && <span>{s.code}</span>}
-                      <span>{ts.length} topics</span>
-                      {s.credits ? <span>{s.credits} credits</span> : null}
-                    </span>
-                  </Link>
-                  <div className="relative z-10 -mr-2 -mt-1 flex shrink-0">
-                    <Button variant="ghost" size="sm" aria-label="Edit" onClick={() => setEditing(s)}><Pencil size={15} /></Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      aria-label="Delete"
-                      onClick={() => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!)}
-                    >
-                      <Trash2 size={15} />
-                    </Button>
-                  </div>
-                </div>
-                <div className="mt-5">
-                  <div className="mb-1.5 flex justify-between gap-3 text-[13px]">
-                    <span className="text-muted">Syllabus covered</span>
-                    <span className={cn("font-semibold tabular-nums", cov < 50 ? "text-warn" : "text-good")}>{cov}%</span>
-                  </div>
-                  <Progress value={cov} color={s.color} />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <div className="overflow-hidden rounded-lg border border-border">
+          {/* Column headings line up with the row layout below; on phones each row labels its own coverage. */}
+          <div aria-hidden className="hidden items-center gap-4 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted sm:flex">
+            <span className="w-2.5 shrink-0" />
+            <span className="flex-1">Subject</span>
+            <span className="w-[200px] shrink-0">Syllabus covered</span>
+            <span className="-mr-2 w-[72px] shrink-0" />
+          </div>
+          <ul className="divide-y divide-border">
+            {subjects.map((s) => (
+              <SubjectRow key={s.id} subject={s} topics={topics?.filter((t) => t.subjectId === s.id) ?? []} onEdit={() => setEditing(s)} />
+            ))}
+          </ul>
+        </div>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit subject" : "Add subject"}>
         <SubjectForm
@@ -91,6 +56,47 @@ export default function SubjectsPage() {
         />
       </Modal>
     </>
+  );
+}
+
+/** One subject in the table. The whole row opens the subject; edit and delete sit above the link. */
+function SubjectRow({ subject: s, topics: ts, onEdit }: { subject: Subject; topics: Topic[]; onEdit: () => void }) {
+  const cov = coverage(ts);
+  const weak = ts.filter((t) => t.weak).length;
+  return (
+    <li className="relative flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-surface-2 sm:items-center sm:gap-4">
+      <span aria-hidden className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full sm:mt-0" style={{ background: s.color }} />
+      {/* Phones: coverage drops under the name. Wider: it gets its own column. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+        <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 flex-1 rounded-md after:absolute after:inset-0">
+          <span className="flex items-center gap-2">
+            <span className="truncate text-[15px] font-semibold">{s.name}</span>
+            {weak > 0 && <Badge className="shrink-0 bg-bad/10 text-bad">{weak} weak</Badge>}
+          </span>
+          <span className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
+            {s.code && <span>{s.code}</span>}
+            <span>{ts.length} topics</span>
+            {s.credits ? <span>{s.credits} credits</span> : null}
+          </span>
+        </Link>
+        <div className="flex items-center gap-3 sm:w-[200px] sm:shrink-0">
+          <span className="w-10 shrink-0 text-sm font-medium tabular-nums">{cov}%</span>
+          <Progress value={cov} color={s.color} className="max-w-[160px] flex-1" />
+          <span className="text-[13px] text-muted sm:hidden">covered</span>
+        </div>
+      </div>
+      <div className="relative z-10 -my-1 -mr-2 flex shrink-0 justify-end sm:w-[72px]">
+        <Button variant="ghost" size="sm" aria-label="Edit" onClick={onEdit}><Pencil size={15} /></Button>
+        <Button
+          variant="danger"
+          size="sm"
+          aria-label="Delete"
+          onClick={() => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!)}
+        >
+          <Trash2 size={15} />
+        </Button>
+      </div>
+    </li>
   );
 }
 
@@ -154,8 +160,12 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
               aria-label={`Colour ${i + 1}`}
               aria-checked={color === c}
               onClick={() => setColor(c)}
-              className="h-8 w-8 rounded-full"
-              style={{ background: c, boxShadow: color === c ? `0 0 0 2px var(--surface), 0 0 0 4px ${c}` : undefined }}
+              className="h-7 w-7 rounded-full transition-shadow duration-150"
+              // The chosen swatch gets a ring in its own colour, set off by a white gap.
+              style={{
+                background: c,
+                boxShadow: color === c ? `0 0 0 2px var(--surface), 0 0 0 4px ${c}` : undefined,
+              }}
             />
           ))}
         </div>

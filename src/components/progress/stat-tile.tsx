@@ -1,22 +1,24 @@
 import type { ReactNode } from "react";
 import { cn } from "@/components/ui";
 
+// A tone only tints the small icon; the box and figure stay plain ink on white.
 const tones = {
-  indigo: "from-indigo-500 to-indigo-600",
-  emerald: "from-emerald-500 to-emerald-600",
-  violet: "from-violet-500 to-purple-600",
-  amber: "from-amber-400 to-orange-500",
+  accent: "text-accent",
+  good: "text-good",
+  warn: "text-warn",
 };
-export type Tone = keyof typeof tones;
+type Tone = keyof typeof tones;
 
-/** A coloured card with a big figure; tiles sit in a row, one tone each. */
-export function StatTile({ label, value, sub, icon, tone = "indigo" }: { label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode; tone?: Tone }) {
+/** A bordered box with a label and a condensed figure; tiles sit in a row. */
+export function StatTile({ label, value, sub, icon, tone = "accent" }: { label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode; tone?: Tone }) {
   return (
-    <div className={cn("relative min-w-0 overflow-hidden rounded-2xl bg-gradient-to-br p-5 text-white shadow-sm", tones[tone])}>
-      {icon && <div className="pointer-events-none absolute -right-3 -top-3 text-white/20 [&_svg]:h-24 [&_svg]:w-24">{icon}</div>}
-      <p className="relative text-sm font-medium text-white/90">{label}</p>
-      <p className="relative mt-2 text-3xl font-bold tabular-nums tracking-tight md:text-[34px]">{value}</p>
-      {sub && <p className="relative mt-1.5 text-[13px] text-white/80 [&_a]:text-white">{sub}</p>}
+    <div className="min-w-0 rounded-lg border border-border bg-surface p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 text-[13px] font-medium text-muted">{label}</p>
+        {icon && <span aria-hidden className={cn("shrink-0 [&_svg]:h-4 [&_svg]:w-4", tones[tone])}>{icon}</span>}
+      </div>
+      <p className="numeral mt-3 break-words text-[36px] text-text sm:text-[40px]">{value}</p>
+      {sub && <p className="mt-2 text-[13px] text-muted [&_a:hover]:text-accent">{sub}</p>}
     </div>
   );
 }

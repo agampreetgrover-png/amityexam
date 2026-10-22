@@ -12,8 +12,8 @@ export async function replan(): Promise<PlanResult> {
   return db.transaction("rw", [db.exams, db.topics, db.units, db.sessions, db.settings], async () => {
     const unfinished = await db.sessions.filter((s) => !s.done).toArray();
     for (const s of unfinished) {
-      if (s.actualMins > 0) await db.sessions.update(s.id!, { done: true, plannedMins: s.actualMins });
-      else await db.sessions.delete(s.id!);
+      if (s.actualMins > 0) await db.sessions.update(s.id, { done: true, plannedMins: s.actualMins });
+      else await db.sessions.delete(s.id);
     }
     const [exams, topics, units, done, settings] = await Promise.all([
       db.exams.toArray(),

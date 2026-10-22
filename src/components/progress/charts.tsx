@@ -1,14 +1,15 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
-// Every chart is a single series in the accent hue: the axis labels carry identity,
+// Every chart is a single series in solid navy: the axis labels carry identity,
 // so colour never has to tell subjects apart (the subject palette isn't CVD-safe as a chart scale).
 const AXIS = { stroke: "var(--muted)", fontSize: 12, tickLine: false, axisLine: { stroke: "var(--border)" } } as const;
-const GRID = { stroke: "var(--border)", strokeDasharray: undefined, vertical: false } as const;
+const GRID = { stroke: "var(--border)", vertical: false } as const;
 
 interface TipProps {
   active?: boolean;
@@ -20,9 +21,9 @@ interface TipProps {
 function TooltipBox({ active, payload, label, unit }: TipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-xs shadow-sm">
-      <p className="font-medium">{payload[0].payload?.full ?? label}</p>
-      <p className="text-muted">{String(payload[0].value)}{unit}</p>
+    <div className="rounded-md border border-border bg-surface px-3 py-2 text-xs shadow-float">
+      <p className="font-medium text-text">{payload[0].payload?.full ?? label}</p>
+      <p className="mt-0.5 tabular-nums text-muted">{String(payload[0].value)}{unit}</p>
     </div>
   );
 }
@@ -37,13 +38,13 @@ function ChartFrame({ children, rows, columns, height = 240 }: {
   return (
     <div>
       <div style={{ height }} className="w-full">{children}</div>
-      <details className="mt-2 text-xs text-muted">
-        <summary className="cursor-pointer select-none">Show as table</summary>
+      <details className="mt-2 text-[13px] text-muted">
+        <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-md py-1 transition-colors duration-150 hover:text-text"><ChevronRight size={14} className="chev" aria-hidden /> Show as table</summary>
         <table className="mt-2 w-full text-left">
-          <thead><tr>{columns.map((c) => <th key={c} className="py-1 pr-2 font-medium">{c}</th>)}</tr></thead>
+          <thead><tr className="border-b border-border">{columns.map((c) => <th key={c} className="py-1.5 pr-2 text-[12px] font-medium text-muted">{c}</th>)}</tr></thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className="border-t border-border">{r.map((v, j) => <td key={j} className="py-1 pr-2 text-text">{v}</td>)}</tr>
+              <tr key={i} className="border-b border-border last:border-b-0">{r.map((v, j) => <td key={j} className="py-1.5 pr-2 tabular-nums text-text">{v}</td>)}</tr>
             ))}
           </tbody>
         </table>
@@ -52,6 +53,8 @@ function ChartFrame({ children, rows, columns, height = 240 }: {
   );
 }
 
+// Animations off: they re-render every bar/dot each frame for about 1.5 s and made /progress slow to settle.
+// interval={0} on the y axes skips measuring each tick label; the ticks are always 40px+ apart.
 export function CoverageChart({ data }: { data: { name: string; value: number }[] }) {
   const height = Math.max(120, data.length * 40 + 40);
   return (
@@ -60,10 +63,10 @@ export function CoverageChart({ data }: { data: { name: string; value: number }[
         <BarChart data={data} layout="vertical" margin={{ left: 0, right: 36, top: 4, bottom: 4 }}>
           <CartesianGrid {...GRID} vertical horizontal={false} />
           <XAxis type="number" domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} unit="%" {...AXIS} />
-          <YAxis type="category" dataKey="name" width={132} {...AXIS} tickFormatter={(v: string) => (v.length > 18 ? `${v.slice(0, 17)}…` : v)} />
+          <YAxis type="category" dataKey="name" width={132} interval={0} {...AXIS} tickFormatter={(v: string) => (v.length > 18 ? `${v.slice(0, 17)}…` : v)} />
           <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p) => <TooltipBox {...p} unit="% covered" />} />
           <Bar
-            dataKey="value" fill="var(--accent)" maxBarSize={24} radius={[0, 4, 4, 0]}
+            dataKey="value" fill="var(--accent)" maxBarSize={20} radius={[0, 2, 2, 0]} isAnimationActive={false}
             label={{ position: "right", fill: "var(--muted)", fontSize: 12, formatter: (v: unknown) => `${v}%` }}
           />
         </BarChart>
@@ -79,9 +82,9 @@ export function MinutesChart({ data }: { data: { label: string; full: string; va
         <BarChart data={data} margin={{ left: -16, right: 8, top: 8, bottom: 0 }} barCategoryGap={2}>
           <CartesianGrid {...GRID} />
           <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={8} />
-          <YAxis allowDecimals={false} {...AXIS} />
+          <YAxis allowDecimals={false} interval={0} {...AXIS} />
           <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p) => <TooltipBox {...p} unit=" min" />} />
-          <Bar dataKey="value" fill="var(--accent)" maxBarSize={24} radius={[4, 4, 0, 0]} />
+          <Bar dataKey="value" fill="var(--accent)" maxBarSize={20} radius={[2, 2, 0, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </ChartFrame>
@@ -95,12 +98,12 @@ export function QuizTrendChart({ data }: { data: { label: string; full: string; 
         <LineChart data={data} margin={{ left: -16, right: 16, top: 8, bottom: 0 }}>
           <CartesianGrid {...GRID} />
           <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={8} />
-          <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} {...AXIS} />
-          <Tooltip cursor={{ stroke: "var(--muted)", strokeWidth: 1 }} content={(p) => <TooltipBox {...p} unit="%" />} />
+          <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} interval={0} {...AXIS} />
+          <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={(p) => <TooltipBox {...p} unit="%" />} />
           <Line
-            type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-            dot={{ r: 4, fill: "var(--accent)", stroke: "var(--surface)", strokeWidth: 2 }}
-            activeDot={{ r: 6, fill: "var(--accent)", stroke: "var(--surface)", strokeWidth: 2 }}
+            type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" isAnimationActive={false}
+            dot={{ r: 3, fill: "var(--accent)", stroke: "var(--surface)", strokeWidth: 1.5 }}
+            activeDot={{ r: 4.5, fill: "var(--accent)", stroke: "var(--surface)", strokeWidth: 2 }}
           />
         </LineChart>
       </ResponsiveContainer>

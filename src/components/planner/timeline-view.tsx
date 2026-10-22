@@ -1,6 +1,6 @@
 "use client";
 
-import { Empty, Progress, cn } from "@/components/ui";
+import { Empty, List, Progress, cn } from "@/components/ui";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
 import { examInMode, useExamMode } from "@/lib/mode";
@@ -29,7 +29,7 @@ export function TimelineView({ exams, topics, sessions, lookup }: {
   upcoming.forEach((e, i) => syllabi[i].forEach((id) => { if (!owner.has(id)) owner.set(id, e.id!); }));
 
   return (
-    <ul className="space-y-3">
+    <List>
       {upcoming.map((e, i) => {
         const subject = lookup.subjects.get(e.subjectId);
         const ids = syllabi[i];
@@ -40,30 +40,30 @@ export function TimelineView({ exams, topics, sessions, lookup }: {
         const done = related.filter((s) => s.done).reduce((a, s) => a + Math.min(s.actualMins, s.plannedMins), 0);
         const days = daysBetween(t, e.date);
         return (
-          <li
-            key={e.id}
-            className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-border bg-surface py-4 pl-5 pr-4 shadow-[0_1px_3px_rgb(17_24_39/0.04)] sm:gap-5 sm:py-5 sm:pl-6 sm:pr-6"
-          >
-            <span className="absolute inset-y-0 left-0 w-1" style={{ background: subject?.color }} aria-hidden />
-            <div className="w-16 shrink-0 text-right">
-              <p className="numeral text-[44px]"><span className={cn(days <= 3 && "mark")}>{days}</span></p>
+          <li key={e.id} className="flex items-center gap-4 py-4 pl-1 pr-1 transition-colors duration-150 hover:bg-surface-2 sm:gap-6 sm:pl-2 sm:pr-2">
+            <div className="w-16 shrink-0 text-right sm:w-[4.5rem]">
+              <p className="numeral text-[40px] sm:text-[44px]">
+                <span className={cn(days <= 3 && "mark")}>{days}</span>
+              </p>
               <p className="mt-1 text-xs text-muted">{days === 0 ? "today" : days === 1 ? "day left" : "days left"}</p>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 font-semibold">
-                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: subject?.color }} />
+              <p className="flex min-w-0 items-center gap-2 text-[15px] font-semibold">
+                <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: subject?.color }} />
                 <span className="truncate">{subject?.name ?? "Exam"}</span>
-                <span className="shrink-0 text-sm font-normal text-muted">{examTypeLabel(e.type)}</span>
+                <span className="shrink-0 text-[13px] font-normal text-muted">{examTypeLabel(e.type)}</span>
               </p>
-              <p className="mt-0.5 text-[13px] text-muted">
+              <p className="mt-0.5 text-[13px] tabular-nums text-muted">
                 {prettyDay(e.date)}{e.time ? `, ${e.time}` : ""}, {ids.size} topic{ids.size === 1 ? "" : "s"}
               </p>
-              <Progress value={planned ? (done / planned) * 100 : 0} className="mt-2.5" color={subject?.color} />
-              <p className="mt-1 text-xs tabular-nums text-muted">{fmtMins(done)} of {fmtMins(planned)} planned study done</p>
+              <div className="mt-2.5 sm:flex sm:items-center sm:gap-3">
+                <Progress value={planned ? (done / planned) * 100 : 0} className="sm:max-w-sm sm:flex-1" />
+                <p className="mt-1.5 text-xs tabular-nums text-muted sm:mt-0 sm:shrink-0">{fmtMins(done)} of {fmtMins(planned)} planned study done</p>
+              </div>
             </div>
           </li>
         );
       })}
-    </ul>
+    </List>
   );
 }

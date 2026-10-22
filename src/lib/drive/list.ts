@@ -1,9 +1,9 @@
 // Lists public Drive folders without an API key, via Drive's embeddable folder view.
 // Server-only: the page is fetched from Next's server, which avoids CORS.
 
-export type EntryType = "folder" | "file" | "gdoc" | "gslides" | "gsheet";
+type EntryType = "folder" | "file" | "gdoc" | "gslides" | "gsheet";
 
-export interface DriveEntry {
+interface DriveEntry {
   id: string;
   name: string;
   type: EntryType;
