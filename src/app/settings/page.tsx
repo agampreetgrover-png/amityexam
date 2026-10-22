@@ -247,7 +247,7 @@ function AiStatus() {
   return (
     <Section title="AI" className={group}>
       <p className={desc}>
-        Gemini is used first. Groq, then OpenRouter, take over automatically when it hits a limit. Keys live in .env.local on this computer.
+        OpenRouter is used first. Gemini, then Groq, take over automatically when it hits a limit. Reading scanned papers always uses Gemini. Keys live in .env.local on this computer.
       </p>
       {status === "error" ? (
         <p className="text-sm text-muted">Couldn&apos;t check the AI setup. You may be offline.</p>

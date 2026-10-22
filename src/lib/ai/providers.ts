@@ -1,8 +1,8 @@
 import { ApiError as GeminiApiError, GoogleGenAI, ThinkingLevel, type Content } from "@google/genai";
 import Groq from "groq-sdk";
 
-// Server-only AI providers. Gemini is tried first (bigger limits, reads PDFs/images);
-// Groq, then OpenRouter, are the automatic fallbacks when it's rate-limited, down or misconfigured.
+// Server-only AI providers. OpenRouter is tried first; Gemini (bigger limits, reads PDFs/images), then Groq,
+// are the automatic fallbacks when it's rate-limited, down or misconfigured. Reading scans is Gemini-only.
 
 export type Msg = { role: "system" | "user" | "assistant"; content: string };
 export type ProviderName = "gemini" | "groq" | "openrouter";
@@ -266,7 +266,7 @@ function openrouter(apiKey: string): Provider {
 
   return {
     name: "openrouter",
-    maxContextChars: 100_000,
+    maxContextChars: 200_000, // the free models take 256K+ tokens; same material as Gemini gets
     chatHistory: 10,
     async json(messages, opts) {
       try {
@@ -325,9 +325,9 @@ function openrouter(apiKey: string): Provider {
 /** Configured providers in priority order. */
 export function getProviders(): Provider[] {
   const out: Provider[] = [];
+  if (process.env.OPENROUTER_API_KEY) out.push(openrouter(process.env.OPENROUTER_API_KEY));
   if (process.env.GEMINI_API_KEY) out.push(gemini(process.env.GEMINI_API_KEY));
   if (process.env.GROQ_API_KEY) out.push(groq(process.env.GROQ_API_KEY));
-  if (process.env.OPENROUTER_API_KEY) out.push(openrouter(process.env.OPENROUTER_API_KEY));
   return out;
 }
 
