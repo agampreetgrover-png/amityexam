@@ -2,10 +2,14 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Course } from "@/lib/drive/catalog";
+import { sameSubject } from "@/lib/drive/classify";
 import { SUBJECT_CATALOG, type CatalogSubject } from "@/lib/subject-catalog";
 import { Input, cn } from "./ui";
 
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9+]+/g, " ").trim();
+const plain = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9+]+/g, " ").trim(); // keeps "+" (C++)
+/** Compares subject names ignoring case and punctuation, with every name of one subject ("Design and Analysis of Algorithms") as one. */
+export const subjectKey = (s: string) => sameSubject(plain(s));
+const norm = subjectKey;
 
 // The same subject appears under several programmes (e.g. DBMS in B.Tech and BCA); list it once.
 const UNIQUE: CatalogSubject[] = Object.values(
@@ -22,23 +26,27 @@ const UNIQUE: CatalogSubject[] = Object.values(
  */
 type Entry = CatalogSubject & { own?: boolean };
 
+// A generic entry's short forms, plus its name when it's the subject's other name ("design and analysis" still finds it).
+const aliasesOf = (g: CatalogSubject | undefined, name: string) =>
+  g ? [...(g.aliases ?? []), ...(plain(g.name) !== plain(name) ? [g.name] : [])] : [];
+
 function buildPool(courses: Course[]): Entry[] {
   const generic = new Map(UNIQUE.map((s) => [norm(s.name), s]));
   // A course keeps the generic entry's short forms, so "dbms" still finds the student's own DBMS course.
-  const own = courses.map((c) => ({ name: c.name, programme: c.code, aliases: [c.code, ...(generic.get(norm(c.name))?.aliases ?? [])], own: true }));
+  const own = courses.map((c) => ({ name: c.name, programme: c.code, aliases: [c.code, ...aliasesOf(generic.get(norm(c.name)), c.name)], own: true }));
   const ownNames = new Set(own.map((c) => norm(c.name)));
   return [...own, ...UNIQUE.filter((s) => !ownNames.has(norm(s.name)))];
 }
 
 /** Ranks subjects for a query: exact alias, then name prefix, then word prefix, then substring. */
 function search(query: string, all: Entry[], exclude: Set<string>): Entry[] {
-  const q = norm(query);
+  const q = plain(query);
   const pool = all.filter((s) => !exclude.has(norm(s.name)));
   if (!q) return pool;
   const scored: [number, Entry][] = [];
   for (const s of pool) {
-    const name = norm(s.name);
-    const aliases = (s.aliases ?? []).map(norm);
+    const name = plain(s.name);
+    const aliases = (s.aliases ?? []).map(plain);
     let score = -1;
     if (aliases.includes(q)) score = 0;
     else if (name.startsWith(q)) score = 1;

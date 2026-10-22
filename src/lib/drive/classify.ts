@@ -10,8 +10,17 @@ export interface SubjectRef {
 }
 
 const MINOR_WORDS = new Set(["and", "of", "the", "for", "in", "to", "a", "an", "with", "using", "&"]);
-/** Lower case, "&" as "and", and anything but letters and digits as single spaces, for comparing names. */
-export const norm = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim();
+
+// One subject under several names. Each entry: what to look for in a normalised name, the name used for
+// comparing, and the extra short forms the other names give it (ADA from one spelling, DAA from the other).
+const SAME_SUBJECT: [RegExp, string, string[]][] = [
+  [/\b(?:analysis and design|design and analysis) of algorithms?\b/g, "analysis and design of algorithms", ["daa"]],
+];
+/** Rewrites a normalised name (lower case, words split by single spaces) so every name of one subject reads the same. */
+export const sameSubject = (n: string) => SAME_SUBJECT.reduce((s, [re, to]) => s.replace(re, to), n);
+
+/** Lower case, "&" as "and", anything but letters and digits as single spaces, and one name per subject, for comparing names. */
+export const norm = (s: string) => sameSubject(s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, " ").trim());
 // Part numbers that tell apart "Applied Mathematics 1" from "… 2", or "Basic Physics - I" from "- II".
 const ROMAN: Record<string, string> = { i: "1", ii: "2", iii: "3", iv: "4", v: "5", vi: "6" };
 const words = (s: string) => norm(s).split(" ").filter(Boolean).map((w) => ROMAN[w] ?? w);
@@ -23,6 +32,12 @@ function acronyms(name: string): string[] {
   const all = words(name).map((w) => w[0]).join("");
   return [...new Set([sig, all])].filter((a) => a.length >= 2);
 }
+
+/** Short forms a subject's other names give it, e.g. DAA. Matched exactly only: "data" is one letter off "daa". */
+const otherShortForms = (name: string) => {
+  const n = norm(name);
+  return SAME_SUBJECT.flatMap(([, to, short]) => (n.includes(to) ? short : []));
+};
 
 const CODE = /\b([A-Z]{2,5})\s?(\d{3}[A-Z]?)\b/;
 const codeOf = (s: string) => {
@@ -68,11 +83,13 @@ export function subjectScore(driveName: string, s: SubjectRef): number {
       // One extra letter: "DBMS" for "Database Management Systems" (dms), "ADAA" for "Analysis & Design of Algorithms" (ada).
       for (const w of dWords) if (oneExtraLetter(w, a)) return 0.8;
     }
+    if (otherShortForms(s.name).some((a) => dWords.has(a))) return 0.9;
   } else {
     // Library folders spell names out; a subject typed as an acronym ("DBMS") matches through the folder's acronym.
     const typed = significant(s.name);
     if (typed.length === 1 && typed[0].length >= 3) {
       for (const a of acronyms(name)) if (typed[0] === a || oneExtraLetter(typed[0], a)) return 0.85;
+      if (otherShortForms(name).includes(typed[0])) return 0.85;
     }
   }
 

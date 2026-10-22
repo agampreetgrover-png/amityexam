@@ -1,6 +1,6 @@
 // Subject matching against the real folder names in the two Drive sources (snapshot, 2026-10).
 import { describe, expect, it } from "vitest";
-import { pickFolders, type SubjectRef } from "./classify";
+import { bestSubject, pickFolders, type SubjectRef } from "./classify";
 import { findCode, parseCourse } from "./catalog";
 
 const LIBRARY = [
@@ -39,6 +39,18 @@ describe("matching real Drive folders (subjects without a course code)", () => {
     expect(matches(sub("Analysis & Design of Algorithms"))).toEqual(["CSE303 - Analysis & Design of Algorithms", "ADAA"]);
   });
 
+  it("treats Design and Analysis of Algorithm(s) as Analysis & Design of Algorithms", () => {
+    const both = ["CSE303 - Analysis & Design of Algorithms", "ADAA"];
+    expect(matches(sub("Design and Analysis of Algorithm"))).toEqual(both);
+    expect(matches(sub("Design & Analysis of Algorithms"))).toEqual(both);
+    expect(matches(sub("Analysis and Design of Algorithm"))).toEqual(both);
+    expect(matches(sub("Analysis & Design of Algorithms", "CSE303"))).toEqual(both);
+    // Past papers under either short form go to the subject.
+    for (const file of ["DAA Major 2022.pdf", "ADA - Major 2021.pdf", "Design and Analysis of Algorithm 2023.pdf"]) {
+      expect(bestSubject(file, [sub("Analysis & Design of Algorithms"), { id: 2, name: "Database Management Systems" }])?.id).toBe(1);
+    }
+  });
+
   it("matches a subject typed as an acronym", () => {
     expect(matches(sub("DBMS"))).toEqual(["CSE201 - Database Management Systems", "DBMS"]);
   });
@@ -59,6 +71,10 @@ describe("course code auto-fill on real names", () => {
     expect(findCode("Applied Mathematics 2", catalog)).toBe("MATH122");
     expect(findCode("Applied Mathematics II", catalog)).toBe("MATH122");
     expect(findCode("Technical Communication 1", catalog)).toBe("BC105");
+  });
+  it("fills the code for either name of a subject", () => {
+    expect(findCode("Design and Analysis of Algorithm", catalog)).toBe("CSE303");
+    expect(findCode("DAA", catalog)).toBe("CSE303");
   });
   it("leaves the code empty when the name fits several courses", () => {
     expect(findCode("Technical Communication", catalog)).toBeUndefined();

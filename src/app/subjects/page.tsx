@@ -8,7 +8,7 @@ import { db, deleteSubject } from "@/lib/db";
 import { coverage, SUBJECT_COLORS } from "@/lib/stats";
 import type { Subject, Topic } from "@/lib/types";
 import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Progress } from "@/components/ui";
-import { SubjectPicker } from "@/components/subject-picker";
+import { SubjectPicker, subjectKey } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
 import { useCourseCatalog } from "@/lib/drive/use-catalog";
@@ -112,7 +112,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
   const [color, setColor] = useState(initial?.color ?? SUBJECT_COLORS[used % SUBJECT_COLORS.length]);
   const [saving, setSaving] = useState(false);
   // The picker hides subjects already added, but a typed name can still repeat one.
-  const duplicate = taken.some((t) => t.trim().toLowerCase() === name.trim().toLowerCase());
+  const duplicate = !!name.trim() && taken.some((t) => subjectKey(t) === subjectKey(name));
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
