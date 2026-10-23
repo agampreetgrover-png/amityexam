@@ -9,7 +9,7 @@ import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
 import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
-import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select, cn } from "@/components/ui";
+import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select, cn, subjectStyle } from "@/components/ui";
 import { DatesheetImport } from "@/components/exams/datesheet-import";
 import { toast } from "@/components/toast";
 import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
@@ -43,10 +43,14 @@ export default function ExamsPage() {
     const soon = days >= 0 && days <= 3;
     const where = [e.venue, e.seat && `Seat ${e.seat}`].filter(Boolean).join(", ");
     return (
-      <li key={e.id} className={cn("grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 px-4 py-3.5 @xl:items-center @xl:gap-x-4", COLS, past && "text-muted")}>
+      <li
+        key={e.id}
+        style={past ? undefined : subjectStyle(s?.color)}
+        className={cn("subj-edge grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 py-3.5 pl-5 pr-4 @xl:items-center @xl:gap-x-4", COLS, past ? "text-muted" : soon ? "bg-mark-soft/70" : "subj-hover")}
+      >
         <div className="row-span-2 @xl:row-span-1">
           {days >= 0 ? (
-            <div className="numeral text-[40px]">
+            <div className="numeral subj-ink text-[40px]">
               <span className={soon ? "mark" : undefined}>{days}</span>
             </div>
           ) : (
@@ -57,10 +61,7 @@ export default function ExamsPage() {
         {/* Stacked under the subject on narrow tables; its own three columns on wide ones. */}
         <div className="min-w-0 space-y-1 @xl:contents @xl:space-y-0">
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-              <span className={cn("h-2 w-2 shrink-0 rounded-full", past && "opacity-60")} style={{ background: s?.color }} aria-hidden />
-              <span className="truncate">{s?.name ?? "Unknown subject"}</span>
-            </h2>
+            <h2 className="truncate text-[15px] font-semibold">{s?.name ?? "Unknown subject"}</h2>
             <p className="mt-0.5 text-[13px] text-muted">
               {examTypeLabel(e.type)}
               {e.topicIds.length > 0 && `, ${e.topicIds.length} topic${e.topicIds.length === 1 ? "" : "s"} in scope`}
@@ -80,7 +81,7 @@ export default function ExamsPage() {
         <div className="col-start-2 flex items-center gap-1 @xl:col-start-auto @xl:justify-end">
           <Link
             href={`/exams/view?id=${e.id}`}
-            className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-[#cfd4dc] hover:bg-surface-2"
+            className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-line-strong hover:bg-surface-2"
           >
             <Briefcase size={14} className="text-muted" /> Kit
           </Link>
@@ -94,7 +95,7 @@ export default function ExamsPage() {
   // One bordered table; the header row only appears once there's room for the columns.
   const table = (list: Exam[], past = false) => (
     <div className="@container overflow-hidden rounded-lg border border-border">
-      <div aria-hidden className={cn("hidden gap-x-4 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted @xl:grid", COLS)}>
+      <div aria-hidden className={cn("hidden gap-x-4 border-b border-border bg-surface-2 py-2 pl-5 pr-4 text-[12px] font-medium text-muted @xl:grid", COLS)}>
         <span>Days</span>
         <span>Subject</span>
         <span>Date and time</span>
@@ -134,11 +135,11 @@ export default function ExamsPage() {
         </div>
       )}
       {subjects?.length !== 0 && exams?.length === 0 && (
-        <Empty icon={<GraduationCap size={20} />} title="No exams yet">Add your date sheet so the planner can schedule study time.</Empty>
+        <Empty icon={<GraduationCap size={20} />} title="No exams yet">Add your date sheet to start the countdown.</Empty>
       )}
       {mode && !!exams?.length && !shown.length && (
         <Empty icon={<GraduationCap size={20} />} title={`No ${modeShort(mode).toLowerCase()} exams yet`}>
-          Add your {modeShort(mode).toLowerCase()} date sheet so the planner can schedule study time.
+          Add your {modeShort(mode).toLowerCase()} date sheet to start the countdown.
         </Empty>
       )}
       {upcoming.length > 0 && table(upcoming)}

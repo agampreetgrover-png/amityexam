@@ -10,10 +10,8 @@ import { clashFor, planImport, relevantRows, subjectLabels, type ImportRow } fro
 import { DATESHEET_ACCEPT, fetchDriveDatesheet, readDatesheet } from "@/lib/datesheet/read";
 import { prettyDay } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES } from "@/lib/exams";
-import { replan } from "@/lib/replan";
 import type { ExamType } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { toast } from "../toast";
 import { Button, Empty, Input, Select, Tabs } from "../ui";
 
 type Source = "upload" | "drive";
@@ -29,8 +27,6 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
   const [fileName, setFileName] = useState("");
   const [showSkipped, setShowSkipped] = useState(false);
   const [saved, setSaved] = useState<{ added: number; updated: number } | null>(null);
-  const [rebalanced, setRebalanced] = useState(false);
-  const [rebalancing, setRebalancing] = useState(false);
   const online = typeof navigator === "undefined" || navigator.onLine;
 
   if (!subjects) return null;
@@ -65,30 +61,10 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
       <div className="space-y-4">
         <div className="flex items-start gap-3">
           <CalendarCheck size={18} className="mt-0.5 shrink-0 text-good" aria-hidden />
-          <div>
-            <p className="font-semibold">{savedSummary(saved)}</p>
-            <p className="text-sm text-muted">Rebalance your study plan so it fits the new dates.</p>
-          </div>
+          <p className="font-semibold">{savedSummary(saved)}</p>
         </div>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onDone}>Close</Button>
-          <Button
-            disabled={rebalanced || rebalancing}
-            onClick={async () => {
-              setRebalancing(true);
-              try {
-                const res = await replan();
-                setRebalanced(true);
-                toast(`Plan rebalanced: ${res.sessions.length} sessions scheduled`);
-              } catch (e) {
-                toast(e instanceof Error ? e.message : "Could not rebalance the plan");
-              } finally {
-                setRebalancing(false);
-              }
-            }}
-          >
-            {rebalanced ? "Plan rebalanced" : rebalancing ? "Rebalancing…" : "Rebalance plan"}
-          </Button>
+        <div className="flex justify-end">
+          <Button onClick={onDone}>Close</Button>
         </div>
       </div>
     );
@@ -120,7 +96,7 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
       {source === "upload" ? (
         <label
           // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
-          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[#cfd4dc] px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
+          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
         >
           <Upload size={18} className="text-muted" aria-hidden />
           <span><span className="font-medium text-text">Choose a date sheet</span> (.xlsx, .xls, .csv, PDF or photo)</span>
@@ -181,7 +157,7 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
 
   if (sheets === null) return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Looking in your Drive folders…</p>;
   if (sheets === "error") return <p className="rounded-md border border-bad/25 bg-bad/5 px-4 py-3 text-sm text-bad">Couldn&apos;t reach your Drive folders. Check your connection, or upload the file instead.</p>;
-  if (!sheets.length) return <p className="rounded-lg border border-dashed border-[#cfd4dc] px-4 py-5 text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
+  if (!sheets.length) return <p className="rounded-lg border border-dashed border-line-strong px-4 py-5 text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
   return (
     // No overflow clipping here: it would cut off the focus ring around each row's button.
     <ul className="divide-y divide-border rounded-lg border border-border">

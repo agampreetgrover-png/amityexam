@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
-import { Empty, Progress, Tabs } from "@/components/ui";
+import { Empty, Progress, Tabs, subjectStyle } from "@/components/ui";
 import { SyllabusTab } from "@/components/subject/syllabus-tab";
 import { MaterialsTab } from "@/components/subject/materials-tab";
 import { PyqsTab } from "@/components/subject/pyqs-tab";
@@ -92,13 +92,9 @@ function Subject({ subjectId }: { subjectId: number }) {
       <Link href="/subjects" className="no-print mb-4 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text">
         <ArrowLeft size={14} /> Subjects
       </Link>
-      <header className="no-print mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+      <header style={subjectStyle(subject.color)} className="subj-tint subj-edge-thick no-print mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-4 rounded-lg py-5 pl-7 pr-5 sm:pl-8">
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-baseline gap-2.5 font-display text-[28px] leading-tight md:text-[32px]">
-            {/* The subject's colour as a small dot beside its name. */}
-            <span aria-hidden className="h-2.5 w-2.5 shrink-0 -translate-y-[0.12em] rounded-full" style={{ background: subject.color }} />
-            <span className="min-w-0 break-words">{subject.name}</span>
-          </h1>
+          <h1 className="subj-ink break-words font-display text-[28px] leading-tight md:text-[32px]">{subject.name}</h1>
           <p className="mt-1 flex flex-wrap gap-x-3 text-[15px] text-muted">
             {subject.code && <span>{subject.code}</span>}
             {subject.credits ? <span>{subject.credits} credits</span> : null}
@@ -110,7 +106,7 @@ function Subject({ subjectId }: { subjectId: number }) {
             <span className="text-[13px] text-muted">Syllabus covered</span>
             <span className="text-sm font-semibold tabular-nums">{pct}%</span>
           </div>
-          <Progress value={pct} color={subject.color} />
+          <Progress value={pct} color={subject.color} className="bg-surface/90" />
         </div>
       </header>
 
@@ -129,7 +125,7 @@ function Subject({ subjectId }: { subjectId: number }) {
           Opened tabs stay mounted and are only hidden, so switching tabs never throws work away. */}
       {TABS.filter((t) => visited.has(t.key)).map(({ key, C }) => (
         <div key={`${subject.id}-${mode}-${key}`} hidden={key !== tab}>
-          {/* The Syllabus tab edits the one full syllabus (and which units the mid-sem covers); the rest work on the mode's part. */}
+          {/* The Syllabus tab gets every unit so new ones are numbered after all of them; it lists only this mode's part, like the rest. */}
           <C subject={subject} units={key === "syllabus" ? allUnits : units} topics={key === "syllabus" ? allTopics : topics} mode={mode} />
         </div>
       ))}

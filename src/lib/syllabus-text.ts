@@ -1,10 +1,9 @@
 import type { SyllabusResult } from "./ai/schemas";
 import type { Topic } from "./types";
 
-/** A fresh, unstudied topic; difficulty is clamped to the 1-5 scale. */
-export const newTopic = (subjectId: number, unitId: number, title: string, difficulty = 3): Topic => ({
-  subjectId, unitId, title, difficulty: Math.min(5, Math.max(1, Math.round(difficulty))), confidence: 3,
-  status: "not-started", ease: 2.5, interval: 0, reps: 0,
+/** A fresh, unstudied topic. */
+export const newTopic = (subjectId: number, unitId: number, title: string): Topic => ({
+  subjectId, unitId, title, confidence: 3, status: "not-started",
 });
 
 // "1.", "1)", "(a)", "a.", "ii.", "-", "*", "•" and similar markers pasted from a PDF or a list.
@@ -64,7 +63,7 @@ export function parseSyllabus(text: string): SyllabusResult["units"] {
     if (skip) return;
     if (!units.length) units.push({ title: "Unit 1", topics: [] });
     const u = units[units.length - 1];
-    if (!u.topics.some((t) => t.title.toLowerCase() === title.toLowerCase())) u.topics.push({ title, difficulty: 3 });
+    if (!u.topics.some((t) => t.title.toLowerCase() === title.toLowerCase())) u.topics.push({ title });
   };
   for (const raw of text.split(/\r?\n/)) {
     if (/^[\s|:-]+$/.test(raw)) continue; // blank, or a Markdown table rule "|---|---|"

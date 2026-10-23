@@ -19,7 +19,6 @@
     "dexie": "^4.4.6",
     "dexie-react-hooks": "^4.4.0",
     "groq-sdk": "^1.6.0",
-    "ics": "^3.12.1",
     "jszip": "^3.10.2",
     "lucide-react": "^1.60.0",
     "mammoth": "^1.13.0",

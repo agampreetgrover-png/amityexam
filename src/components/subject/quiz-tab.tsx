@@ -183,7 +183,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                     "flex cursor-pointer items-start gap-3 rounded-md border px-3.5 py-3 text-[15px] leading-relaxed transition-colors duration-150",
                     responses[page] === o
                       ? "border-accent bg-accent-soft font-medium text-text"
-                      : "border-border bg-surface text-text hover:border-[#cfd4dc] hover:bg-surface-2",
+                      : "border-border bg-surface text-text hover:border-line-strong hover:bg-surface-2",
                   )}
                 >
                   <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} className="mt-1 accent-[var(--accent)]" />

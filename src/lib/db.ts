@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import {
   DEFAULT_SETTINGS,
   type ChatMessage, type DriveFile, type Exam, type PyqQuestion, type GeneratedDoc, type Material,
-  type QuizAttempt, type Settings, type StudySession, type Subject, type Topic, type Unit,
+  type QuizAttempt, type Settings, type Subject, type Topic, type Unit,
 } from "./types";
 
 class ExamDB extends Dexie {
@@ -10,7 +10,6 @@ class ExamDB extends Dexie {
   units!: EntityTable<Unit, "id">;
   topics!: EntityTable<Topic, "id">;
   exams!: EntityTable<Exam, "id">;
-  sessions!: EntityTable<StudySession, "id">;
   materials!: EntityTable<Material, "id">;
   driveFiles!: EntityTable<DriveFile, "driveId">;
   pyqQuestions!: EntityTable<PyqQuestion, "id">;
@@ -37,6 +36,7 @@ class ExamDB extends Dexie {
     this.version(2).stores({ flashcards: null }); // drops the removed flashcards table
     this.version(3).stores({ driveFiles: "driveId, subjectId, status" }); // Google Drive sync bookkeeping
     this.version(4).stores({ pyqQuestions: "++id, subjectId, materialId, topicId, year" }); // past-paper question bank
+    this.version(5).stores({ sessions: null, topics: "++id, subjectId, unitId, status" }); // the planner and spaced revision were removed
   }
 }
 
@@ -48,11 +48,7 @@ export async function getSettings(): Promise<Settings> {
 
 /** Delete a subject and everything hanging off it. */
 export async function deleteSubject(subjectId: number) {
-  await db.transaction("rw", [db.subjects, db.units, db.topics, db.exams, db.sessions, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions], async () => {
-    const topicIds = (await db.topics.where({ subjectId }).primaryKeys()) as number[];
-    const examIds = (await db.exams.where({ subjectId }).primaryKeys()) as number[];
-    await db.sessions.where("topicId").anyOf(topicIds).delete();
-    await db.sessions.where("examId").anyOf(examIds).delete();
+  await db.transaction("rw", [db.subjects, db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions], async () => {
     for (const table of [db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions]) {
       await (table as Dexie.Table<{ subjectId: number }>).where({ subjectId }).delete();
     }
@@ -68,12 +64,8 @@ export async function deleteMaterial(materialId: number) {
   });
 }
 
-/** Delete an exam with its revision sessions. */
 export async function deleteExam(examId: number) {
-  await db.transaction("rw", db.exams, db.sessions, async () => {
-    await db.sessions.where("examId").equals(examId).delete();
-    await db.exams.delete(examId);
-  });
+  await db.exams.delete(examId);
 }
 
 /** Full JSON backup of every table. */
@@ -85,8 +77,8 @@ export async function exportAll() {
 
 const MAX_BACKUP_ROWS = 200_000;
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
-/** Tables older versions of the app exported but that no longer exist (flashcards were removed). Skipped on import. */
-const LEGACY_TABLES = new Set(["flashcards"]);
+/** Tables older versions of the app exported but that no longer exist (flashcards and study sessions were removed). Skipped on import. */
+const LEGACY_TABLES = new Set(["flashcards", "sessions"]);
 
 /** Check a parsed backup before anything is cleared: known tables only, arrays of plain objects, sane size. */
 function validateBackup(backup: unknown): Record<string, Record<string, unknown>[]> {

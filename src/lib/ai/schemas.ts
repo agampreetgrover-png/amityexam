@@ -6,7 +6,7 @@ export const SyllabusSchema = z.object({
   units: z.array(
     z.object({
       title: z.string(),
-      topics: z.array(z.object({ title: z.string(), difficulty: z.coerce.number().min(1).max(5).catch(3) })),
+      topics: z.array(z.object({ title: z.string() })),
     }),
   ),
 });

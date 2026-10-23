@@ -33,7 +33,7 @@ export function errorResponse(err: unknown) {
     const reply = (error: string, status: number, retryAfter?: number) => Response.json({ error, retryAfter }, { status, headers });
     switch (err.kind) {
       case "day":
-        return reply("Daily AI limit reached on all providers. It resets tomorrow; the planner and revision still work.", 429);
+        return reply("Daily AI limit reached on all providers. It resets tomorrow; everything else still works.", 429);
       case "minute":
         return reply("AI rate limit reached. Wait a moment and try again.", 429, err.retryAfter ?? 30);
       case "auth":

@@ -3,14 +3,13 @@
 import { format } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
 import Link from "next/link";
-import { AlertTriangle, BookOpen, Clock, Flame } from "lucide-react";
+import { AlertTriangle, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StatTile } from "@/components/progress/stat-tile";
 import { Card, Empty, PageHeader, Section, Select } from "@/components/ui";
-import { addDay, fromDay, today } from "@/lib/dates";
 import { db, getSettings } from "@/lib/db";
 import { topicsInScope } from "@/lib/mode";
-import { coverage, fmtMins } from "@/lib/stats";
+import { coverage } from "@/lib/stats";
 
 // recharts is large and only used here: it loads alongside the stats, and placeholders hold its space until it's in.
 const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-md bg-surface-2" />;
@@ -41,43 +40,21 @@ function useCharts() {
   return charts;
 }
 
-/**
- * Study days in a row, ending today (or yesterday if today has nothing yet).
- * Planned days off and days with nothing scheduled don't break the streak; they're skipped.
- */
-function streak(days: Set<string>, offDays: number[], plannedDays: Set<string>) {
-  if (!days.size) return 0;
-  const earliest = [...days].sort()[0];
-  let d = today();
-  if (!days.has(d)) d = addDay(d, -1);
-  let n = 0;
-  while (d >= earliest) {
-    if (days.has(d)) n++;
-    else if (!offDays.includes(fromDay(d).getDay()) && plannedDays.has(d)) break;
-    d = addDay(d, -1);
-  }
-  return n;
-}
-
 const link = "text-accent underline underline-offset-2";
 
 export default function ProgressPage() {
   const [quizSubject, setQuizSubject] = useState<number | "all">("all");
-  const t = today();
   const loaded = useCharts();
   // Units and the exam mode come in the same query, so the page draws once with everything rather than again as each arrives.
   const data = useLiveQuery(async () => {
-    const [subjects, topics, units, allSessions, quizzes, settings] = await Promise.all([
+    const [subjects, topics, units, quizzes, settings] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
       db.units.toArray(),
-      db.sessions.toArray(),
       db.quizzes.orderBy("createdAt").toArray(),
       getSettings(),
     ]);
-    const sessions = allSessions.filter((s) => s.done);
-    const plannedDays = new Set(allSessions.map((s) => s.date));
-    return { subjects, topics, units, sessions, quizzes, plannedDays, offDays: settings.offDays, mode: settings.examMode };
+    return { subjects, topics, units, quizzes, mode: settings.examMode };
   });
   // Charts draw in the task after the stats, so the numbers show first instead of waiting on recharts.
   const [statsShown, setStatsShown] = useState(false);
@@ -87,7 +64,7 @@ export default function ProgressPage() {
   const charts = statsShown ? loaded : null;
 
   if (!data) return <PageHeader title="Progress" sub="Loading…" />;
-  const { subjects, topics, units, sessions, quizzes, mode } = data;
+  const { subjects, topics, units, quizzes, mode } = data;
 
   if (!subjects.length) {
     return (
@@ -100,8 +77,6 @@ export default function ProgressPage() {
     );
   }
 
-  const totalMins = sessions.reduce((a, s) => a + s.actualMins, 0);
-  const studyDays = new Set(sessions.filter((s) => s.actualMins > 0).map((s) => s.date));
   // Coverage, revised counts and weak topics only count what this exam mode examines.
   const scoped = topicsInScope(topics, units, mode);
   const revised = scoped.filter((x) => x.status === "revised").length;
@@ -109,13 +84,7 @@ export default function ProgressPage() {
   // A subject with no syllabus in this mode would show a misleading 0%; it's listed under the chart instead.
   const withSyllabus = subjects.filter((s) => scoped.some((x) => x.subjectId === s.id));
   const withoutSyllabus = subjects.filter((s) => !scoped.some((x) => x.subjectId === s.id));
-  const coverageData = withSyllabus.map((s) => ({ name: s.name, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }));
-
-  const minutesData = Array.from({ length: 14 }, (_, i) => {
-    const d = addDay(t, i - 13);
-    const value = sessions.filter((s) => s.date === d).reduce((a, s) => a + s.actualMins, 0);
-    return { label: format(fromDay(d), "d MMM"), full: format(fromDay(d), "EEE, d MMM"), value };
-  });
+  const coverageData = withSyllabus.map((s) => ({ name: s.name, color: s.color, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }));
 
   const quizData = quizzes
     .filter((q) => quizSubject === "all" || q.subjectId === quizSubject)
@@ -127,24 +96,20 @@ export default function ProgressPage() {
 
   const weak = scoped.filter((x) => x.weak);
   const subjectName = new Map(subjects.map((s) => [s.id!, s]));
-  const days = streak(studyDays, data.offDays, data.plannedDays);
-  const recentMins = minutesData.reduce((a, d) => a + d.value, 0);
   const seasonName = mode === "mid-term" ? "mid-sem" : "major";
 
   return (
     <>
       <PageHeader title="Progress" sub="How your preparation is going" />
       <div className="space-y-8">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatTile tone="accent" icon={<Clock />} label="Time studied" value={fmtMins(totalMins)} sub={`over ${studyDays.size} day${studyDays.size === 1 ? "" : "s"}`} />
-          <StatTile tone="good" icon={<Flame />} label="Day streak" value={days} sub={days === 1 ? "day in a row" : "days in a row"} />
+        <div className="grid grid-cols-2 gap-4">
           <StatTile tone="accent" icon={<BookOpen />} label="Topics revised" value={`${revised}/${scoped.length}`} sub={`${scoped.filter((x) => x.status === "studied").length} studied, not yet revised`} />
           <StatTile
             tone="warn"
             icon={<AlertTriangle />}
             label="Weak topics"
             value={weak.length}
-            sub={<Link href="/revise" className={link}>Revise now</Link>}
+            sub="quiz scores under 60%"
           />
         </div>
 
@@ -159,31 +124,23 @@ export default function ProgressPage() {
             )}
           </Card>
 
-          <Card title="Study minutes, last 14 days">
-            {recentMins ? (
-              charts ? <charts.MinutesChart data={minutesData} /> : chartSpace()
-            ) : (
-              <Empty title={totalMins ? "No study in the last 14 days" : "No study logged yet"}>Mark sessions done in the Planner.</Empty>
-            )}
+          <Card
+            title="Quiz scores"
+            action={
+              <Select
+                value={quizSubject}
+                onChange={(e) => setQuizSubject(e.target.value === "all" ? "all" : Number(e.target.value))}
+                className="h-8 w-40 py-0 text-[13px]"
+                aria-label="Filter quizzes by subject"
+              >
+                <option value="all">All subjects</option>
+                {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            }
+          >
+            {quizData.length ? (charts ? <charts.QuizTrendChart data={quizData} /> : chartSpace()) : <Empty title="No quizzes taken">Take a practice quiz from a subject&apos;s Quiz tab.</Empty>}
           </Card>
         </div>
-
-        <Card
-          title="Quiz scores"
-          action={
-            <Select
-              value={quizSubject}
-              onChange={(e) => setQuizSubject(e.target.value === "all" ? "all" : Number(e.target.value))}
-              className="h-8 w-40 py-0 text-[13px]"
-              aria-label="Filter quizzes by subject"
-            >
-              <option value="all">All subjects</option>
-              {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
-          }
-        >
-          {quizData.length ? (charts ? <charts.QuizTrendChart data={quizData} /> : chartSpace()) : <Empty title="No quizzes taken">Take a practice quiz from a subject&apos;s Quiz tab.</Empty>}
-        </Card>
 
         <Section title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
           {weak.length ? (

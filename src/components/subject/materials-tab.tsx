@@ -81,7 +81,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           )}
         </div>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-stretch">
-          <label className="flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[#cfd4dc] px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+          <label className="flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-line-strong px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
             <Upload size={18} className="shrink-0 text-muted" aria-hidden />
             <span className="font-medium text-text">Upload files</span>
             <input

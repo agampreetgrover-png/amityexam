@@ -3,14 +3,17 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 
 export const cn = (...c: ClassValue[]) => twMerge(clsx(c));
 
+/** Sets a subject's colour for the .subj-* classes in globals.css on this element and its children. */
+export const subjectStyle = (color?: string) => (color ? ({ "--subj": color } as CSSProperties) : undefined);
+
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 const variants: Record<Variant, string> = {
-  primary: "bg-accent text-accent-ink hover:bg-[#15306a]",
-  secondary: "border border-border bg-surface text-text hover:border-[#cfd4dc] hover:bg-surface-2",
+  primary: "bg-accent text-accent-ink hover:bg-accent-hover",
+  secondary: "border border-border bg-surface text-text hover:border-line-strong hover:bg-surface-2",
   ghost: "text-muted hover:bg-surface-2 hover:text-text",
   danger: "text-muted hover:bg-bad/10 hover:text-bad",
 };
@@ -65,7 +68,7 @@ export function List({ className, children }: { className?: string; children: Re
 }
 
 const field =
-  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text transition-[border-color,box-shadow] duration-150 placeholder:text-muted/70 hover:border-[#cfd4dc] focus:border-accent focus:shadow-[0_0_0_3px_rgb(27_58_122/0.12)]";
+  "w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text transition-[border-color,box-shadow] duration-150 placeholder:text-muted/70 hover:border-line-strong focus:border-accent focus:shadow-[0_0_0_3px_rgb(36_67_196/0.14)]";
 export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input className={cn(field, "h-9", className)} {...p} />;
 export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea className={cn(field, "min-h-24 leading-relaxed", className)} {...p} />;
 export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => <select className={cn(field, "h-9", className)} {...p} />;
@@ -176,7 +179,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
 
 export function Empty({ icon, title, children }: { icon?: ReactNode; title: string; children?: ReactNode }) {
   return (
-    <div className="flex flex-col items-start gap-1.5 rounded-lg border border-dashed border-[#cfd4dc] px-5 py-8">
+    <div className="flex flex-col items-start gap-1.5 rounded-lg border border-dashed border-line-strong px-5 py-8">
       {icon && <div className="mb-1 text-muted">{icon}</div>}
       <p className="font-semibold">{title}</p>
       {children && <div className="max-w-prose text-sm leading-relaxed text-muted">{children}</div>}
@@ -207,36 +210,6 @@ export function PageHeader({ title, sub, action }: { title: string; sub?: ReactN
   );
 }
 
-/** A 1-5 rating as five dots; pressable when `onChange` is given. */
-export function Dots({ value, onChange, label }: { value: number; onChange?: (v: number) => void; label: string }) {
-  return (
-    // The dots stay small, but each sits in a 32px button so a thumb picks the one it means.
-    // Negative margin keeps the row aligned with the text around it despite the larger buttons.
-    <span className={cn("inline-flex", onChange && "-mx-2.5 -my-2.5")} role="radiogroup" aria-label={label}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <button
-          key={i}
-          type="button"
-          role="radio"
-          aria-checked={value === i + 1}
-          aria-label={`${label} ${i + 1}`}
-          disabled={!onChange}
-          onClick={() => onChange?.(i + 1)}
-          className={cn("group grid place-items-center rounded-full", onChange ? "h-8 w-8" : "h-2.5 w-3.5")}
-        >
-          <span
-            className={cn(
-              "h-2.5 w-2.5 rounded-full transition-colors duration-150",
-              i < value ? "bg-accent" : "bg-surface-3 ring-1 ring-[#cfd4dc] ring-inset",
-              onChange && "group-hover:ring-2 group-hover:ring-accent/40",
-            )}
-          />
-        </button>
-      ))}
-    </span>
-  );
-}
-
 /** Round tick used to mark a session or item done. It settles in once when ticked, not when it loads already done. */
 export function Tick({ done, onClick, label }: { done: boolean; onClick: () => void; label: string }) {
   const was = useRef(done);
@@ -254,7 +227,7 @@ export function Tick({ done, onClick, label }: { done: boolean; onClick: () => v
       onClick={onClick}
       className={cn(
         "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-150",
-        done ? "border-good bg-good text-white" : "border-[#b9bfca] hover:border-accent",
+        done ? "border-good bg-good text-white" : "border-line-strong hover:border-accent",
         pop && "tick-done",
       )}
     >

@@ -8,7 +8,7 @@ const q = (id: number, materialId: number, number: string, extra: Partial<PyqQue
 });
 const unit = (id: number, title: string): Unit => ({ id, subjectId: 1, title, order: id });
 const topic = (id: number, unitId: number, title: string): Topic => ({
-  id, subjectId: 1, unitId, title, difficulty: 3, confidence: 3, status: "not-started", ease: 2.5, interval: 0, reps: 0,
+  id, subjectId: 1, unitId, title, confidence: 3, status: "not-started",
 });
 
 describe("paper year and exam", () => {

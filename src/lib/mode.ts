@@ -39,6 +39,19 @@ export function topicsInScope<T extends Pick<Topic, "unitId">>(topics: T[], unit
   return topics.filter((t) => mid.has(t.unitId));
 }
 
+/**
+ * Topics an exam covers: ticked topics as given, otherwise the subject's topics in the exam's
+ * season (from its type; "other" follows `mode`, or everything).
+ */
+export function examSyllabus(exam: Exam, topics: Topic[], units: Unit[], mode?: ExamMode): Topic[] {
+  if (exam.topicIds.length) {
+    const ids = new Set(exam.topicIds);
+    return topics.filter((t) => t.id != null && ids.has(t.id));
+  }
+  const season = examTypeMode(exam.type) ?? mode;
+  return (season ? topicsInScope(topics, units, season) : topics).filter((t) => t.subjectId === exam.subjectId);
+}
+
 // File-name hints for past papers: "Minor_2023", "midsem", "Mid-Term" vs "Major", "EndSem", "end_term".
 // Whole words only, so "middleware" or "legend" don't count.
 const PYQ_HINTS: Record<ExamMode, RegExp> = {

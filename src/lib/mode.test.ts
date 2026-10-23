@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aiModeFields, examInMode, examTypeMode, materialsForMode, pyqMatchesMode, pyqMode, topicsInScope, unitInScope } from "./mode";
-import type { ExamMode, ExamType, Topic, Unit } from "./types";
+import { aiModeFields, examInMode, examSyllabus, examTypeMode, materialsForMode, pyqMatchesMode, pyqMode, topicsInScope, unitInScope } from "./mode";
+import type { Exam, ExamMode, ExamType, Topic, Unit } from "./types";
 
 const unit = (id: number, exam?: ExamMode, subjectId = 1): Unit => ({ id, subjectId, title: `U${id}`, order: id, exam });
 const topic = (id: number, unitId: number): Pick<Topic, "id" | "unitId"> => ({ id, unitId });
@@ -25,6 +25,28 @@ describe("examTypeMode", () => {
     expect(examTypeMode("mid-term")).toBe("mid-term");
     expect(examTypeMode("viva")).toBe("end-term");
     expect(examTypeMode("other")).toBeUndefined();
+  });
+});
+
+describe("examSyllabus", () => {
+  const units = [unit(1, "mid-term"), unit(2), unit(3, "mid-term", 2)];
+  const t = (id: number, unitId: number, subjectId = 1) => ({ ...topic(id, unitId), subjectId }) as Topic;
+  const topics = [t(1, 1), t(2, 2), t(3, 3, 2)];
+  const exam = (type: ExamType, topicIds: number[] = []): Exam => ({ subjectId: 1, type, date: "2026-11-01", topicIds, checklist: [] });
+  const ids = (list: Topic[]) => list.map((x) => x.id);
+
+  it("uses the ticked topics when an exam lists them", () => {
+    expect(ids(examSyllabus(exam("end-term", [2]), topics, units))).toEqual([2]);
+  });
+
+  it("otherwise covers the subject's syllabus for the exam's season", () => {
+    expect(ids(examSyllabus(exam("mid-term"), topics, units))).toEqual([1]);
+    expect(ids(examSyllabus(exam("end-term"), topics, units))).toEqual([1, 2]);
+  });
+
+  it("follows the chosen mode for exams of type other", () => {
+    expect(ids(examSyllabus(exam("other"), topics, units, "mid-term"))).toEqual([1]);
+    expect(ids(examSyllabus(exam("other"), topics, units))).toEqual([1, 2]);
   });
 });
 

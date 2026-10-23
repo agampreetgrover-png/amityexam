@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight, BarChart3, BookOpen, CalendarDays, CornerDownLeft, GraduationCap, House, RefreshCw, RotateCcw, Search, Settings } from "lucide-react";
+import { ArrowLeftRight, BarChart3, BookOpen, CornerDownLeft, GraduationCap, House, Search, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/db";
@@ -9,7 +9,6 @@ import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { MATCH_THRESHOLD, subjectScore, type SubjectRef } from "@/lib/drive/classify";
 import { examTypeLabel } from "@/lib/exams";
 import { examInMode, modeShort, otherMode, setExamMode, useExamMode } from "@/lib/mode";
-import { replan } from "@/lib/replan";
 import { OPEN_EVENT } from "./command-palette-loader";
 import { toast } from "./toast";
 import { cn } from "./ui";
@@ -79,10 +78,8 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
     const t = today();
     const list: Command[] = [
       { id: "p-today", group: "Go to", label: "Today", icon: <House size={16} />, run: go("/") },
-      { id: "p-planner", group: "Go to", label: "Planner", icon: <CalendarDays size={16} />, keywords: "plan schedule week", run: go("/planner") },
       { id: "p-subjects", group: "Go to", label: "Subjects", icon: <BookOpen size={16} />, keywords: "syllabus notes", run: go("/subjects") },
       { id: "p-exams", group: "Go to", label: "Exams", icon: <GraduationCap size={16} />, keywords: "date sheet", run: go("/exams") },
-      { id: "p-revise", group: "Go to", label: "Revise", icon: <RotateCcw size={16} />, keywords: "revision due", run: go("/revise") },
       { id: "p-progress", group: "Go to", label: "Progress", icon: <BarChart3 size={16} />, keywords: "stats charts", run: go("/progress") },
       { id: "p-settings", group: "Go to", label: "Settings", icon: <Settings size={16} />, keywords: "backup reminders", run: go("/settings") },
     ];
@@ -113,22 +110,6 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         run: go(`/exams/view?id=${e.id}`),
       });
     }
-    list.push({
-      id: "a-replan",
-      group: "Actions",
-      label: "Rebalance study plan",
-      keywords: "replan generate missed",
-      icon: <RefreshCw size={16} />,
-      run: async () => {
-        toast("Rebalancing your plan…");
-        try {
-          const res = await replan();
-          toast(`Plan updated: ${res.sessions.length} sessions scheduled`);
-        } catch (err) {
-          toast(err instanceof Error ? err.message : "Could not rebalance the plan");
-        }
-      },
-    });
     if (mode) {
       const next = otherMode(mode);
       list.push({

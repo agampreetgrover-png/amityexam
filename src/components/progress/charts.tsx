@@ -3,11 +3,12 @@
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import {
-  Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
-// Every chart is a single series in solid navy: the axis labels carry identity,
-// so colour never has to tell subjects apart (the subject palette isn't CVD-safe as a chart scale).
+// Coverage bars wear each subject's colour so they match the rest of the app, but the axis labels still
+// name every bar: colour never has to tell subjects apart on its own (the palette isn't CVD-safe as a scale).
+// Other charts are one series in ballpoint blue.
 const AXIS = { stroke: "var(--muted)", fontSize: 12, tickLine: false, axisLine: { stroke: "var(--border)" } } as const;
 const GRID = { stroke: "var(--border)", vertical: false } as const;
 
@@ -55,7 +56,7 @@ function ChartFrame({ children, rows, columns, height = 240 }: {
 
 // Animations off: they re-render every bar/dot each frame for about 1.5 s and made /progress slow to settle.
 // interval={0} on the y axes skips measuring each tick label; the ticks are always 40px+ apart.
-export function CoverageChart({ data }: { data: { name: string; value: number }[] }) {
+export function CoverageChart({ data }: { data: { name: string; color?: string; value: number }[] }) {
   const height = Math.max(120, data.length * 40 + 40);
   return (
     <ChartFrame height={height} columns={["Subject", "Coverage %"]} rows={data.map((d) => [d.name, d.value])}>
@@ -66,25 +67,11 @@ export function CoverageChart({ data }: { data: { name: string; value: number }[
           <YAxis type="category" dataKey="name" width={132} interval={0} {...AXIS} tickFormatter={(v: string) => (v.length > 18 ? `${v.slice(0, 17)}…` : v)} />
           <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p) => <TooltipBox {...p} unit="% covered" />} />
           <Bar
-            dataKey="value" fill="var(--accent)" maxBarSize={20} radius={[0, 2, 2, 0]} isAnimationActive={false}
+            dataKey="value" fill="var(--accent)" maxBarSize={20} radius={[0, 3, 3, 0]} isAnimationActive={false}
             label={{ position: "right", fill: "var(--muted)", fontSize: 12, formatter: (v: unknown) => `${v}%` }}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </ChartFrame>
-  );
-}
-
-export function MinutesChart({ data }: { data: { label: string; full: string; value: number }[] }) {
-  return (
-    <ChartFrame columns={["Day", "Minutes"]} rows={data.map((d) => [d.full, d.value])}>
-      <ResponsiveContainer>
-        <BarChart data={data} margin={{ left: -16, right: 8, top: 8, bottom: 0 }} barCategoryGap={2}>
-          <CartesianGrid {...GRID} />
-          <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={8} />
-          <YAxis allowDecimals={false} interval={0} {...AXIS} />
-          <Tooltip cursor={{ fill: "var(--surface-2)" }} content={(p) => <TooltipBox {...p} unit=" min" />} />
-          <Bar dataKey="value" fill="var(--accent)" maxBarSize={20} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+          >
+            {data.map((d) => <Cell key={d.name} fill={d.color ?? "var(--accent)"} />)}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </ChartFrame>

@@ -39,8 +39,8 @@ export function buildJsonPrompt(action: JsonAction, r: AiRequest, { maxChars }: 
         { role: "system", content: sys },
         {
           role: "user",
-          content: `Extract the syllabus structure from the text below. Group topics under their units/modules (use "General" if there are none). Split long lines into individual examinable topics. Rate each topic's difficulty 1–5 for a typical student.
-Shape: {"units":[{"title":string,"topics":[{"title":string,"difficulty":number}]}]}
+          content: `Extract the syllabus structure from the text below. Group topics under their units/modules (use "General" if there are none). Split long lines into individual examinable topics.
+Shape: {"units":[{"title":string,"topics":[{"title":string}]}]}
 ${topicLine(r)}
 Syllabus text:
 """

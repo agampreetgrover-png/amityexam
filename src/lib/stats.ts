@@ -13,5 +13,3 @@ export function coverage(topics: Topic[]): number {
 export function isWeak(confidence: number, quizAvg?: number) {
   return confidence <= 2 || (quizAvg != null && quizAvg < 60);
 }
-
-export const fmtMins = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m}m`);

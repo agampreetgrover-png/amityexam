@@ -20,7 +20,7 @@ export async function notify(title: string, body: string, tag?: string) {
   }
 }
 
-/** Sends a daily digest while the app is open. Use the calendar export for reminders when the app is closed. */
+/** Alerts the day before each exam while the app is open. */
 export function Notifier() {
   useEffect(() => {
     let running = false;
@@ -33,11 +33,7 @@ export function Notifier() {
         if (!settings.notifications || Notification.permission !== "granted" || localStorage.getItem(KEY) === d) return;
         // Claim the day first so overlapping checks or a failing notification can't repeat it.
         localStorage.setItem(KEY, d);
-        const [sessions, examsTomorrow] = await Promise.all([
-          db.sessions.where("date").equals(d).and((s) => !s.done).count(),
-          db.exams.where("date").equals(addDay(d, 1)).toArray(),
-        ]);
-        if (sessions) await notify("Today's plan", `${sessions} study session${sessions > 1 ? "s" : ""} planned`, `digest-${d}`);
+        const examsTomorrow = await db.exams.where("date").equals(addDay(d, 1)).toArray();
         for (const e of examsTomorrow) {
           const s = await db.subjects.get(e.subjectId);
           await notify("Exam tomorrow", `${s?.name ?? "Exam"}${e.time ? ` at ${e.time}` : ""}. Open the exam-day kit.`, `exam-${e.id}-${d}`);

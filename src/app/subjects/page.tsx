@@ -7,7 +7,7 @@ import { useState } from "react";
 import { db, deleteSubject } from "@/lib/db";
 import { coverage, SUBJECT_COLORS } from "@/lib/stats";
 import type { Subject, Topic } from "@/lib/types";
-import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Progress } from "@/components/ui";
+import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Progress, subjectStyle } from "@/components/ui";
 import { SubjectPicker, subjectKey } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
@@ -35,8 +35,7 @@ export default function SubjectsPage() {
         <div className="overflow-hidden rounded-lg border border-border">
           {/* Column headings line up with the row layout below; on phones each row labels its own coverage. */}
           <div aria-hidden className="hidden items-center gap-4 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted sm:flex">
-            <span className="w-2.5 shrink-0" />
-            <span className="flex-1">Subject</span>
+            <span className="flex-1 pl-1">Subject</span>
             <span className="w-[200px] shrink-0">Syllabus covered</span>
             <span className="-mr-2 w-[72px] shrink-0" />
           </div>
@@ -64,13 +63,12 @@ function SubjectRow({ subject: s, topics: ts, onEdit }: { subject: Subject; topi
   const cov = coverage(ts);
   const weak = ts.filter((t) => t.weak).length;
   return (
-    <li className="relative flex items-start gap-3 px-4 py-3 transition-colors duration-150 hover:bg-surface-2 sm:items-center sm:gap-4">
-      <span aria-hidden className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full sm:mt-0" style={{ background: s.color }} />
+    <li style={subjectStyle(s.color)} className="subj-edge subj-hover relative flex items-start gap-3 py-3 pl-5 pr-4 sm:items-center sm:gap-4">
       {/* Phones: coverage drops under the name. Wider: it gets its own column. */}
       <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 flex-1 rounded-md after:absolute after:inset-0">
           <span className="flex items-center gap-2">
-            <span className="truncate text-[15px] font-semibold">{s.name}</span>
+            <span className="subj-ink truncate text-[15px] font-semibold">{s.name}</span>
             {weak > 0 && <Badge className="shrink-0 bg-bad/10 text-bad">{weak} weak</Badge>}
           </span>
           <span className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">

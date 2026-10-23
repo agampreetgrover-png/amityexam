@@ -1,28 +1,32 @@
 @import "tailwindcss";
 
 /*
-  Printed date sheet: white paper, near-black ink, hairline rules, and Amity navy for anything
-  you can press or that measures progress. Amber is the only warm colour and still means
-  "needs you within three days". No glows, no gradients, no ambient motion.
+  Ballpoint and highlighter: white paper, navy ink, ballpoint blue for anything you can press or that
+  measures progress, highlighter yellow only for "needs you within three days". The rest of the colour
+  belongs to the subjects: each subject's own colour tints its exam, its rows and its header (see .subj).
+  No glows, no gradients, no ambient motion.
 */
 :root {
   color-scheme: light;
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f5f6f8;
-  --surface-3: #eceef2;
-  --border: #e3e6eb;
-  --text: #15181e;
-  --muted: #5d6472;
-  --accent: #1b3a7a;
+  --surface-2: #f3f5fb;
+  --surface-3: #e6eaf4;
+  --border: #e0e5ef;
+  --line-strong: #c5cddc;
+  --text: #121a33;
+  --muted: #566079;
+  --accent: #2443c4;
+  --accent-hover: #1b34a0;
   --accent-ink: #ffffff;
-  --accent-soft: #eef2fa;
-  --mark: #f2b705;
-  --mark-soft: #fff7e0;
-  --mark-ink: #15181e;
-  --good: #1e7f4f;
+  --accent-soft: #ebefff;
+  --side: #eff2fb;
+  --mark: #ffd43b;
+  --mark-soft: #fff6cf;
+  --mark-ink: #121a33;
+  --good: #16824f;
   --warn: #b45309;
-  --bad: #b42318;
+  --bad: #c4291c;
 }
 
 @theme inline {
@@ -34,6 +38,9 @@
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-line-strong: var(--line-strong);
+  --color-side: var(--side);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
   --color-mark: var(--mark);
@@ -46,7 +53,7 @@
   --font-display: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", Menlo, monospace;
   /* Only floating things (dialogs, menus, toasts) cast a shadow; everything on the page sits flat. */
-  --shadow-float: 0 12px 32px -8px rgb(21 24 30 / 0.18), 0 2px 6px rgb(21 24 30 / 0.06);
+  --shadow-float: 0 12px 32px -8px rgb(18 26 51 / 0.2), 0 2px 6px rgb(18 26 51 / 0.06);
 }
 
 html {
@@ -65,7 +72,7 @@ body {
   min-height: 100dvh;
 }
 
-::selection { background: #cfdaf2; color: var(--text); }
+::selection { background: #d5ddff; color: var(--text); }
 
 /* In the base layer so utilities like focus-visible:outline-none can override it. */
 @layer base {
@@ -111,6 +118,19 @@ body {
   letter-spacing: -0.015em;
 }
 
+/* Subject colour. A row or panel sets --subj to its subject's colour (see subjectStyle in components/ui)
+   and these derive everything from it, so a subject looks the same on every page. Mixed toward ink and
+   paper rather than used raw, so text on a tint keeps its contrast whatever colour was picked. */
+.subj-tint { background-color: color-mix(in oklab, var(--subj, var(--muted)) 9%, var(--surface)); }
+.subj-wash { background-color: color-mix(in oklab, var(--subj, var(--muted)) 5%, var(--surface)); }
+.subj-hover { transition: background-color 150ms; }
+.subj-hover:hover { background-color: color-mix(in oklab, var(--subj, var(--muted)) 6%, var(--surface)); }
+.subj-ink { color: color-mix(in oklab, var(--subj, var(--muted)) 70%, var(--text)); }
+.subj-line { border-color: color-mix(in oklab, var(--subj, var(--muted)) 30%, var(--border)); }
+/* A binder tab: a strip of the subject's colour down the row's leading edge. */
+.subj-edge { box-shadow: inset 3px 0 0 var(--subj, var(--muted)); }
+.subj-edge-thick { box-shadow: inset 6px 0 0 var(--subj, var(--muted)); }
+
 /* ───────────────────────── Motion ─────────────────────────
    Only motion that answers something the student did. Nothing moves on its own. */
 
@@ -146,12 +166,12 @@ dialog.sheet[open] { opacity: 1; }
   dialog.sheet[open] { opacity: 0; }
 }
 dialog.sheet::backdrop {
-  background: rgb(21 24 30 / 0);
+  background: rgb(18 26 51 / 0);
   transition: background 160ms, overlay 160ms allow-discrete, display 160ms allow-discrete;
 }
-dialog.sheet[open]::backdrop { background: rgb(21 24 30 / 0.4); }
+dialog.sheet[open]::backdrop { background: rgb(18 26 51 / 0.42); }
 @starting-style {
-  dialog.sheet[open]::backdrop { background: rgb(21 24 30 / 0); }
+  dialog.sheet[open]::backdrop { background: rgb(18 26 51 / 0); }
 }
 
 /* Disclosure: the content eases open where the browser can animate to auto height. */

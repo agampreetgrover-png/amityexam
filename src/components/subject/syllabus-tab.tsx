@@ -3,25 +3,23 @@
 import { useState } from "react";
 import { Check, Pencil, Plus, Sparkles, Trash2, Upload } from "lucide-react";
 import { db } from "@/lib/db";
-import { refreshWeak } from "@/lib/weak";
 import { extractAny } from "@/lib/pdf";
 import { aiJson } from "@/lib/ai/client";
 import type { SyllabusResult } from "@/lib/ai/schemas";
 import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Badge, Button, Card, Dots, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
-import { unitMode } from "@/lib/mode";
+import { Badge, Button, Card, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
+import { unitInScope } from "@/lib/mode";
 import { newTopic, parseSyllabus, parseTopics } from "@/lib/syllabus-text";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
 
 /**
  * Remove topics and everything pointing at them in one transaction.
  * Exams drop the ids from their syllabus; left behind, an exam listing only deleted
- * topics would cover nothing (an empty list means "whole subject" to the planner).
+ * topics would cover nothing (an empty list means "whole subject").
  */
 async function deleteTopics(ids: number[], unitId?: number) {
-  await db.transaction("rw", [db.units, db.topics, db.sessions, db.exams, db.pyqQuestions], async () => {
-    await db.sessions.where("topicId").anyOf(ids).delete();
+  await db.transaction("rw", [db.units, db.topics, db.exams, db.pyqQuestions], async () => {
     // Past-paper questions filed under these topics go back to "not matched yet" and get re-matched.
     await db.pyqQuestions.where("topicId").anyOf(ids).modify((q) => { delete q.topicId; });
     await db.exams
@@ -43,8 +41,10 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
   const [newUnit, setNewUnit] = useState("");
   const [adding, setAdding] = useState(false);
   const mid = mode === "mid-term";
+  // Only this mode's units are listed; `units` stays complete so new units are numbered after every existing one.
+  const shown = units.filter((u) => unitInScope(u, mode));
 
-  // One syllabus per subject. A unit added while preparing for the mid-sem is marked as in the mid-sem.
+  // A unit belongs to the syllabus of the mode it was added in.
   const addUnit = async () => {
     const title = newUnit.trim();
     if (!title || adding) return; // a quick double Enter must not add the unit twice
@@ -64,8 +64,8 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
           <h2 className="text-[15px] font-semibold">Syllabus</h2>
           <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">
             {mid
-              ? "The full syllabus. Tick “In mid-sem” on the units your mid-sem covers; only those count while you prepare for it."
-              : "The full syllabus for the major exam. Tick “In mid-sem” on the units the mid-sem covers."}
+              ? "Your mid-sem syllabus. Units you add or import while preparing for the mid-sem count towards it."
+              : "The full syllabus for the major exam."}
           </p>
         </header>
 
@@ -78,13 +78,13 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
         </div>
       </Card>
 
-      {units.length === 0 ? (
+      {shown.length === 0 ? (
         <Empty icon={<Upload size={20} />} title="Add this subject's syllabus">
-          Import it from a PDF, photo or pasted text, or add units by hand. Then tick the units your mid-sem covers.
+          Import it from a PDF, photo or pasted text, or add units by hand.
           <div className="mt-3"><Button size="sm" onClick={() => setImportOpen(true)}><Sparkles size={14} /> Import syllabus</Button></div>
         </Empty>
       ) : (
-        units.map((u) => <UnitSection key={u.id} unit={u} topics={topics.filter((t) => t.unitId === u.id)} />)
+        shown.map((u) => <UnitSection key={u.id} unit={u} topics={topics.filter((t) => t.unitId === u.id)} />)
       )}
 
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Import syllabus">
@@ -157,17 +157,6 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
           )}
         </h2>
         <div className="flex shrink-0 items-center">
-          {/* A chip that turns navy while the unit counts towards the mid-sem. */}
-          <label className="mr-1.5 flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text has-[:checked]:border-accent/30 has-[:checked]:bg-accent-soft has-[:checked]:text-accent">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-[var(--accent)]"
-              aria-label={`${unit.title} is in the mid-sem`}
-              checked={unitMode(unit) === "mid-term"}
-              onChange={(e) => db.units.update(unit.id, { exam: e.target.checked ? "mid-term" : "end-term" })}
-            />
-            In mid-sem
-          </label>
           <Button variant="ghost" size="sm" onClick={toggleEdit} aria-label="Rename unit"><Pencil size={14} /></Button>
           <Button variant="danger" size="sm" onClick={remove} aria-label="Delete unit"><Trash2 size={14} /></Button>
         </div>
@@ -239,11 +228,6 @@ function TopicRow({ topic }: { topic: Topic }) {
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
-        <span className="flex items-center gap-1.5">Difficulty <Dots label="Difficulty" value={topic.difficulty} onChange={(v) => db.topics.update(id, { difficulty: v })} /></span>
-        <span className="flex items-center gap-1.5">
-          Confidence
-          <Dots label="Confidence" value={topic.confidence} onChange={async (v) => { await db.topics.update(id, { confidence: v }); await refreshWeak([id]); }} />
-        </span>
         {/* Status reads at a glance: green when revised, navy when studied, quiet until then. */}
         <Select
           value={topic.status}
@@ -334,7 +318,7 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
           const named = u.topics.filter((t) => t.title.trim());
           if (!u.title.trim() || !named.length) continue;
           const unitId = (await db.units.add({ subjectId, title: u.title.trim(), order: order++, exam: mode })) as number;
-          await db.topics.bulkAdd(named.map((t) => newTopic(subjectId, unitId, t.title.trim(), t.difficulty)));
+          await db.topics.bulkAdd(named.map((t) => newTopic(subjectId, unitId, t.title.trim())));
         }
       });
       onDone();
@@ -354,7 +338,7 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
     return (
       <div className="space-y-5">
         <p className="text-sm text-muted">
-          Check {draft.length} units and {count} topics before saving. Fix names, adjust difficulty and remove anything wrong.
+          Check {draft.length} units and {count} topics before saving. Fix names and remove anything wrong.
           {mode === "mid-term" && " They'll be marked as in the mid-sem; untick any it doesn't cover after saving."}
         </p>
         {draft.map((u, i) => (
@@ -371,7 +355,6 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
                     onChange={(e) => editUnit(i, { topics: u.topics.map((x, m) => (m === k ? { ...x, title: e.target.value } : x)) })}
                     className="h-8 text-xs"
                   />
-                  <Dots label="Difficulty" value={t.difficulty} onChange={(v) => editUnit(i, { topics: u.topics.map((x, m) => (m === k ? { ...x, difficulty: v } : x)) })} />
                   <Button variant="ghost" size="sm" onClick={() => editUnit(i, { topics: u.topics.filter((_, m) => m !== k) })} aria-label="Remove topic"><Trash2 size={13} /></Button>
                 </li>
               ))}
@@ -389,7 +372,7 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
 
   return (
     <div className="space-y-3">
-      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[#cfd4dc] p-4 text-sm text-muted transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 hover:text-text">
+      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-line-strong p-4 text-sm text-muted transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 hover:text-text">
         <Upload size={18} className="shrink-0" aria-hidden />
         Upload the syllabus as a PDF, photo or text file
         <input

@@ -21,7 +21,7 @@ const CHOICES: { mode: ExamMode; title: string; blurb: string; focus: string[] }
     mode: "mid-term",
     title: "Mid-semester exam",
     blurb: "The minor / mid-term exam, on part of the full syllabus.",
-    focus: ["Only the units your mid-sem covers, ticked in each subject's syllabus", "Mid-term and internal tests", "Notes, quizzes and predictions for minor papers"],
+    focus: ["Only your mid-sem syllabus, added to each subject while in mid-sem mode", "Mid-term and internal tests", "Notes, quizzes and predictions for minor papers"],
   },
   {
     mode: "end-term",
@@ -51,7 +51,7 @@ function Welcome() {
         </span>
         <h1 className="mt-10 font-display text-[32px] leading-tight md:text-[40px]">What are you preparing for?</h1>
         <p className="mt-2 max-w-md text-[15px] leading-relaxed text-muted">
-          Your planner, syllabus and AI study tools will focus on it. You can switch any time.
+          Your dashboard, syllabus and AI study tools will focus on it. You can switch any time.
         </p>
 
         <div className="mt-8 grid gap-4 md:grid-cols-2">

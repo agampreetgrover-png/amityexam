@@ -11,22 +11,11 @@ import { notify } from "@/components/notifier";
 import { getLastProvider } from "@/lib/ai/client";
 import { MODES, modeLabel } from "@/lib/mode";
 import { DriveSettings } from "@/components/drive-settings";
-import { Button, Field, Input, PageHeader, Section, Tabs, cn } from "@/components/ui";
-
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { Button, PageHeader, Section, Tabs, cn } from "@/components/ui";
 
 // Settings groups sit on the page separated by rules, like sections of a printed form.
 const group = "py-8 first:pt-0 last:pb-0";
 const desc = "-mt-1 mb-5 max-w-prose text-sm text-muted";
-
-type NumKey = "dailyMinutes" | "sessionMins" | "revisionDays" | "pomodoroWork" | "pomodoroBreak";
-const LIMITS: Record<NumKey, [number, number]> = {
-  dailyMinutes: [30, 960],
-  sessionMins: [15, 240],
-  revisionDays: [0, 5],
-  pomodoroWork: [5, 120],
-  pomodoroBreak: [1, 60],
-};
 
 export default function SettingsPage() {
   const settings = useLiveQuery(getSettings);
@@ -46,32 +35,13 @@ export default function SettingsPage() {
   // writing lastDriveSync meanwhile) would otherwise overwrite each other.
   const set = (patch: Partial<Settings>) =>
     db.transaction("rw", db.settings, async () => db.settings.put({ ...DEFAULT_SETTINGS, ...(await getSettings()), ...patch }));
-  // Saved on blur (not per keystroke) and clamped, so a half-typed or empty field can't store 0 or NaN.
-  const num = (k: NumKey) => {
-    const [min, max] = LIMITS[k];
-    const value = settings[k];
-    return {
-      type: "number",
-      defaultValue: value,
-      min,
-      max,
-      onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
-        const n = Math.round(Number(e.target.value));
-        const next = e.target.value.trim() === "" || !Number.isFinite(n) ? value : Math.min(max, Math.max(min, n));
-        e.target.value = String(next);
-        if (next !== value) set({ [k]: next });
-      },
-      onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && e.currentTarget.blur(),
-    };
-  };
-
   const enableNotifications = async () => {
     setNotifyMsg("");
     if (typeof Notification === "undefined") return setNotifyMsg("This browser doesn't support notifications.");
     const p = await Notification.requestPermission();
     setPermission(p);
     await set({ notifications: p === "granted" });
-    if (p === "granted") await notify("Notifications on", "You'll get a daily study digest while the app is open.");
+    if (p === "granted") await notify("Notifications on", "You'll get an alert the day before each exam while the app is open.");
     else setNotifyMsg("Notifications are blocked in your browser's site settings. Allow them there, then try again.");
   };
 
@@ -108,7 +78,7 @@ export default function SettingsPage() {
       <div className="divide-y divide-border">
         <Section title="Exam mode" className={group}>
           <p className={desc}>
-            The dashboard, exams list, planner and AI tools follow this. Mid-sem and major each have their own syllabus: upload each one on a subject&apos;s Syllabus tab while in that mode.
+            The dashboard, exams list and AI tools follow this. Mid-sem and major each have their own syllabus: upload each one on a subject&apos;s Syllabus tab while in that mode.
           </p>
           <Tabs
             label="Exam mode"
@@ -116,57 +86,11 @@ export default function SettingsPage() {
             onChange={(examMode) => set({ examMode })}
             options={MODES.map((m) => ({ value: m, label: modeLabel(m) }))}
           />
-          <p className="mt-3 text-xs text-muted">After switching, open the Planner and press Rebalance.</p>
-        </Section>
-
-        <Section title="Study plan" className={group}>
-          <p className={desc}>How much the planner schedules each day, and which days it leaves free.</p>
-          <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
-            <Field label="Study time per day (minutes)" hint={`${(settings.dailyMinutes / 60).toFixed(1)} hours`}>
-              <Input key={`dailyMinutes-${settings.dailyMinutes}`} {...num("dailyMinutes")} step={15} />
-            </Field>
-            <Field label="Longest single study block (minutes)"><Input key={`sessionMins-${settings.sessionMins}`} {...num("sessionMins")} step={15} /></Field>
-            <Field label="Revision days before each exam"><Input key={`revisionDays-${settings.revisionDays}`} {...num("revisionDays")} /></Field>
-          </div>
-          <fieldset className="mt-5">
-            <legend className="mb-2 text-[13px] font-medium text-muted">Days off</legend>
-            {/* One segmented row: each day is a cell, and a day off is filled navy. */}
-            <div className="grid w-full max-w-sm grid-cols-7 divide-x divide-border overflow-hidden rounded-md border border-border">
-              {DAYS.map((d, i) => {
-                const on = settings.offDays.includes(i);
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => set({ offDays: on ? settings.offDays.filter((x) => x !== i) : [...settings.offDays, i] })}
-                    className={cn(
-                      // The ring is drawn inside the cell, since the row clips anything outside it.
-                      "h-9 min-w-0 text-sm transition-colors duration-150 focus-visible:outline-offset-[-2px]",
-                      on ? "bg-accent font-medium text-accent-ink" : "bg-surface text-muted hover:bg-surface-2 hover:text-text",
-                    )}
-                  >
-                    {d}
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-          <p className="mt-4 text-xs text-muted">After changing these, open the Planner and press Rebalance.</p>
-        </Section>
-
-        <Section title="Pomodoro" className={group}>
-          <p className={desc}>Lengths of the focus timer and the break after it.</p>
-          <div className="grid max-w-sm grid-cols-2 gap-4">
-            <Field label="Focus (min)"><Input key={`pomodoroWork-${settings.pomodoroWork}`} {...num("pomodoroWork")} /></Field>
-            <Field label="Break (min)"><Input key={`pomodoroBreak-${settings.pomodoroBreak}`} {...num("pomodoroBreak")} /></Field>
-          </div>
         </Section>
 
         <Section title="Reminders" className={group}>
           <p className={desc}>
-            While the app is open you get a daily digest and an alert the day before each exam. For reminders when it&apos;s closed,
-            export your plan to Google Calendar from the Planner.
+            While the app is open you get an alert the day before each exam.
           </p>
           {notificationsOn ? (
             <Button variant="secondary" onClick={() => { setNotifyMsg(""); set({ notifications: false }); }}><Bell size={16} /> Turn off notifications</Button>
@@ -206,7 +130,7 @@ export default function SettingsPage() {
                 // Settings go too, so the app returns to the "What are you preparing for?" screen; say so up front.
                 if (
                   confirm(
-                    "Delete ALL data permanently?\n\nThis removes every subject, exam, plan, note and quiz, and also resets your settings, exam mode and Google Drive folders. The app will start over from the welcome screen.\n\nExport a backup first if you might need it.",
+                    "Delete ALL data permanently?\n\nThis removes every subject, exam, note and quiz, and also resets your settings, exam mode and Google Drive folders. The app will start over from the welcome screen.\n\nExport a backup first if you might need it.",
                   )
                 ) {
                   await clearAll();

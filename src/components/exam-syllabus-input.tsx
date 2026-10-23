@@ -9,7 +9,7 @@ import { Button, Input, Textarea } from "./ui";
 
 /**
  * Lets the student type or paste an exam's syllabus right in the exam form.
- * The topics go into the subject's syllabus for the exam's season, so the planner and the subject page see them too.
+ * The topics go into the subject's syllabus for the exam's season, so the subject page sees them too.
  */
 export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
   subjectId: number;

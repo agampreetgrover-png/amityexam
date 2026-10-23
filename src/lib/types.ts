@@ -29,16 +29,9 @@ export interface Topic {
   subjectId: number;
   unitId: number;
   title: string;
-  difficulty: number; // 1–5
   confidence: number; // 1–5
   status: TopicStatus;
   weak?: boolean; // set from quiz scores / low confidence
-  lastReviewed?: ISODay;
-  nextReview?: ISODay;
-  // SM-2 fields for topic-level revision
-  ease: number;
-  interval: number;
-  reps: number;
 }
 
 export interface ChecklistItem {
@@ -58,19 +51,6 @@ export interface Exam {
   topicIds: number[]; // empty = whole subject
   checklist: ChecklistItem[];
   notes?: string;
-}
-
-type SessionKind = "study" | "revision";
-
-export interface StudySession {
-  id?: number;
-  date: ISODay;
-  topicId?: number; // study session
-  examId?: number; // revision session
-  kind: SessionKind;
-  plannedMins: number;
-  actualMins: number;
-  done: boolean;
 }
 
 export type MaterialKind = "notes" | "pyq" | "syllabus" | "other";
@@ -165,12 +145,6 @@ export interface ChatMessage {
 
 export interface Settings {
   id: "settings";
-  dailyMinutes: number;
-  offDays: number[]; // 0 = Sunday
-  revisionDays: number; // days before each exam reserved for revision
-  sessionMins: number; // max length of one study block
-  pomodoroWork: number;
-  pomodoroBreak: number;
   notifications: boolean;
   examMode?: ExamMode; // unset until chosen on the welcome screen
   driveSources?: DriveSourceSetting[]; // unset = the built-in defaults
@@ -180,11 +154,5 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   id: "settings",
-  dailyMinutes: 240,
-  offDays: [],
-  revisionDays: 1,
-  sessionMins: 60,
-  pomodoroWork: 25,
-  pomodoroBreak: 5,
   notifications: false,
 };

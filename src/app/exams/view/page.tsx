@@ -8,11 +8,10 @@ import { Suspense, useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { examTypeLabel } from "@/lib/exams";
-import { useExamMode } from "@/lib/mode";
-import { examSyllabus } from "@/lib/planner";
+import { examSyllabus, useExamMode } from "@/lib/mode";
 import { Markdown } from "@/components/markdown";
 import { toast } from "@/components/toast";
-import { Badge, Button, Card, Empty, Input, List, Select, Tick, cn } from "@/components/ui";
+import { Badge, Button, Card, Empty, Input, List, Select, Tick, cn, subjectStyle } from "@/components/ui";
 
 export default function ExamKitPage() {
   // The id is a query param, not a path segment, so this one prerendered (and precached) page serves every exam,
@@ -83,16 +82,15 @@ function ExamKit({ id }: { id: number }) {
             {days < 0 ? (
               <Check size={56} strokeWidth={1.75} className="text-good" aria-hidden />
             ) : (
-              <div className="numeral text-[72px] md:text-[88px]">
+              <div className="numeral subj-ink text-[72px] md:text-[88px]" style={subjectStyle(subject?.color)}>
                 <span className={days <= 3 ? "mark" : undefined}>{days}</span>
               </div>
             )}
             <p className="mt-2 text-[13px] text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
           </div>
-          <div className="flex min-w-0 flex-col justify-center border-l border-border pl-5 md:pl-6">
+          <div style={subjectStyle(subject?.color)} className="flex min-w-0 flex-col justify-center border-l-[3px] border-[var(--subj,var(--border))] pl-5 md:pl-6">
             <h1 className="break-words font-display text-[28px] leading-tight md:text-[32px]">{subject?.name ?? "Exam"}</h1>
             <p className="mt-1 flex items-center gap-2 text-[15px] text-muted">
-              {subject?.color && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: subject.color }} />}
               {examTypeLabel(exam.type)}, {prettyDay(exam.date)}
             </p>
           </div>
@@ -202,16 +200,13 @@ function ExamKit({ id }: { id: number }) {
           )}
         </Card>
 
-        <Card
-          title="Weak topics"
-          action={<Link className="no-print text-sm font-medium text-accent underline-offset-2 hover:underline" href="/revise">Revise</Link>}
-        >
+        <Card title="Weak topics">
           {weak.length ? (
             <List className="border-b-0">
               {weak.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-[15px]">
                   <span className="min-w-0 break-words">{t.title}</span>
-                  <Badge className="shrink-0 bg-bad/10 tabular-nums text-bad">confidence {t.confidence}/5</Badge>
+                  <Badge className="shrink-0 bg-bad/10 text-bad">weak</Badge>
                 </li>
               ))}
             </List>

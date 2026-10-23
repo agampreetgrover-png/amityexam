@@ -6,7 +6,7 @@ import withSerwistInit from "@serwist/next";
 // New revision per build so precached app pages refresh after every deploy.
 const revision = randomUUID();
 // /subjects/view and /exams/view take the id as ?id=, so these two entries cover every subject and exam offline.
-const PAGES = ["/", "/planner", "/subjects", "/subjects/view", "/exams", "/exams/view", "/revise", "/progress", "/settings", "/~offline"];
+const PAGES = ["/", "/subjects", "/subjects/view", "/exams", "/exams/view", "/progress", "/settings", "/~offline"];
 // Listing entries by hand replaces Serwist's default public/ glob, so the pdf.js worker (copied there by
 // postinstall) must be added too, or PDFs can't be read offline. Hashed so it only re-downloads when pdf.js changes.
 const PDF_WORKER = "/pdf.worker.min.mjs";

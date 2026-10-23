@@ -33,16 +33,13 @@ If Gemini hits a limit, times out or fails, the app switches to Groq on its own.
 
 1. **Subjects**: add each subject, then **Syllabus → Import with AI** (paste text, or upload the syllabus PDF or a photo of it).
 2. **Exams**: add the date sheet (date, time, venue, seat, and which topics are examined).
-3. **Planner → Generate plan**: builds a day-by-day schedule using your daily hours, days off and the revision days before each exam. Missed sessions? Press **Rebalance**.
-4. Study with the **Pomodoro** timer and tick sessions off.
-5. **Subject → Materials**: upload notes and previous-year papers (PDF, text, or photos/scans, which are read by Gemini). Then use:
+3. **Subject → Materials**: upload notes and previous-year papers (PDF, text, or photos/scans, which are read by Gemini). Then use:
    - **Notes**: short notes or one-page cheat sheets per topic
-   - **Quiz**: MCQ and short-answer practice. AI grades short answers, and low scores mark topics as weak so the planner gives them more time
+   - **Quiz**: MCQ and short-answer practice. AI grades short answers, and low scores mark topics as weak
    - **PYQ Predict**: repeated questions, weightage and likely questions
    - **Doubt Chat**: answers based on your own notes
-6. **Progress**: coverage, study hours, streak, quiz trend and weak topics.
-7. **Exam → Kit**: checklist, night-before tips, cheat sheet and weak topics. Printable.
-8. **Planner → Export .ics**: import it into Google Calendar to get phone reminders even when the app is closed.
+4. **Progress**: coverage, quiz trend and weak topics.
+5. **Exam → Kit**: checklist, night-before tips, cheat sheet and weak topics. Printable.
 
 Back up from **Settings → Export backup**. Use the same file to move data between devices.
 
@@ -50,4 +47,4 @@ Back up from **Settings → Export backup**. Use the same file to move data betw
 
 Next.js 15 · TypeScript · Tailwind v4 · Dexie (IndexedDB) · Serwist (PWA) · Gemini via `@google/genai` (`gemini-3.5-flash`, `gemini-3.5-flash-lite`) with Groq fallback (`openai/gpt-oss-120b`, `openai/gpt-oss-20b`); override with `GEMINI_MODEL`, `GEMINI_FAST_MODEL`, `GROQ_MODEL`, `GROQ_FAST_MODEL` · pdf.js · Recharts · Vitest.
 
-`npm test` runs the planner, spaced-repetition and calendar unit tests.
+`npm test` runs the unit tests.
