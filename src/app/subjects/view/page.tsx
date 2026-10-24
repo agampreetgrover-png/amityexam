@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
-import { Empty, Progress, Tabs, subjectStyle } from "@/components/ui";
+import { Empty, SyllabusStrip, Tabs, subjectStyle } from "@/components/ui";
 import { SyllabusTab } from "@/components/subject/syllabus-tab";
 import { MaterialsTab } from "@/components/subject/materials-tab";
 import { PyqsTab } from "@/components/subject/pyqs-tab";
@@ -74,44 +74,71 @@ function Subject({ subjectId }: { subjectId: number }) {
   // null = not found; undefined = still loading. A bad id (e.g. ?id=abc) is treated as not found
   // rather than handed to Dexie, which rejects NaN keys.
   const subject = useLiveQuery(async () => (valid ? ((await db.subjects.get(subjectId)) ?? null) : null), [subjectId, valid]);
-  const allUnits = useLiveQuery(() => (valid ? db.units.where({ subjectId }).sortBy("order") : []), [subjectId, valid]) ?? [];
-  const allTopics = useLiveQuery(() => (valid ? db.topics.where({ subjectId }).toArray() : []), [subjectId, valid]) ?? [];
+  const allUnits = useLiveQuery(() => (valid ? db.units.where({ subjectId }).sortBy("order") : []), [subjectId, valid]);
+  const allTopics = useLiveQuery(() => (valid ? db.topics.where({ subjectId }).toArray() : []), [subjectId, valid]);
   const mode = useExamMode();
 
-  // Wait for the mode too, so the other syllabus never flashes up.
-  if (subject === undefined || !mode) return <p className="text-sm text-muted">Loading…</p>;
+  // Wait for the mode too, so the other syllabus never flashes up; and for the syllabus, so the strip and
+  // figure draw at their real values instead of sweeping up from zero.
+  if (subject === undefined || !mode || !allUnits || !allTopics) return <p className="text-sm text-muted">Loading…</p>;
   if (!subject) return <Empty title="Subject not found"><Link href="/subjects" className="font-medium text-accent underline underline-offset-2">Back to subjects</Link></Empty>;
 
   // Every tab works on the current mode's own syllabus.
   const units = allUnits.filter((u) => unitInScope(u, mode));
   const topics = topicsInScope(allTopics, allUnits, mode);
   const pct = coverage(topics);
+  const count = (s: string) => topics.filter((t) => t.status === s).length;
+  const legend = [
+    { label: "revised", n: count("revised"), cell: "revised" },
+    { label: "studied", n: count("studied"), cell: "studied" },
+    { label: "not started", n: count("not-started"), cell: "not-started" },
+  ];
 
   return (
     <div>
-      <Link href="/subjects" className="no-print mb-4 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text">
-        <ArrowLeft size={14} /> Subjects
+      <Link
+        href="/subjects"
+        className="group no-print mb-5 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text"
+      >
+        <ArrowLeft size={14} className="transition-transform duration-200 ease-snappy group-hover:-translate-x-0.5" /> Subjects
       </Link>
-      <header style={subjectStyle(subject.color)} className="subj-tint subj-edge-thick no-print mb-6 flex flex-wrap items-end justify-between gap-x-8 gap-y-4 rounded-lg py-5 pl-7 pr-5 sm:pl-8">
-        <div className="min-w-0 flex-1">
-          <h1 className="subj-ink break-words font-display text-[28px] leading-tight md:text-[32px]">{subject.name}</h1>
-          <p className="mt-1 flex flex-wrap gap-x-3 text-[15px] text-muted">
-            {subject.code && <span>{subject.code}</span>}
-            {subject.credits ? <span>{subject.credits} credits</span> : null}
-            <span>{topics.length} {modeShort(mode).toLowerCase()} topic{topics.length === 1 ? "" : "s"}</span>
-          </p>
-        </div>
-        <div className="w-full sm:w-52">
-          <div className="mb-1.5 flex items-baseline justify-between gap-3">
-            <span className="text-[13px] text-muted">Syllabus covered</span>
-            <span className="text-sm font-semibold tabular-nums">{pct}%</span>
+      {/* The subject's overview: its name in its own colour, the course details, and the syllabus laid out as a
+          strip of topics, so where you stand reads at a glance. */}
+      <header style={subjectStyle(subject.color)} className="no-print mb-8">
+        <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+          <div className="min-w-0 flex-1 basis-80">
+            <h1 className="subj-ink break-words font-display text-[28px] leading-[1.1] md:text-[34px]">{subject.name}</h1>
+            <p className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-muted">
+              {subject.code && <span className="subj-line rounded-md border bg-surface px-1.5 py-px text-[13px] font-medium text-text/80">{subject.code}</span>}
+              {subject.credits ? <span>{subject.credits} credits</span> : null}
+              <span>{topics.length} {modeShort(mode).toLowerCase()} topic{topics.length === 1 ? "" : "s"}</span>
+            </p>
           </div>
-          <Progress value={pct} color={subject.color} className="bg-surface/90" />
+          <div className="flex items-end gap-2.5">
+            <span className="numeral subj-ink text-[44px] md:text-[52px]">{pct}<span className="text-[0.55em] tracking-normal">%</span></span>
+            <span className="pb-1 text-[13px] leading-tight text-muted">syllabus<br />covered</span>
+          </div>
         </div>
+        {topics.length > 0 ? (
+          <div className="mt-6">
+            <SyllabusStrip units={units} topics={topics} className="h-2.5" />
+            <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-muted">
+              {legend.map((l) => (
+                <li key={l.label} className="flex items-center gap-2">
+                  <span aria-hidden className="strip-cell h-2.5 w-2.5 flex-none" data-s={l.cell} />
+                  <span><span className="font-semibold tabular-nums text-text">{l.n}</span> {l.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="mt-6 h-2.5 rounded-full bg-surface-3" aria-hidden />
+        )}
       </header>
 
-      {/* Scrolls sideways on phones instead of wrapping the tab row. The vertical padding keeps focus rings from being clipped by the scroller. */}
-      <div className="no-print -mx-4 mb-5 overflow-x-auto px-4 py-1 md:mx-0 md:px-0">
+      {/* Scrolls sideways on phones instead of wrapping the tab row. The padding keeps focus rings and the first
+          tab's hover wash from being clipped by the scroller. */}
+      <div className="no-print -mx-4 mb-7 overflow-x-auto px-4 py-1">
         <Tabs
           label="Subject sections"
           value={tab}
@@ -124,7 +151,7 @@ function Subject({ subjectId }: { subjectId: number }) {
       {/* Keyed so a mode switch (or another subject) starts each tab fresh instead of keeping a half-built quiz on the old syllabus.
           Opened tabs stay mounted and are only hidden, so switching tabs never throws work away. */}
       {TABS.filter((t) => visited.has(t.key)).map(({ key, C }) => (
-        <div key={`${subject.id}-${mode}-${key}`} hidden={key !== tab}>
+        <div key={`${subject.id}-${mode}-${key}`} hidden={key !== tab} className="tab-in">
           {/* The Syllabus tab gets every unit so new ones are numbered after all of them; it lists only this mode's part, like the rest. */}
           <C subject={subject} units={key === "syllabus" ? allUnits : units} topics={key === "syllabus" ? allTopics : topics} mode={mode} />
         </div>

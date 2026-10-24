@@ -10,7 +10,7 @@ import { aiJson } from "@/lib/ai/client";
 import { aiModeFields } from "@/lib/mode";
 import type { QuizAttempt, QuizQuestion } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Badge, Button, Card, Empty, Field, List, Progress, Section, Select, Textarea, cn } from "../ui";
+import { Badge, Button, Card, Empty, Field, List, Panel, Progress, Section, Select, Textarea, cn } from "../ui";
 import { matchOption, norm } from "./quiz-match";
 import { noteTexts, OfflineHint, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
@@ -180,7 +180,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                 <label
                   key={oi}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 rounded-md border px-3.5 py-3 text-[15px] leading-relaxed transition-colors duration-150",
+                    "flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 text-[15px] leading-relaxed transition-colors duration-150",
                     responses[page] === o
                       ? "border-accent bg-accent-soft font-medium text-text"
                       : "border-border bg-surface text-text hover:border-line-strong hover:bg-surface-2",
@@ -283,7 +283,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         {attempts.length === 0 ? (
           <Empty icon={<ClipboardList size={18} />} title="No quizzes taken yet" />
         ) : (
-          <List>
+          <Panel as="ul" className="divide-y divide-border">
             {attempts.map((a) => (
               <li key={a.id}>
                 <button
@@ -291,18 +291,18 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   onClick={() => setReviewing(a)}
                   disabled={!a.questions.length}
                   aria-label={`Review the ${a.score}% quiz from ${new Date(a.createdAt).toLocaleDateString()}`}
-                  className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-4 rounded-md px-2 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 disabled:pointer-events-none"
+                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2/60 disabled:pointer-events-none sm:px-5"
                 >
                   <span className={cn("numeral w-16 shrink-0 text-[28px]", scoreColor(a.score))}>{a.score}%</span>
                   <span className="min-w-0 flex-1 truncate">
                     {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
                   </span>
                   <span className="shrink-0 text-[13px] tabular-nums text-muted">{a.questions.length} questions, {new Date(a.createdAt).toLocaleDateString()}</span>
-                  {a.questions.length > 0 && <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />}
+                  {a.questions.length > 0 && <ChevronRight size={16} className="shrink-0 text-faint transition-transform duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-muted" aria-hidden />}
                 </button>
               </li>
             ))}
-          </List>
+          </Panel>
         )}
       </Section>
     </div>

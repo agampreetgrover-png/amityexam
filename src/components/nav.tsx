@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { BarChart3, BookOpen, GraduationCap, House, Search, Settings } from "lucide-react";
+import { BarChart3, BookOpen, GraduationCap, House, Moon, Search, Settings, Sun } from "lucide-react";
 import { openCommandPalette } from "./command-palette-loader";
+import { setTheme, useTheme } from "@/lib/theme";
 import { DevWarmup } from "./dev-warmup";
 import { ModePill } from "./mode-pill";
 import { cn } from "./ui";
@@ -20,8 +21,12 @@ const secondary = [
 ];
 const ROUTES = [...primary, ...secondary].map((i) => i.href);
 
+const iconButton =
+  "press flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text";
+
 export function Nav() {
   const path = usePathname();
+  const { resolved: theme } = useTheme();
   // The clicked item lights up straight away, before the next page has loaded. It only counts while we're still
   // on the page it was clicked from, so it clears itself once the navigation lands (or a later one does).
   const [clicked, setClicked] = useState<{ href: string; from: string } | null>(null);
@@ -32,97 +37,120 @@ export function Nav() {
     setClicked({ href, from: path });
   };
 
-  // One marker slides to whichever item is active, across both lists. The first placement snaps into place.
-  // It's measured inside the links column, so the mode pill loading in above doesn't throw it off.
+  // The current page sits on a soft blue pill that glides to whichever item is active, across both groups.
+  // On first load (and when the window or fonts re-measure it) it just appears. It's measured inside the bar,
+  // so the mode switch loading in doesn't throw it off.
   const rail = useRef<HTMLDivElement>(null);
-  const [pill, setPill] = useState<{ y: number; h: number; glide: boolean } | null>(null);
+  const [pill, setPill] = useState<{ x: number; w: number; glide: boolean } | null>(null);
   useLayoutEffect(() => {
     const place = () => {
       const nav = rail.current;
       const on = nav?.querySelector<HTMLElement>('[aria-current="page"]');
       if (!nav || !on) return setPill(null);
-      const top = on.getBoundingClientRect().top - nav.getBoundingClientRect().top;
-      setPill((p) => ({ y: top, h: on.offsetHeight, glide: p != null }));
+      const a = on.getBoundingClientRect();
+      const b = nav.getBoundingClientRect();
+      setPill((p) => ({ x: a.left - b.left, w: a.width, glide: p != null }));
     };
     place();
-    // Progress and Settings sit at the foot of the column, so a taller window or a late font swap moves them.
+    // Labels show or hide with the window width, and a late font swap changes their size.
     const ro = new ResizeObserver(place);
     if (rail.current) ro.observe(rail.current);
     document.fonts?.ready.then(place);
     return () => ro.disconnect();
   }, [current]);
 
-  const item = ({ href, label, icon: Icon }: (typeof primary)[number]) => (
-    <li key={href}>
-      <Link
-        href={href}
-        onClick={onClick(href)}
-        aria-current={active(href) ? "page" : undefined}
-        className={cn(
-          "relative z-10 flex items-center gap-3 rounded-md px-3 py-2 text-[14px] transition-colors duration-150",
-          active(href) ? "font-semibold text-accent" : "text-muted hover:bg-surface/70 hover:text-text",
-        )}
-      >
-        <Icon size={18} strokeWidth={active(href) ? 2 : 1.75} className={active(href) ? "text-accent" : undefined} />
-        {label}
-      </Link>
-    </li>
-  );
+  // Today, Subjects and Exams get a label once there's room; Progress and Settings stay as icons on the right.
+  const item = ({ href, label, icon: Icon }: (typeof primary)[number], labelled: boolean) => {
+    const on = active(href);
+    return (
+      <li key={href}>
+        <Link
+          href={href}
+          onClick={onClick(href)}
+          aria-current={on ? "page" : undefined}
+          aria-label={label}
+          title={labelled ? undefined : label}
+          className={cn(
+            "press relative z-10 flex h-8 items-center gap-2 rounded-lg text-[14px] font-medium",
+            labelled ? "px-2.5 lg:px-3" : "w-8 justify-center",
+            on ? "text-accent" : "text-muted hover:bg-surface-2 hover:text-text",
+          )}
+        >
+          <Icon size={17} strokeWidth={on ? 2.1 : 1.8} className="transition-[stroke-width] duration-150" />
+          {labelled && <span className="hidden lg:inline">{label}</span>}
+        </Link>
+      </li>
+    );
+  };
   const mobileIndex = primary.findIndex((p) => active(p.href));
 
   return (
     <>
-      {/* Desktop: a grey sidebar; the current page's marker slides when it changes */}
+      {/* Desktop: a slim bar over the page, ruled off by a hairline; the page column lines up under it. */}
       <nav
-        className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-border bg-side px-4 py-6 md:flex"
+        className="sticky top-0 z-20 hidden h-14 border-b border-border bg-surface/85 backdrop-blur-md backdrop-saturate-150 md:block"
         aria-label="Main"
       >
-        <Link href="/" onClick={onClick("/")} className="flex items-center gap-2.5 rounded-md px-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-ink">
-            <GraduationCap size={18} />
-          </span>
-          <span className="font-display text-[19px] leading-none">Amity Exams</span>
-        </Link>
-        <ModePill className="ml-2 mt-4 self-start" />
-        <button
-          type="button"
-          onClick={openCommandPalette}
-          className="mb-5 mt-4 flex h-9 items-center gap-2.5 rounded-md border border-border bg-surface px-3 text-sm text-muted transition-colors duration-150 hover:border-line-strong hover:text-text"
-        >
-          <Search size={16} aria-hidden />
-          <span className="flex-1 text-left">Search</span>
-          <kbd className="rounded border border-border bg-surface-2 px-1.5 font-sans text-[11px]">Ctrl K</kbd>
-        </button>
-        <div ref={rail} className="relative flex flex-1 flex-col">
+        <div ref={rail} className="relative mx-auto flex h-full max-w-5xl items-center gap-2 px-8">
           {pill && (
             <span
               aria-hidden
               className={cn(
-                "absolute inset-x-0 top-0 rounded-md border border-accent/15 bg-surface shadow-[0_1px_2px_rgb(18_26_51/0.05)]",
-                pill.glide && "transition-[transform,height] duration-200 ease-out",
+                "pointer-events-none absolute left-0 top-3 h-8 rounded-lg bg-accent-soft",
+                pill.glide && "transition-[transform,width] duration-250 ease-snappy",
               )}
-              style={{ transform: `translateY(${pill.y}px)`, height: pill.h }}
-            >
-              <span className="absolute -left-px top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
-            </span>
+              style={{ transform: `translateX(${pill.x}px)`, width: pill.w }}
+            />
           )}
-          <ul className="space-y-1">{primary.map(item)}</ul>
-          <ul className="mt-auto space-y-1 border-t border-border pt-4">{secondary.map(item)}</ul>
+          <Link href="/" onClick={onClick("/")} className="group mr-4 flex shrink-0 items-center gap-2.5 rounded-lg lg:mr-6">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.18)] transition-transform duration-200 ease-snappy group-hover:-rotate-6">
+              <GraduationCap size={16} strokeWidth={2} />
+            </span>
+            <span className="text-[15px] font-semibold tracking-[-0.02em]">Amity Exams</span>
+          </Link>
+          <ul className="flex items-center gap-0.5">{primary.map((i) => item(i, true))}</ul>
+          {/* Right-aligned on its own, so Progress and Settings don't move when the mode switch loads in. */}
+          <div className="ml-auto flex items-center gap-2">
+            <ModePill className="shrink-0" />
+            <button
+              type="button"
+              onClick={openCommandPalette}
+              aria-label="Search"
+              className="press ml-1 flex h-8 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-[13px] text-muted shadow-control hover:border-line-strong hover:text-text xl:w-52"
+            >
+              <Search size={15} aria-hidden />
+              <span className="hidden flex-1 text-left xl:inline">Search</span>
+              <kbd className="hidden rounded-md bg-surface-2 px-1.5 py-px font-sans text-[11px] font-medium text-muted ring-1 ring-inset ring-border lg:inline">Ctrl K</kbd>
+            </button>
+            {/* Flips to the other theme and pins it; Settings can put it back to following the device. */}
+            <button
+              type="button"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              title={theme === "dark" ? "Light theme" : "Dark theme"}
+              className={cn(iconButton, "[&_svg]:transition-transform [&_svg]:duration-300 [&_svg]:ease-snappy hover:[&_svg]:rotate-[-18deg]")}
+            >
+              {theme === "dark" ? <Sun size={17} strokeWidth={1.8} /> : <Moon size={17} strokeWidth={1.8} />}
+            </button>
+            <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+            <ul className="flex items-center gap-0.5">{secondary.map((i) => item(i, false))}</ul>
+          </div>
         </div>
       </nav>
 
-      {/* Mobile: three-item bottom bar; Progress and Settings live in the Today header */}
+      {/* Mobile: three-item bottom bar; Progress and Settings live in the Today header. The current item's icon
+          sits on a soft pill that slides between them. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md backdrop-saturate-150 md:hidden"
         aria-label="Main"
       >
         {mobileIndex >= 0 && (
           <span
             aria-hidden
-            className="absolute top-0 left-0 flex w-1/3 justify-center transition-transform duration-200 ease-out"
+            className="absolute left-0 top-2 flex w-1/3 justify-center transition-transform duration-250 ease-snappy"
             style={{ transform: `translateX(${mobileIndex * 100}%)` }}
           >
-            <span className="h-0.5 w-8 rounded-full bg-accent" />
+            <span className="h-7 w-14 rounded-full bg-accent-soft" />
           </span>
         )}
         {primary.map(({ href, label, icon: Icon }) => (
@@ -132,11 +160,13 @@ export function Nav() {
             onClick={onClick(href)}
             aria-current={active(href) ? "page" : undefined}
             className={cn(
-              "relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2.5 text-[11px] transition-colors duration-150",
-              active(href) ? "font-semibold text-accent" : "text-muted",
+              "relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2 text-[11px] transition-colors duration-150",
+              active(href) ? "font-semibold text-accent" : "font-medium text-muted",
             )}
           >
-            <Icon size={20} strokeWidth={active(href) ? 2.1 : 1.75} />
+            <span className="flex h-7 items-center justify-center">
+              <Icon size={20} strokeWidth={active(href) ? 2.1 : 1.75} />
+            </span>
             {label}
           </Link>
         ))}

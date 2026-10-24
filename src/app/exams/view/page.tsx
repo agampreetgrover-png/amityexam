@@ -70,13 +70,13 @@ function ExamKit({ id }: { id: number }) {
     <>
       <Link
         href="/exams"
-        className="no-print mb-6 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text"
+        className="group no-print mb-6 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text"
       >
-        <ArrowLeft size={14} /> Exams
+        <ArrowLeft size={14} className="transition-transform duration-200 ease-snappy group-hover:-translate-x-0.5" /> Exams
       </Link>
 
       {/* The countdown leads, like the days column of a printed date sheet, marked in amber once it's three days or less. */}
-      <header className="mb-8 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 border-b border-border pb-6">
+      <header className="mb-10 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="flex min-w-0 items-stretch gap-5 md:gap-6">
           <div className="shrink-0">
             {days < 0 ? (
@@ -89,7 +89,7 @@ function ExamKit({ id }: { id: number }) {
             <p className="mt-2 text-[13px] text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
           </div>
           <div style={subjectStyle(subject?.color)} className="flex min-w-0 flex-col justify-center border-l-[3px] border-[var(--subj,var(--border))] pl-5 md:pl-6">
-            <h1 className="break-words font-display text-[28px] leading-tight md:text-[32px]">{subject?.name ?? "Exam"}</h1>
+            <h1 className="break-words font-display text-[28px] leading-[1.1] md:text-[34px]">{subject?.name ?? "Exam"}</h1>
             <p className="mt-1 flex items-center gap-2 text-[15px] text-muted">
               {examTypeLabel(exam.type)}, {prettyDay(exam.date)}
             </p>
@@ -149,7 +149,7 @@ function ExamKit({ id }: { id: number }) {
                 <span className={cn("min-w-0 break-words transition-colors duration-150", item.done && "text-muted line-through decoration-muted/60")}>{item.text}</span>
                 <button
                   // Always visible on touch screens; on a mouse it appears on hover or keyboard focus.
-                  className="no-print ml-auto shrink-0 rounded-md p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                  className="no-print ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   aria-label={`Remove ${item.text}`}
                   onClick={async () => {
                     await setChecklist((list) => list.filter((_, j) => j !== i));
@@ -175,7 +175,7 @@ function ExamKit({ id }: { id: number }) {
             }}
           >
             <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add an item" className="h-9" />
-            <Button size="sm" type="submit" variant="secondary" className="h-9" aria-label="Add item"><Plus size={15} /></Button>
+            <Button type="submit" variant="secondary" className="w-9 shrink-0 px-0" aria-label="Add item"><Plus size={15} /></Button>
           </form>
         </Card>
 

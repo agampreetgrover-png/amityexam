@@ -12,7 +12,7 @@ import { prettyDay } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES } from "@/lib/exams";
 import type { ExamType } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Empty, Input, Select, Tabs } from "../ui";
+import { Button, Empty, Input, Segmented, Select } from "../ui";
 
 type Source = "upload" | "drive";
 type DriveSheet = { id: string; name: string; path: string[] };
@@ -91,12 +91,12 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
         Upload the university date sheet (Excel, PDF or a photo) or pick one from your Drive folders. AI finds the exams for your{" "}
         {subjects.length} subject{subjects.length === 1 ? "" : "s"}, matching by course code, and you check them before anything is saved.
       </p>
-      <Tabs label="Date sheet source" value={source} onChange={setSource} options={[{ value: "upload", label: "Upload a file" }, { value: "drive", label: "From Drive" }]} />
+      <Segmented label="Date sheet source" value={source} onChange={setSource} options={[{ value: "upload", label: "Upload a file" }, { value: "drive", label: "From Drive" }]} />
       {!online && <p className="rounded-md border border-mark/40 bg-mark-soft px-4 py-3 text-sm">You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</p>}
       {source === "upload" ? (
         <label
           // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
-          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
+          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
         >
           <Upload size={18} className="text-muted" aria-hidden />
           <span><span className="font-medium text-text">Choose a date sheet</span> (.xlsx, .xls, .csv, PDF or photo)</span>

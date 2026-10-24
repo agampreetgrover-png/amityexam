@@ -1,15 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans } from "next/font/google";
+import { Geist } from "next/font/google";
 import { CommandPaletteLoader } from "@/components/command-palette-loader";
 import { ModeGate } from "@/components/mode-gate";
 import { Toaster } from "@/components/toast";
 import { Nav } from "@/components/nav";
 import { DriveSync } from "@/components/drive-sync";
 import { Notifier } from "@/components/notifier";
+import { THEME_SCRIPT } from "@/lib/theme-script";
 import "./globals.css";
 
-// One family throughout. Its width axis gives the condensed countdown figures and the narrower titles.
-const plex = IBM_Plex_Sans({ variable: "--font-plex", subsets: ["latin"], axes: ["wdth"] });
+// One family throughout: Geist's weights carry the hierarchy and its tabular figures the countdowns.
+const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Amity Exams",
@@ -19,14 +20,22 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#eff2fb",
-  colorScheme: "light",
+  // Matches the top bar (--surface) in each theme; a theme pinned in Settings updates these at runtime.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#1e2925" },
+  ],
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${plex.variable} font-sans antialiased`}>
+    // The inline script sets data-theme before hydration, hence the warning suppression on <html> only.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
+      <body className={`${geist.variable} font-sans antialiased`}>
         {/* First launch asks mid-sem or major before showing the app. */}
         <ModeGate>
           <Nav />
@@ -34,9 +43,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <DriveSync />
           <CommandPaletteLoader />
           <Toaster />
-          <div className="md:pl-64">
-            <main className="mx-auto max-w-5xl px-4 pb-28 pt-6 md:px-10 md:pb-16 md:pt-10">{children}</main>
-          </div>
+          {/* The same column as the top bar's, so the page's left edge lines up with the logo. */}
+          <main className="mx-auto max-w-5xl px-4 pb-28 pt-6 sm:px-6 md:px-8 md:pb-20 md:pt-10">{children}</main>
         </ModeGate>
       </body>
     </html>

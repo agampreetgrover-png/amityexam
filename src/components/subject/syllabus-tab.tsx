@@ -8,7 +8,7 @@ import { aiJson } from "@/lib/ai/client";
 import type { SyllabusResult } from "@/lib/ai/schemas";
 import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Badge, Button, Card, Empty, Input, List, Modal, Select, Textarea, cn } from "../ui";
+import { Badge, Button, Card, Empty, Input, Modal, Panel, Textarea, cn } from "../ui";
 import { unitInScope } from "@/lib/mode";
 import { newTopic, parseSyllabus, parseTopics } from "@/lib/syllabus-text";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
@@ -58,24 +58,23 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Card>
-        <header className="mb-4">
-          <h2 className="text-[15px] font-semibold">Syllabus</h2>
-          <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">
-            {mid
-              ? "Your mid-sem syllabus. Units you add or import while preparing for the mid-sem count towards it."
-              : "The full syllabus for the major exam."}
-          </p>
+        <header className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0 flex-1 basis-64">
+            <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{mid ? "Mid-sem syllabus" : "Major syllabus"}</h2>
+            <p className="mt-1 max-w-prose text-sm leading-relaxed text-muted">
+              {mid
+                ? "Units you add or import while preparing for the mid-sem count towards it."
+                : "The full syllabus for the major exam."}
+            </p>
+          </div>
+          <Button onClick={() => setImportOpen(true)} className="shrink-0"><Sparkles size={16} /> Import syllabus</Button>
         </header>
-
-        <div className="flex flex-wrap gap-2">
-          <form className="flex min-w-0 flex-1 basis-64 gap-2" onSubmit={(e) => { e.preventDefault(); addUnit(); }}>
-            <Input placeholder="New unit or module name" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
-            <Button type="submit" variant="secondary" className="shrink-0 whitespace-nowrap" disabled={!newUnit.trim()}><Plus size={16} /> Add unit</Button>
-          </form>
-          <Button onClick={() => setImportOpen(true)}><Sparkles size={16} /> Import syllabus</Button>
-        </div>
+        <form className="flex min-w-0 gap-2" onSubmit={(e) => { e.preventDefault(); addUnit(); }}>
+          <Input placeholder="New unit or module name" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} aria-label="New unit name" />
+          <Button type="submit" variant="secondary" className="shrink-0 whitespace-nowrap" disabled={!newUnit.trim()}><Plus size={16} /> Add unit</Button>
+        </form>
       </Card>
 
       {shown.length === 0 ? (
@@ -132,11 +131,13 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
     setEditing(!editing);
   };
 
-  // A unit is an unboxed group on the page: its heading and controls, then its topics as hairline rows.
+  const done = topics.filter((t) => t.status === "revised").length;
+
+  // A unit is one sheet: its heading and controls, its topics as ruled rows, and a line to add more at the foot.
   return (
-    <section>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <h2 className="min-w-0 flex-1 basis-56 text-[15px] font-semibold">
+    <Panel as="section">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border py-3 pl-5 pr-3">
+        <h2 className="min-w-0 flex-1 basis-56 text-[15px] font-semibold tracking-[-0.01em]">
           {editing ? (
             <form
               className="flex gap-2"
@@ -146,35 +147,39 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
                 setEditing(false);
               }}
             >
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-9 font-semibold" autoFocus />
-              <Button size="sm" type="submit" className="h-9" aria-label="Save"><Check size={14} /></Button>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-9 font-semibold" autoFocus aria-label="Unit name" />
+              <Button type="submit" className="h-9" aria-label="Save"><Check size={15} /></Button>
             </form>
           ) : (
-            <span className="flex flex-wrap items-baseline gap-x-2.5">
+            <span className="flex flex-wrap items-baseline gap-x-3">
               <span className="min-w-0 break-words">{unit.title}</span>
-              <span className="text-[13px] font-normal text-muted">{topics.length} topic{topics.length === 1 ? "" : "s"}</span>
+              <span className="text-[13px] font-normal tabular-nums text-muted">
+                {topics.length} topic{topics.length === 1 ? "" : "s"}{topics.length > 0 && `, ${done} revised`}
+              </span>
             </span>
           )}
         </h2>
-        <div className="flex shrink-0 items-center">
-          <Button variant="ghost" size="sm" onClick={toggleEdit} aria-label="Rename unit"><Pencil size={14} /></Button>
-          <Button variant="danger" size="sm" onClick={remove} aria-label="Delete unit"><Trash2 size={14} /></Button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label="Rename unit" title="Rename unit"><Pencil size={14} /></Button>
+          <Button variant="danger" size="icon" onClick={remove} aria-label="Delete unit" title="Delete unit"><Trash2 size={14} /></Button>
         </div>
       </div>
       {topics.length > 0 && (
-        <List>
+        <ul className="divide-y divide-border">
           {topics.map((t) => <TopicRow key={t.id} topic={t} />)}
-        </List>
+        </ul>
       )}
       <form
-        className="mt-3 flex gap-2"
+        className="flex items-center gap-2 border-t border-border bg-surface-2/40 py-2 pl-3 pr-3"
         onSubmit={(e) => {
           e.preventDefault();
           if (newT.trim()) addTopics([newT.trim()]);
         }}
       >
+        <Plus size={15} className="ml-1.5 shrink-0 text-faint" aria-hidden />
         <Input
           placeholder="Add a topic, or paste a list"
+          aria-label={`Add a topic to ${unit.title}`}
           value={newT}
           onChange={(e) => setNewT(e.target.value)}
           // A one-line input would squash a pasted list into one topic; add each line instead.
@@ -184,13 +189,45 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
             e.preventDefault();
             addTopics(lines);
           }}
-          className="h-9"
+          className="h-9 border-transparent bg-transparent px-1.5 shadow-none hover:border-transparent focus:border-accent focus:bg-surface"
         />
-        <Button size="sm" variant="secondary" type="submit" className="h-9 w-9 shrink-0 px-0" disabled={!newT.trim()} aria-label="Add topic"><Plus size={14} /></Button>
+        <Button size="sm" variant="secondary" type="submit" className="shrink-0" disabled={!newT.trim()}>Add</Button>
       </form>
-    </section>
+    </Panel>
   );
 }
+
+const STATUS_TONE: Record<TopicStatus, { pill: string; dot: string }> = {
+  "not-started": { pill: "border-border bg-surface text-muted", dot: "bg-line-strong" },
+  studied: { pill: "border-accent/20 bg-accent-soft text-accent", dot: "bg-accent" },
+  revised: { pill: "border-good/25 bg-good/10 text-good", dot: "bg-good" },
+};
+
+/** A topic's status as a small pill: grey until studied, blue when studied, green when revised. */
+function StatusSelect({ status, onChange }: { status: TopicStatus; onChange: (s: TopicStatus) => void }) {
+  const tone = STATUS_TONE[status];
+  return (
+    <span className="relative inline-flex">
+      <span aria-hidden className={cn("pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full transition-colors duration-200", tone.dot)} />
+      <select
+        value={status}
+        onChange={(e) => onChange(e.target.value as TopicStatus)}
+        aria-label="Status"
+        className={cn(
+          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-line-strong focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
+          tone.pill,
+        )}
+      >
+        <option value="not-started">Not started</option>
+        <option value="studied">Studied</option>
+        <option value="revised">Revised</option>
+      </select>
+    </span>
+  );
+}
+
+// Rename and delete wait in the wings on a mouse, showing on hover or keyboard focus; on touch they're always there.
+const rowActions = "flex transition-opacity duration-150 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100";
 
 function TopicRow({ topic }: { topic: Topic }) {
   const [editing, setEditing] = useState(false);
@@ -207,7 +244,7 @@ function TopicRow({ topic }: { topic: Topic }) {
   };
 
   return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+    <li className="group flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 pl-5 pr-3 transition-colors duration-150 hover:bg-surface-2/50">
       <div className="min-w-0 flex-1 basis-48">
         {editing ? (
           <form
@@ -218,33 +255,20 @@ function TopicRow({ topic }: { topic: Topic }) {
               setEditing(false);
             }}
           >
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" autoFocus />
-            <Button size="sm" type="submit" aria-label="Save"><Check size={14} /></Button>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" autoFocus aria-label="Topic name" />
+            <Button size="icon" type="submit" aria-label="Save"><Check size={14} /></Button>
           </form>
         ) : (
-          <span className="text-[15px] leading-snug">
+          <span className={cn("text-[15px] leading-snug transition-colors duration-200", topic.status === "revised" && "text-text/75")}>
             {topic.title} {topic.weak && <Badge className="ml-1 bg-bad/10 text-bad">weak</Badge>}
           </span>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
-        {/* Status reads at a glance: green when revised, navy when studied, quiet until then. */}
-        <Select
-          value={topic.status}
-          onChange={(e) => db.topics.update(id, { status: e.target.value as TopicStatus })}
-          className={cn(
-            "h-8 w-auto py-0 pl-2.5 text-xs font-medium",
-            topic.status === "revised" ? "text-good" : topic.status === "studied" ? "text-accent" : "text-muted",
-          )}
-          aria-label="Status"
-        >
-          <option value="not-started">Not started</option>
-          <option value="studied">Studied</option>
-          <option value="revised">Revised</option>
-        </Select>
-        <span className="flex">
-          <Button variant="ghost" size="sm" onClick={toggleEdit} aria-label="Rename topic"><Pencil size={13} /></Button>
-          <Button variant="danger" size="sm" onClick={remove} aria-label="Delete topic"><Trash2 size={13} /></Button>
+      <div className="flex items-center gap-2">
+        <StatusSelect status={topic.status} onChange={(status) => db.topics.update(id, { status })} />
+        <span className={rowActions}>
+          <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label="Rename topic" title="Rename"><Pencil size={13} /></Button>
+          <Button variant="danger" size="icon" onClick={remove} aria-label="Delete topic" title="Delete"><Trash2 size={13} /></Button>
         </span>
       </div>
     </li>

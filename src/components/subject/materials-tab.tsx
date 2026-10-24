@@ -9,7 +9,7 @@ import { extractAny } from "@/lib/pdf";
 import { analyseSubject, setPaperExam } from "@/lib/pyq/analyse";
 import type { ExamMode, Material, MaterialKind } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Card, Empty, Field, Input, List, Modal, Section, Select, Textarea } from "../ui";
+import { Button, Card, Empty, Field, Input, Modal, Panel, Section, Select, Textarea } from "../ui";
 import type { TabProps } from "./shared";
 
 const KINDS: { value: MaterialKind; label: string }[] = [
@@ -81,9 +81,11 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           )}
         </div>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-stretch">
-          <label className="flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-line-strong px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
-            <Upload size={18} className="shrink-0 text-muted" aria-hidden />
-            <span className="font-medium text-text">Upload files</span>
+          <label className="group flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-line-strong px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/50 hover:bg-accent-soft/40 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-border transition-colors duration-150 group-hover:text-accent" aria-hidden>
+              <Upload size={16} className="transition-transform duration-200 ease-snappy group-hover:-translate-y-0.5" />
+            </span>
+            <span><span className="font-medium text-text">Upload files</span> <span className="text-muted">PDF, text or photos</span></span>
             <input
               type="file"
               multiple
@@ -115,17 +117,17 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           Every AI tool for this subject uses them.
         </Empty>
       ) : (
-        <Section title={`${materials.length} file${materials.length === 1 ? "" : "s"}`}>
-          <List>
+        <Section title={<span>Files <span className="ml-1 text-[13px] font-normal tabular-nums text-muted">{materials.length}</span></span>}>
+          <Panel as="ul" className="divide-y divide-border">
             {materials.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 sm:flex-nowrap">
+              <li key={m.id} className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-surface-2/50 sm:flex-nowrap sm:px-5">
                 {m.source ? (
-                  <span className="flex w-4 shrink-0 text-muted" title="Synced from Google Drive"><Cloud size={16} /></span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent" title="Synced from Google Drive"><Cloud size={15} /></span>
                 ) : (
-                  <span className="flex w-4 shrink-0 text-muted" aria-hidden><FileText size={16} /></span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-border" aria-hidden><FileText size={15} /></span>
                 )}
                 {/* On phones the name gets the whole first line; the controls wrap underneath. */}
-                <div className="min-w-0 flex-1 basis-[calc(100%-1.75rem)] sm:basis-auto">
+                <div className="min-w-0 flex-1 basis-[calc(100%-2.75rem)] sm:basis-auto">
                   <p className="truncate text-[15px] font-medium">{m.fileName}</p>
                   <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
                     {m.source && <span className="truncate">Drive{m.source.path?.length ? ` / ${m.source.path.at(-1)}` : ""}</span>}
@@ -135,7 +137,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                   </p>
                 </div>
                 {/* Type (and, for past papers, which exam) can be fixed after upload instead of deleting and re-uploading. */}
-                <div className="ml-7 flex flex-wrap items-center gap-1 sm:ml-0 sm:shrink-0 sm:flex-nowrap">
+                <div className="ml-[2.875rem] flex flex-wrap items-center gap-1 sm:ml-0 sm:shrink-0 sm:flex-nowrap">
                   <Select
                     value={m.kind}
                     aria-label={`Type of ${m.fileName}`}
@@ -162,15 +164,17 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="Open in Google Drive"
-                    className="inline-flex h-8 items-center justify-center rounded-md px-2.5 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text"
+                    title="Open in Google Drive"
+                    className="press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
                   >
                     <ExternalLink size={14} />
                   </a>
                 )}
-                <Button variant="ghost" size="sm" onClick={() => setPreview(m)} aria-label="Preview"><Eye size={14} /></Button>
+                <Button variant="ghost" size="icon" onClick={() => setPreview(m)} aria-label="Preview" title="Preview"><Eye size={14} /></Button>
                 <Button
                   variant="danger"
-                  size="sm"
+                  size="icon"
+                  title="Delete"
                   aria-label="Delete"
                   onClick={() => confirm(`Delete "${m.fileName}"?`) && deleteMaterial(m.id!)}
                 >
@@ -179,7 +183,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                 </div>
               </li>
             ))}
-          </List>
+          </Panel>
         </Section>
       )}
 

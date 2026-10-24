@@ -1,33 +1,52 @@
 @import "tailwindcss";
 
 /*
-  Ballpoint and highlighter: white paper, navy ink, ballpoint blue for anything you can press or that
-  measures progress, highlighter yellow only for "needs you within three days". The rest of the colour
-  belongs to the subjects: each subject's own colour tints its exam, its rows and its header (see .subj).
-  No glows, no gradients, no ambient motion.
+  Ink and paper. An off-white desk with white sheets laid on it: panels are white with a hairline border and
+  the faintest shadow, so the page has depth without boxes inside boxes. Navy ink for text, one royal blue for
+  anything you can press or that measures progress, highlighter yellow only for "needs you within three days".
+  The rest of the colour belongs to the subjects: each subject's own colour tints its exam, its rows and its
+  header (see .subj). No glows, no decorative gradients, no ambient motion.
+
+  Dark is a school slate: a green-grey board rather than navy-black, sheets a step lighter, chalk-white ink, the
+  blue turned to a soft chalk blue so it reads without glowing, and the highlighter left at full strength like
+  yellow chalk. Each token holds both values; color-scheme picks one. With no choice saved it follows the system;
+  Settings (or the nav's sun/moon) pins one with data-theme on <html>.
 */
 :root {
-  color-scheme: light;
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --surface-2: #f3f5fb;
-  --surface-3: #e6eaf4;
-  --border: #e0e5ef;
-  --line-strong: #c5cddc;
-  --text: #121a33;
-  --muted: #566079;
-  --accent: #2443c4;
-  --accent-hover: #1b34a0;
-  --accent-ink: #ffffff;
-  --accent-soft: #ebefff;
-  --side: #eff2fb;
-  --mark: #ffd43b;
-  --mark-soft: #fff6cf;
-  --mark-ink: #121a33;
-  --good: #16824f;
-  --warn: #b45309;
-  --bad: #c4291c;
+  color-scheme: light dark;
+  --bg: light-dark(#f8f9fb, #17211d);
+  --surface: light-dark(#ffffff, #1e2925);
+  --surface-2: light-dark(#f2f4f8, #26322e);
+  --surface-3: light-dark(#e7eaf1, #2f3d38);
+  --border: light-dark(#e3e6ee, #333f3a);
+  --line-strong: light-dark(#cdd3df, #4c5954);
+  --text: light-dark(#0e1630, #eaece6);
+  --muted: light-dark(#5a6377, #b2beb9);
+  --faint: light-dark(#8b93a5, #8a9591);
+  --accent: light-dark(#3549d4, #a5c8ed);
+  --accent-hover: light-dark(#2a3bb5, #bfdbf8);
+  --accent-ink: light-dark(#ffffff, #111b28);
+  --accent-soft: light-dark(#edf0fd, #2a3d4b);
+  --side: light-dark(#f2f4f8, #17211d);
+  --mark: light-dark(#ffd43b, #f5cb3a);
+  --mark-soft: light-dark(#fff5cc, #453d1d);
+  --mark-ink: #0e1630;
+  --good: light-dark(#157a48, #6cd092);
+  --warn: light-dark(#a85a07, #efb062);
+  --bad: light-dark(#c0322b, #f28881);
+  --selection: light-dark(#dce2ff, #385064);
+  /* Behind dialogs and the search palette. */
+  --scrim: light-dark(rgb(14 22 48 / 0.38), rgb(6 12 10 / 0.66));
+  --float-shade: light-dark(rgb(14 22 48 / 0.2), rgb(0 0 0 / 0.55));
+  /* Under sheets lying on the desk: barely there in light, a touch deeper at night where borders do the work. */
+  --sheet-shade: light-dark(rgb(14 22 48 / 0.045), rgb(0 0 0 / 0.22));
+  /* The toast is inverted (ink background); its action link needs a blue that reads on that. */
+  --toast-action: light-dark(#b9c4ff, #3549d4);
 }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* While the theme flips, nothing eases between the two palettes. */
+:root.theme-switching *, :root.theme-switching *::before, :root.theme-switching *::after { transition: none !important; }
 
 @theme inline {
   --color-bg: var(--bg);
@@ -37,6 +56,7 @@
   --color-border: var(--border);
   --color-text: var(--text);
   --color-muted: var(--muted);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-line-strong: var(--line-strong);
@@ -48,21 +68,29 @@
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
-  --font-sans: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
-  /* "Display" is Plex itself, narrowed: titles and figures share the interface's one family. */
-  --font-display: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
+  /* One family, Geist, for everything: its weights carry the hierarchy, its figures the numbers. */
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", Menlo, monospace;
-  /* Only floating things (dialogs, menus, toasts) cast a shadow; everything on the page sits flat. */
-  --shadow-float: 0 12px 32px -8px rgb(18 26 51 / 0.2), 0 2px 6px rgb(18 26 51 / 0.06);
+  /* A sheet lies on the desk; a control is raised a hair; only floating things (dialogs, menus, toasts) cast a real shadow. */
+  --shadow-sheet: 0 1px 2px var(--sheet-shade);
+  --shadow-control: 0 1px 1.5px var(--sheet-shade);
+  --shadow-float: 0 16px 40px -12px var(--float-shade), 0 3px 8px color-mix(in oklab, var(--float-shade) 30%, transparent);
+  /* One easing for everything that answers a tap: quick off the mark, soft landing. */
+  --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 html {
   background: var(--bg);
+  scrollbar-color: var(--line-strong) transparent;
 }
 
-/* Phones: keep focused or scrolled-to items clear of the fixed bottom nav. */
+/* Keep focused or scrolled-to items clear of the bottom nav on phones and the top bar elsewhere. */
 @media (max-width: 767px) {
   html { scroll-padding-bottom: 5rem; }
+}
+@media (min-width: 768px) {
+  html { scroll-padding-top: 4.5rem; }
 }
 
 body {
@@ -72,7 +100,7 @@ body {
   min-height: 100dvh;
 }
 
-::selection { background: #d5ddff; color: var(--text); }
+::selection { background: var(--selection); color: var(--text); }
 
 /* In the base layer so utilities like focus-visible:outline-none can override it. */
 @layer base {
@@ -80,6 +108,18 @@ body {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+  button:not(:disabled), summary { cursor: pointer; }
+}
+
+/* Native selects lose the OS arrow for a drawn chevron in the muted ink, matching the other icons. */
+.select-chevron {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10.5px) 52%;
+  background-size: 4.5px 4.5px, 4.5px 4.5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
 }
 
 /* Highlighter stroke behind a short run of text. */
@@ -91,45 +131,75 @@ body {
   box-decoration-break: clone;
 }
 
-/* Countdown figures: Plex narrowed to its condensed width, like a printed timetable. */
+/* Countdown and score figures: Geist pulled tight, tabular so a changing number doesn't jiggle. */
 .numeral {
-  font-family: var(--font-plex), ui-sans-serif, system-ui, sans-serif;
-  font-stretch: 75%;
+  font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 0.85;
+  letter-spacing: -0.045em;
+  line-height: 0.9;
   font-variant-numeric: lining-nums tabular-nums;
 }
-/* Inside a figure, "urgent" is a thick amber rule under the digits rather than a fill behind them. */
+/* Inside a figure, "urgent" is a thick highlighter rule under the digits rather than a fill behind them. */
 .numeral .mark, .numeral.mark {
   background: none;
   color: inherit;
   padding: 0;
   text-decoration: underline;
   text-decoration-color: var(--mark);
-  text-decoration-thickness: 0.09em;
-  text-underline-offset: 0.1em;
+  text-decoration-thickness: 0.11em;
+  text-underline-offset: 0.09em;
+  text-decoration-skip-ink: none;
 }
 
-/* Titles: Plex at semi-condensed width, so headings have a voice without a second typeface. */
+/* Titles: the same family, heavier and tighter, so headings carry the voice without a second typeface. */
 .font-display {
-  font-stretch: 87.5%;
   font-weight: 600;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.028em;
 }
 
 /* Subject colour. A row or panel sets --subj to its subject's colour (see subjectStyle in components/ui)
    and these derive everything from it, so a subject looks the same on every page. Mixed toward ink and
-   paper rather than used raw, so text on a tint keeps its contrast whatever colour was picked. */
-.subj-tint { background-color: color-mix(in oklab, var(--subj, var(--muted)) 9%, var(--surface)); }
-.subj-wash { background-color: color-mix(in oklab, var(--subj, var(--muted)) 5%, var(--surface)); }
-.subj-hover { transition: background-color 150ms; }
-.subj-hover:hover { background-color: color-mix(in oklab, var(--subj, var(--muted)) 6%, var(--surface)); }
-.subj-ink { color: color-mix(in oklab, var(--subj, var(--muted)) 70%, var(--text)); }
+   paper rather than used raw, so text on a tint keeps its contrast whatever colour was picked, in either theme. */
+.subj-tint { background-color: color-mix(in oklab, var(--subj, var(--muted)) 8%, var(--surface)); }
+.subj-wash { background-color: color-mix(in oklab, var(--subj, var(--muted)) 4%, var(--surface)); }
+.subj-hover { transition: background-color 150ms var(--ease-snappy); }
+.subj-hover:hover { background-color: color-mix(in oklab, var(--subj, var(--muted)) 5%, var(--surface)); }
+/* On the dark slate a subject colour at full strength glows, so text and fills are mixed toward the chalk-white ink. */
+.subj-ink { color: light-dark(color-mix(in oklab, var(--subj, var(--muted)) 72%, var(--text)), color-mix(in oklab, var(--subj, var(--muted)) 52%, var(--text))); }
 .subj-line { border-color: color-mix(in oklab, var(--subj, var(--muted)) 30%, var(--border)); }
-/* A binder tab: a strip of the subject's colour down the row's leading edge. */
+.subj-dot { background-color: light-dark(var(--subj, var(--line-strong)), color-mix(in oklab, var(--subj, var(--line-strong)) 75%, var(--text))); }
+.subj-fill { fill: light-dark(var(--subj, var(--accent)), color-mix(in oklab, var(--subj, var(--accent)) 75%, var(--text))); }
+/* A binder tab: a short rounded strip of the subject's colour at the row's leading edge. */
+.subj-tab { position: relative; }
+.subj-tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: min(28px, calc(100% - 20px));
+  width: 3px;
+  translate: 0 -50%;
+  border-radius: 0 3px 3px 0;
+  background: var(--subj, var(--line-strong));
+}
+/* Full-height strip, for the countdown sheet on Today. */
 .subj-edge { box-shadow: inset 3px 0 0 var(--subj, var(--muted)); }
-.subj-edge-thick { box-shadow: inset 6px 0 0 var(--subj, var(--muted)); }
+.subj-edge-thick { box-shadow: inset 4px 0 0 var(--subj, var(--muted)); }
+
+/* The syllabus strip: one cell per topic, filled by how far it has got. A status change recolours its cell in place.
+   In the components layer so size utilities (the legend's swatches) can override it. */
+@layer components {
+  .strip-cell {
+    height: 100%;
+    flex: 1 1 0;
+    min-width: 2px;
+    border-radius: 2px;
+    background: var(--surface-3);
+    transition: background-color 360ms var(--ease-snappy);
+  }
+  .strip-cell[data-s="studied"] { background: color-mix(in oklab, var(--subj, var(--accent)) 40%, var(--surface)); }
+  .strip-cell[data-s="revised"] { background: light-dark(var(--subj, var(--accent)), color-mix(in oklab, var(--subj, var(--accent)) 75%, var(--text))); }
+}
 
 /* ───────────────────────── Motion ─────────────────────────
    Only motion that answers something the student did. Nothing moves on its own. */
@@ -139,7 +209,7 @@ body {
   to { opacity: 1; transform: none; }
 }
 @keyframes drop-in {
-  from { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
   to { opacity: 1; transform: none; }
 }
 @keyframes fade-in { from { opacity: 0; } }
@@ -149,29 +219,40 @@ body {
 }
 
 /* Route changes: a short fade so the swap isn't a hard cut. */
-.page-enter { animation: fade-in 140ms ease-out both; }
+.page-enter { animation: fade-in 160ms var(--ease-snappy) both; }
+/* A tab's panel settles in each time it's shown: going from display:none to shown restarts this. */
+.tab-in { animation: rise-in 200ms var(--ease-snappy) both; }
 
-.toast-in { animation: rise-in 180ms ease-out; }
-.palette-in[open] { animation: drop-in 160ms ease-out; }
-.count-in { animation: fade-in 160ms ease-out; }
-.tick-done { animation: tick-pop 180ms ease-out; }
+.toast-in { animation: rise-in 200ms var(--ease-snappy); }
+.palette-in[open] { animation: drop-in 180ms var(--ease-snappy); }
+.count-in { animation: fade-in 180ms var(--ease-snappy); }
+.tick-done { animation: tick-pop 180ms var(--ease-snappy); }
 
-/* Dialogs fade in and out with the backdrop. */
+/* Pressable things sink a hair under the finger. */
+.press {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: var(--ease-snappy);
+}
+.press:active:not(:disabled) { transform: translateY(0.5px) scale(0.98); }
+
+/* Dialogs fade and settle in with the backdrop. */
 dialog.sheet {
   opacity: 0;
-  transition: opacity 160ms ease-out, overlay 160ms allow-discrete, display 160ms allow-discrete;
+  transform: translateY(6px) scale(0.985);
+  transition: opacity 180ms var(--ease-snappy), transform 180ms var(--ease-snappy), overlay 180ms allow-discrete, display 180ms allow-discrete;
 }
-dialog.sheet[open] { opacity: 1; }
+dialog.sheet[open] { opacity: 1; transform: none; }
 @starting-style {
-  dialog.sheet[open] { opacity: 0; }
+  dialog.sheet[open] { opacity: 0; transform: translateY(6px) scale(0.985); }
 }
 dialog.sheet::backdrop {
-  background: rgb(18 26 51 / 0);
-  transition: background 160ms, overlay 160ms allow-discrete, display 160ms allow-discrete;
+  background: transparent;
+  transition: background 180ms, overlay 180ms allow-discrete, display 180ms allow-discrete;
 }
-dialog.sheet[open]::backdrop { background: rgb(18 26 51 / 0.42); }
+dialog.sheet[open]::backdrop { background: var(--scrim); }
 @starting-style {
-  dialog.sheet[open]::backdrop { background: rgb(18 26 51 / 0); }
+  dialog.sheet[open]::backdrop { background: transparent; }
 }
 
 /* Disclosure: the content eases open where the browser can animate to auto height. */
@@ -179,10 +260,10 @@ details { interpolate-size: allow-keywords; }
 details::details-content {
   block-size: 0;
   overflow: clip;
-  transition: block-size 200ms ease-out, content-visibility 200ms allow-discrete;
+  transition: block-size 200ms var(--ease-snappy), content-visibility 200ms allow-discrete;
 }
 details[open]::details-content { block-size: auto; }
-summary .chev { transition: transform 160ms ease-out; }
+summary .chev { transition: transform 160ms var(--ease-snappy); }
 details[open] > summary .chev { transform: rotate(90deg); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -194,26 +275,30 @@ details[open] > summary .chev { transform: rotate(90deg); }
 }
 
 /* Rendered AI markdown */
-.prose-ai { max-width: 70ch; color: var(--text); }
-.prose-ai h1, .prose-ai h2, .prose-ai h3 { font-weight: 600; margin: 1.3em 0 0.45em; line-height: 1.25; }
+.prose-ai { max-width: 70ch; color: var(--text); font-size: 15px; }
+.prose-ai h1, .prose-ai h2, .prose-ai h3 { font-weight: 600; letter-spacing: -0.015em; margin: 1.4em 0 0.5em; line-height: 1.25; }
 .prose-ai h1 { font-size: 1.3rem; }
-.prose-ai h2 { font-size: 1.1rem; }
+.prose-ai h2 { font-size: 1.12rem; }
 .prose-ai h3 { font-size: 1rem; }
-.prose-ai p { margin: 0.6em 0; line-height: 1.65; }
-.prose-ai ul { list-style: disc; padding-left: 1.25rem; margin: 0.4em 0; }
-.prose-ai ol { list-style: decimal; padding-left: 1.25rem; margin: 0.4em 0; }
-.prose-ai li { margin: 0.25em 0; line-height: 1.6; }
+.prose-ai > :first-child { margin-top: 0; }
+.prose-ai > :last-child { margin-bottom: 0; }
+.prose-ai p { margin: 0.65em 0; line-height: 1.7; }
+.prose-ai ul { list-style: disc; padding-left: 1.25rem; margin: 0.5em 0; }
+.prose-ai ol { list-style: decimal; padding-left: 1.25rem; margin: 0.5em 0; }
+.prose-ai li { margin: 0.3em 0; line-height: 1.65; }
+.prose-ai li::marker { color: var(--faint); }
 .prose-ai a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-.prose-ai code { font-family: var(--font-mono); background: var(--surface-2); padding: 0.05em 0.3em; border-radius: 4px; font-size: 0.88em; }
-.prose-ai pre { background: var(--surface-2); border: 1px solid var(--border); padding: 0.8em; border-radius: 6px; overflow-x: auto; }
+.prose-ai code { font-family: var(--font-mono); background: var(--surface-2); padding: 0.05em 0.3em; border-radius: 4px; font-size: 0.86em; }
+.prose-ai pre { background: var(--surface-2); border: 1px solid var(--border); padding: 0.9em 1em; border-radius: 8px; overflow-x: auto; }
 .prose-ai pre code { background: none; padding: 0; }
 .prose-ai strong { font-weight: 600; }
-.prose-ai blockquote { border-left: 2px solid var(--border); padding-left: 0.9em; color: var(--muted); }
-.prose-ai table { border-collapse: collapse; margin: 0.6em 0; display: block; overflow-x: auto; }
-.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.4em 0.8em 0.4em 0; text-align: left; }
+.prose-ai blockquote { border-left: 2px solid var(--line-strong); padding-left: 0.9em; color: var(--muted); }
+.prose-ai table { border-collapse: collapse; margin: 0.75em 0; display: block; overflow-x: auto; font-size: 14px; }
+.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.45em 0.9em 0.45em 0; text-align: left; }
 .prose-ai th { font-weight: 600; }
 
 @media print {
   nav, .no-print { display: none !important; }
+  :root, :root[data-theme] { color-scheme: light; }
   body { background: white; color: black; }
 }

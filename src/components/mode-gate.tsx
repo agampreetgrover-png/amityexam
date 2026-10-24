@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { Check, GraduationCap } from "lucide-react";
+import { Check, ChevronRight, GraduationCap } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { getSettings } from "@/lib/db";
 import { setExamMode } from "@/lib/mode";
@@ -45,11 +45,13 @@ function Welcome() {
   return (
     <main className="flex min-h-dvh flex-col justify-center bg-bg px-4 py-12 md:py-16">
       <div className="mx-auto w-full max-w-3xl">
-        <span className="flex items-center gap-2 text-[15px] font-semibold">
-          <GraduationCap size={18} className="text-accent" aria-hidden />
+        <span className="flex items-center gap-2.5 text-[15px] font-semibold tracking-[-0.02em]">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-ink" aria-hidden>
+            <GraduationCap size={16} />
+          </span>
           Amity Exams
         </span>
-        <h1 className="mt-10 font-display text-[32px] leading-tight md:text-[40px]">What are you preparing for?</h1>
+        <h1 className="mt-12 font-display text-[32px] leading-[1.1] md:text-[44px]">What are you preparing for?</h1>
         <p className="mt-2 max-w-md text-[15px] leading-relaxed text-muted">
           Your dashboard, syllabus and AI study tools will focus on it. You can switch any time.
         </p>
@@ -62,7 +64,7 @@ function Welcome() {
               onClick={() => pick(c.mode)}
               disabled={saving != null}
               className={cn(
-                "flex flex-col rounded-lg border border-border bg-surface p-5 text-left transition-colors duration-150 hover:border-accent md:p-6",
+                "press group flex flex-col rounded-xl border border-border bg-surface p-5 text-left shadow-sheet hover:border-accent/60 hover:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_10%,transparent)] md:p-6",
                 "disabled:pointer-events-none",
                 // The chosen panel stays marked while the mode is stored; the other one steps back.
                 saving === c.mode && "border-accent bg-accent-soft",
@@ -79,8 +81,9 @@ function Welcome() {
                   </li>
                 ))}
               </ul>
-              <span className="mt-auto pt-6 text-sm font-semibold text-accent">
+              <span className="mt-auto inline-flex items-center gap-1 pt-6 text-sm font-semibold text-accent">
                 {saving === c.mode ? "Opening…" : "Start preparing"}
+                <ChevronRight size={15} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
               </span>
             </button>
           ))}

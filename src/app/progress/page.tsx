@@ -6,13 +6,13 @@ import Link from "next/link";
 import { AlertTriangle, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StatTile } from "@/components/progress/stat-tile";
-import { Card, Empty, PageHeader, Section, Select } from "@/components/ui";
+import { Card, Empty, PageHeader, Panel, Section, Select, cn, tableHead } from "@/components/ui";
 import { db, getSettings } from "@/lib/db";
 import { topicsInScope } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
 
 // recharts is large and only used here: it loads alongside the stats, and placeholders hold its space until it's in.
-const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-md bg-surface-2" />;
+const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-lg bg-surface-2" />;
 
 type Charts = typeof import("@/components/progress/charts");
 let loadedCharts: Charts | null = null; // kept for the session, so coming back to Progress draws the charts at once
@@ -144,8 +144,8 @@ export default function ProgressPage() {
 
         <Section title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
           {weak.length ? (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <div className="flex items-center gap-3 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted">
+            <Panel>
+              <div className={cn(tableHead, "flex items-center gap-3 px-4 py-2.5 sm:px-5")}>
                 <span aria-hidden className="w-[3px] shrink-0" />
                 <span className="flex-1">Topic</span>
                 <span className="hidden w-40 sm:block">Subject</span>
@@ -155,7 +155,7 @@ export default function ProgressPage() {
                 {weak.map((x) => {
                   const s = subjectName.get(x.subjectId);
                   return (
-                    <li key={x.id} className="flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-surface-2">
+                    <li key={x.id} className="flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-surface-2/60 sm:px-5">
                       <span aria-hidden className="h-5 w-[3px] shrink-0 rounded-full" style={{ background: s?.color }} />
                       <div className="min-w-0 flex-1">
                         <Link href={`/subjects/view?id=${x.subjectId}`} className="block truncate font-medium text-text hover:text-accent hover:underline">{x.title}</Link>
@@ -167,7 +167,7 @@ export default function ProgressPage() {
                   );
                 })}
               </ul>
-            </div>
+            </Panel>
           ) : (
             <p className="text-sm text-muted">No weak topics flagged. Low confidence or quiz scores under 60% show up here.</p>
           )}

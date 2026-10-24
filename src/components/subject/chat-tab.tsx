@@ -92,10 +92,10 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
         {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-border bg-surface p-4 sm:p-5">
+      <div className="flex-1 space-y-4 overflow-y-auto rounded-xl border border-border bg-surface p-4 shadow-sheet sm:p-5">
         {messages.length === 0 && streaming === null ? (
           <div className="flex h-full flex-col items-start justify-center gap-1.5 px-1">
-            <MessageCircle size={18} className="mb-1 text-muted" aria-hidden />
+            <span className="mb-2 grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent" aria-hidden><MessageCircle size={18} /></span>
             <p className="text-[15px] font-semibold">Ask about anything in {subject.name}</p>
             <p className="max-w-prose text-sm text-muted">
               For example, &ldquo;Explain normalization with an example&rdquo; or &ldquo;Difference between TCP and UDP for 5 marks&rdquo;.
@@ -112,12 +112,12 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
 
       {/* On phones the composer sticks above the bottom bar, so it's reachable without scrolling past the header. */}
       {/* The strip behind it is solid white with a top rule, so scrolled content passes under it instead of showing through. */}
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 border-t border-border bg-surface pb-1 pt-2 md:static md:border-t-0 md:bg-transparent md:pb-0 md:pt-0">
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 border-t border-border bg-bg pb-1 pt-2 md:static md:border-t-0 md:bg-transparent md:pb-0 md:pt-0">
         <OfflineHint online={online} />
         <AiErrorBox error={error} />
         {/* The composer is one bordered box; the textarea inside is borderless, so focus rings the whole box instead. */}
         <form
-          className="flex items-end gap-2 rounded-lg border border-border bg-surface p-1.5 transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgb(27_58_122/0.12)]"
+          className="flex items-end gap-2 rounded-xl border border-border bg-surface p-1.5 shadow-sheet transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_16%,transparent)]"
           onSubmit={(e) => { e.preventDefault(); send(); }}
         >
           <Textarea
@@ -132,7 +132,7 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
             }}
             placeholder={touch ? "Ask a question" : "Ask a question. Enter sends, Shift+Enter adds a line."}
             aria-label="Your question"
-            className="min-h-11 flex-1 resize-none border-transparent bg-transparent px-2.5 text-[15px] hover:border-transparent focus:border-transparent focus:bg-transparent focus:shadow-none focus-visible:outline-none"
+            className="min-h-11 flex-1 resize-none border-transparent bg-transparent px-2.5 text-[15px] shadow-none hover:border-transparent focus:border-transparent focus:bg-transparent focus:shadow-none focus-visible:outline-none"
             rows={2}
           />
           {streaming !== null ? (
@@ -155,8 +155,8 @@ function Bubble({ role, content }: { role: "user" | "assistant"; content: string
         className={cn(
           "min-w-0 max-w-[88%]",
           role === "user"
-            ? "rounded-lg bg-accent-soft px-4 py-2.5 text-text"
-            : "rounded-lg bg-surface-2 px-4 py-1.5",
+            ? "rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5 text-text"
+            : "rounded-2xl rounded-bl-md bg-surface-2 px-4 py-2.5",
         )}
       >
         {role === "user" ? <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{content}</p> : <Markdown>{content}</Markdown>}

@@ -39,15 +39,15 @@ export function Toaster() {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 flex flex-col items-center gap-2 px-4 md:bottom-6 md:pl-64"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 flex flex-col items-center gap-2 px-4 md:bottom-6"
     >
       {list.map((t) => (
         <div
           key={t.id}
           role="status"
           className={cn(
-            "toast-in pointer-events-auto flex max-w-md items-center gap-4 rounded-md bg-text py-2 pl-4 pr-2 text-sm text-white shadow-float",
-            !t.action && "py-2.5 pr-4",
+            "toast-in pointer-events-auto flex max-w-md items-center gap-4 rounded-xl bg-text py-2 pl-4 pr-2 text-sm font-medium text-bg shadow-float",
+            !t.action && "py-3 pr-4",
           )}
         >
           <span>{t.message}</span>
@@ -55,7 +55,7 @@ export function Toaster() {
             <button
               type="button"
               onClick={() => { t.action!.onClick(); dismissToast(t.id); }}
-              className="shrink-0 rounded px-3 py-1 font-bold text-[#b8c8ee] transition-colors duration-150 hover:bg-white/10 focus-visible:outline-[#b8c8ee]"
+              className="press shrink-0 rounded-lg px-3 py-1.5 font-semibold text-[var(--toast-action)] transition-colors duration-150 hover:bg-bg/10 focus-visible:outline-[var(--toast-action)]"
             >
               {t.action.label}
             </button>

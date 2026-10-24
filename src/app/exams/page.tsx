@@ -9,13 +9,13 @@ import { daysBetween, prettyDay, today } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
 import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
-import { Button, Empty, Field, Input, Modal, PageHeader, Section, Select, cn, subjectStyle } from "@/components/ui";
+import { Button, Empty, Field, Input, Modal, PageHeader, Panel, Section, Select, cn, subjectStyle, tableHead } from "@/components/ui";
 import { DatesheetImport } from "@/components/exams/datesheet-import";
 import { toast } from "@/components/toast";
 import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
 
 // Days, subject, date and time, venue, actions. Shared by the header row and every exam row so they line up.
-const COLS = "@xl:grid-cols-[3.5rem_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,1fr)_8.75rem]";
+const COLS = "@xl:grid-cols-[4rem_minmax(0,1.35fr)_minmax(0,0.85fr)_minmax(0,1fr)_10.75rem]";
 
 export default function ExamsPage() {
   const exams = useLiveQuery(() => db.exams.orderBy("date").toArray());
@@ -46,56 +46,63 @@ export default function ExamsPage() {
       <li
         key={e.id}
         style={past ? undefined : subjectStyle(s?.color)}
-        className={cn("subj-edge grid grid-cols-[3.25rem_minmax(0,1fr)] gap-x-3 gap-y-2.5 py-3.5 pl-5 pr-4 @xl:items-center @xl:gap-x-4", COLS, past ? "text-muted" : soon ? "bg-mark-soft/70" : "subj-hover")}
+        className={cn(
+          "grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 py-4 pl-6 pr-4 @xl:items-center @xl:gap-x-5",
+          COLS,
+          past ? "text-muted" : cn("subj-tab", soon ? "bg-mark-soft/60" : "subj-hover"),
+        )}
       >
         <div className="row-span-2 @xl:row-span-1">
           {days >= 0 ? (
-            <div className="numeral subj-ink text-[40px]">
+            <div className="numeral subj-ink text-[34px]">
               <span className={soon ? "mark" : undefined}>{days}</span>
             </div>
           ) : (
-            <Check size={22} className="text-good" aria-hidden />
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-good/10 text-good"><Check size={17} strokeWidth={2.2} aria-hidden /></span>
           )}
-          <div className="mt-1 text-[12px] text-muted">{days === 0 ? "today" : days > 0 ? (days === 1 ? "day" : "days") : "done"}</div>
+          <div className="mt-1.5 text-[12px] font-medium text-muted">{days === 0 ? "today" : days > 0 ? (days === 1 ? "day left" : "days left") : "done"}</div>
         </div>
         {/* Stacked under the subject on narrow tables; its own three columns on wide ones. */}
-        <div className="min-w-0 space-y-1 @xl:contents @xl:space-y-0">
+        <div className="min-w-0 space-y-1.5 @xl:contents @xl:space-y-0">
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold">{s?.name ?? "Unknown subject"}</h2>
-            <p className="mt-0.5 text-[13px] text-muted">
+            <h2 className={cn("truncate text-[15px] font-semibold tracking-[-0.01em]", past && "font-medium")}>{s?.name ?? "Unknown subject"}</h2>
+            <p className="mt-1 text-[13px] text-muted">
               {examTypeLabel(e.type)}
               {e.topicIds.length > 0 && `, ${e.topicIds.length} topic${e.topicIds.length === 1 ? "" : "s"} in scope`}
             </p>
           </div>
-          <p className="text-sm tabular-nums">{prettyDay(e.date)}{e.time && `, ${e.time}`}</p>
+          <p className="text-sm tabular-nums @xl:leading-tight">
+            <span className={cn("font-medium", !past && "text-text")}>{prettyDay(e.date)}</span>
+            {e.time && <span className="text-muted"><span className="@xl:hidden">, </span><span className="@xl:mt-1 @xl:block @xl:text-[13px]">{e.time}</span></span>}
+          </p>
           <p className={cn("min-w-0 text-sm text-muted", !where && "hidden @xl:block")}>
             {where ? (
-              <span className="flex items-center gap-1">
-                <MapPin size={12} className="shrink-0 @xl:hidden" aria-hidden /> <span className="truncate">{where}</span>
+              <span className="flex items-center gap-1.5">
+                <MapPin size={13} className="shrink-0 text-faint" aria-hidden /> <span className="truncate">{where}</span>
               </span>
             ) : (
-              <span aria-hidden>–</span>
+              <span aria-hidden className="text-faint">–</span>
             )}
           </p>
         </div>
-        <div className="col-start-2 flex items-center gap-1 @xl:col-start-auto @xl:justify-end">
+        <div className="col-start-2 flex items-center gap-0.5 @xl:col-start-auto @xl:justify-end">
           <Link
             href={`/exams/view?id=${e.id}`}
-            className="mr-1 inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[13px] font-medium text-text transition-colors duration-150 hover:border-line-strong hover:bg-surface-2"
+            className="press mr-1.5 inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 text-[13px] font-medium text-text shadow-control hover:border-line-strong hover:bg-surface-2"
           >
-            <Briefcase size={14} className="text-muted" /> Kit
+            <Briefcase size={14} className="text-muted" /> Exam kit
           </Link>
-          <Button variant="ghost" size="sm" aria-label="Edit" onClick={() => setEditing(e)}><Pencil size={15} /></Button>
-          <Button variant="danger" size="sm" aria-label="Delete" onClick={() => confirm("Delete this exam?") && deleteExam(e.id!)}><Trash2 size={15} /></Button>
+          <Button variant="ghost" size="icon" aria-label="Edit exam" title="Edit" onClick={() => setEditing(e)}><Pencil size={15} /></Button>
+          <Button variant="danger" size="icon" aria-label="Delete exam" title="Delete" onClick={() => confirm("Delete this exam?") && deleteExam(e.id!)}><Trash2 size={15} /></Button>
         </div>
       </li>
     );
   };
 
-  // One bordered table; the header row only appears once there's room for the columns.
+  // One sheet per list; the header row only appears once there's room for the columns.
   const table = (list: Exam[], past = false) => (
-    <div className="@container overflow-hidden rounded-lg border border-border">
-      <div aria-hidden className={cn("hidden gap-x-4 border-b border-border bg-surface-2 py-2 pl-5 pr-4 text-[12px] font-medium text-muted @xl:grid", COLS)}>
+    <Panel className="@container">
+      <div aria-hidden className={cn(tableHead, "hidden gap-x-5 py-2.5 pl-6 pr-4 @xl:grid", COLS)}>
         <span>Days</span>
         <span>Subject</span>
         <span>Date and time</span>
@@ -103,7 +110,7 @@ export default function ExamsPage() {
         <span />
       </div>
       <ul className="divide-y divide-border">{list.map((e) => row(e, past))}</ul>
-    </div>
+    </Panel>
   );
 
   return (
@@ -124,11 +131,11 @@ export default function ExamsPage() {
         </Empty>
       )}
       {mode && (hidden > 0 || showAll) && (
-        <div className="-mt-4 mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted">
+        <div className="-mt-4 mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted md:-mt-6">
           <span>
             {showAll ? "Showing every exam" : `Showing ${modeShort(mode).toLowerCase()} exams, ${hidden} other${hidden === 1 ? "" : "s"} hidden`}
           </span>
-          <label className="flex cursor-pointer items-center gap-2 transition-colors duration-150 hover:text-text">
+          <label className="flex cursor-pointer select-none items-center gap-2 -mx-2 rounded-lg px-2 py-1 transition-colors duration-150 hover:bg-surface-2 hover:text-text">
             <input type="checkbox" className="h-4 w-4 accent-[var(--accent)]" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             Show all exams
           </label>
@@ -232,8 +239,8 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
       </div>
       {/* A fieldset, not <Field>: Field is a <label>, and a label around many checkboxes toggles the first one on any click. */}
       <fieldset className="space-y-1.5">
-        <legend className="mb-1.5 text-[13px] font-medium text-muted">Syllabus for this exam</legend>
-        <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-border p-3">
+        <legend className="mb-1.5 text-[13px] font-medium text-text/85">Syllabus for this exam</legend>
+        <div className="max-h-48 space-y-2.5 overflow-y-auto rounded-lg border border-border bg-surface-2/50 p-3">
           {!hasSyllabus && (
             <p className="text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus for this subject yet. Type or paste it below.</p>
           )}

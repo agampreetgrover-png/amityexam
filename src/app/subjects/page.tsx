@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { BookOpen, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db, deleteSubject } from "@/lib/db";
 import { coverage, SUBJECT_COLORS } from "@/lib/stats";
 import type { Subject, Topic } from "@/lib/types";
-import { Badge, Button, Empty, Field, Input, Modal, PageHeader, Progress, subjectStyle } from "@/components/ui";
+import { Badge, Button, CoverageBar, Empty, Field, Input, Modal, PageHeader, Panel, cn, subjectStyle, tableHead } from "@/components/ui";
 import { SubjectPicker, subjectKey } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
@@ -31,20 +31,21 @@ export default function SubjectsPage() {
           Add the subjects for this semester, then import each syllabus with AI.
         </Empty>
       )}
-      {!!subjects?.length && (
-        <div className="overflow-hidden rounded-lg border border-border">
+      {/* Drawn once topics are in too, so the coverage bars don't sweep up from zero on every visit. */}
+      {!!subjects?.length && topics && (
+        <Panel>
           {/* Column headings line up with the row layout below; on phones each row labels its own coverage. */}
-          <div aria-hidden className="hidden items-center gap-4 border-b border-border bg-surface-2 px-4 py-2 text-[12px] font-medium text-muted sm:flex">
-            <span className="flex-1 pl-1">Subject</span>
-            <span className="w-[200px] shrink-0">Syllabus covered</span>
-            <span className="-mr-2 w-[72px] shrink-0" />
+          <div aria-hidden className={cn(tableHead, "hidden gap-6 py-2.5 pl-6 pr-4 sm:grid", COLS)}>
+            <span>Subject</span>
+            <span>Syllabus covered</span>
+            <span />
           </div>
           <ul className="divide-y divide-border">
             {subjects.map((s) => (
-              <SubjectRow key={s.id} subject={s} topics={topics?.filter((t) => t.subjectId === s.id) ?? []} onEdit={() => setEditing(s)} />
+              <SubjectRow key={s.id} subject={s} topics={topics.filter((t) => t.subjectId === s.id)} onEdit={() => setEditing(s)} />
             ))}
           </ul>
-        </div>
+        </Panel>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit subject" : "Add subject"}>
         <SubjectForm
@@ -58,41 +59,49 @@ export default function SubjectsPage() {
   );
 }
 
+// Subject, coverage, actions. Shared by the heading row and every subject row so they line up.
+const COLS = "sm:grid-cols-[minmax(0,1fr)_13.5rem_6.5rem]";
+
 /** One subject in the table. The whole row opens the subject; edit and delete sit above the link. */
 function SubjectRow({ subject: s, topics: ts, onEdit }: { subject: Subject; topics: Topic[]; onEdit: () => void }) {
   const cov = coverage(ts);
   const weak = ts.filter((t) => t.weak).length;
   return (
-    <li style={subjectStyle(s.color)} className="subj-edge subj-hover relative flex items-start gap-3 py-3 pl-5 pr-4 sm:items-center sm:gap-4">
-      {/* Phones: coverage drops under the name. Wider: it gets its own column. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 flex-1 rounded-md after:absolute after:inset-0">
-          <span className="flex items-center gap-2">
-            <span className="subj-ink truncate text-[15px] font-semibold">{s.name}</span>
-            {weak > 0 && <Badge className="shrink-0 bg-bad/10 text-bad">{weak} weak</Badge>}
+    <li
+      style={subjectStyle(s.color)}
+      className={cn("subj-tab subj-hover group relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 py-4 pl-6 pr-4 sm:gap-x-6", COLS)}
+    >
+      <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 rounded-md after:absolute after:inset-0">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[15px] font-semibold tracking-[-0.01em] transition-colors duration-150 group-hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))]">
+            {s.name}
           </span>
-          <span className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
-            {s.code && <span>{s.code}</span>}
-            <span>{ts.length} topics</span>
-            {s.credits ? <span>{s.credits} credits</span> : null}
-          </span>
-        </Link>
-        <div className="flex items-center gap-3 sm:w-[200px] sm:shrink-0">
-          <span className="w-10 shrink-0 text-sm font-medium tabular-nums">{cov}%</span>
-          <Progress value={cov} color={s.color} className="max-w-[160px] flex-1" />
-          <span className="text-[13px] text-muted sm:hidden">covered</span>
-        </div>
+          {weak > 0 && <Badge className="shrink-0 bg-bad/10 text-bad">{weak} weak</Badge>}
+        </span>
+        <span className="mt-1 flex flex-wrap gap-x-3 text-[13px] text-muted">
+          {s.code && <span className="font-medium text-text/70">{s.code}</span>}
+          <span>{ts.length} topic{ts.length === 1 ? "" : "s"}</span>
+          {s.credits ? <span>{s.credits} credits</span> : null}
+        </span>
+      </Link>
+      {/* Phones: coverage drops under the name, across the row. Wider: it gets its own column. */}
+      <div className="col-span-2 row-start-2 flex items-center gap-3 sm:col-span-1 sm:row-start-auto">
+        <span className="w-10 shrink-0 text-sm font-semibold tabular-nums">{cov}%</span>
+        <CoverageBar topics={ts} className="flex-1" />
+        <span className="text-[13px] text-muted sm:hidden">covered</span>
       </div>
-      <div className="relative z-10 -my-1 -mr-2 flex shrink-0 justify-end sm:w-[72px]">
-        <Button variant="ghost" size="sm" aria-label="Edit" onClick={onEdit}><Pencil size={15} /></Button>
+      <div className="relative z-10 -my-1 flex shrink-0 items-center justify-end gap-0.5">
+        <Button variant="ghost" size="icon" aria-label={`Edit ${s.name}`} title="Edit" onClick={onEdit}><Pencil size={15} /></Button>
         <Button
           variant="danger"
-          size="sm"
-          aria-label="Delete"
+          size="icon"
+          aria-label={`Delete ${s.name}`}
+          title="Delete"
           onClick={() => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!)}
         >
           <Trash2 size={15} />
         </Button>
+        <ChevronRight size={16} aria-hidden className="ml-1 hidden text-faint transition-transform duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-muted sm:block" />
       </div>
     </li>
   );

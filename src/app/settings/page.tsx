@@ -10,8 +10,9 @@ import { DEFAULT_SETTINGS, type Settings } from "@/lib/types";
 import { notify } from "@/components/notifier";
 import { getLastProvider } from "@/lib/ai/client";
 import { MODES, modeLabel } from "@/lib/mode";
+import { THEMES, setTheme, useTheme } from "@/lib/theme";
 import { DriveSettings } from "@/components/drive-settings";
-import { Button, PageHeader, Section, Tabs, cn } from "@/components/ui";
+import { Button, PageHeader, Section, Segmented, cn } from "@/components/ui";
 
 // Settings groups sit on the page separated by rules, like sections of a printed form.
 const group = "py-8 first:pt-0 last:pb-0";
@@ -19,6 +20,7 @@ const desc = "-mt-1 mb-5 max-w-prose text-sm text-muted";
 
 export default function SettingsPage() {
   const settings = useLiveQuery(getSettings);
+  const theme = useTheme();
   // Each section reports next to its own buttons, and the line clears on that section's next action.
   const [notifyMsg, setNotifyMsg] = useState("");
   const [dataMsg, setDataMsg] = useState("");
@@ -80,12 +82,19 @@ export default function SettingsPage() {
           <p className={desc}>
             The dashboard, exams list and AI tools follow this. Mid-sem and major each have their own syllabus: upload each one on a subject&apos;s Syllabus tab while in that mode.
           </p>
-          <Tabs
+          <Segmented
             label="Exam mode"
             value={settings.examMode ?? "end-term"}
             onChange={(examMode) => set({ examMode })}
             options={MODES.map((m) => ({ value: m, label: modeLabel(m) }))}
           />
+        </Section>
+
+        <Section title="Appearance" className={group}>
+          <p className={desc}>
+            Dark is easier on the eyes for late revision. Match device follows your system setting. This is saved in this browser only.
+          </p>
+          <Segmented label="Theme" value={theme.choice} onChange={setTheme} options={THEMES} />
         </Section>
 
         <Section title="Reminders" className={group}>
@@ -171,7 +180,7 @@ function AiStatus() {
   return (
     <Section title="AI" className={group}>
       <p className={desc}>
-        OpenRouter is used first. Gemini, then Groq, take over automatically when it hits a limit. Reading scanned papers always uses Gemini. Keys live in .env.local on this computer.
+        OpenRouter is used first for everything, including reading scanned papers. Gemini, then Groq, take over automatically when it hits a limit (Groq can&apos;t read scans). Keys live in .env.local on this computer.
       </p>
       {status === "error" ? (
         <p className="text-sm text-muted">Couldn&apos;t check the AI setup. You may be offline.</p>

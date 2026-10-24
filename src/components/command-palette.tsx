@@ -152,9 +152,9 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       onClose={() => setOpen(false)}
       onClick={(e) => e.target === dialog.current && setOpen(false)}
       aria-label="Search"
-      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-lg border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[rgb(21_24_30/0.4)]"
+      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[var(--scrim)]"
     >
-      <div className="flex items-center gap-3 border-b border-border px-4">
+      <div className="flex items-center gap-3 border-b border-border px-4 sm:px-5">
         <Search size={18} className="shrink-0 text-muted" aria-hidden />
         <input
           ref={input}
@@ -172,18 +172,18 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
           aria-activedescendant={results[active] ? `${listId}-${results[active].id}` : undefined}
           autoComplete="off"
           // The open palette already shows where focus is, so the global focus ring would only box in the field.
-          className="h-14 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-muted/70 focus-visible:outline-none"
+          className="h-14 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint focus-visible:outline-none"
         />
-        <kbd className="hidden rounded border border-border px-1.5 py-0.5 font-sans text-[11px] text-muted sm:block">Esc</kbd>
+        <kbd className="hidden rounded-md bg-surface-2 px-1.5 py-0.5 font-sans text-[11px] font-medium text-muted ring-1 ring-inset ring-border sm:block">Esc</kbd>
       </div>
-      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="max-h-[min(60vh,420px)] overflow-y-auto py-1.5">
-        {results.length === 0 && <li className="px-4 py-6 text-sm text-muted">Nothing matches &ldquo;{query}&rdquo;.</li>}
+      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="max-h-[min(60vh,420px)] overflow-y-auto p-1.5">
+        {results.length === 0 && <li className="px-3 py-6 text-sm text-muted">Nothing matches &ldquo;{query}&rdquo;.</li>}
         {results.map((c, i) => {
           const heading = c.group !== lastGroup ? c.group : null;
           lastGroup = c.group;
           return (
             <li key={c.id} role="presentation">
-              {heading && <p className="px-4 pb-1 pt-3 text-[12px] font-medium text-muted">{heading}</p>}
+              {heading && <p className="px-3 pb-1.5 pt-3 text-[12px] font-medium text-faint">{heading}</p>}
               <div
                 id={`${listId}-${c.id}`}
                 data-index={i}
@@ -192,9 +192,9 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
                 onMouseMove={() => active !== i && setActive(i)}
                 onClick={() => run(c)}
                 className={cn(
-                  "relative flex cursor-pointer items-center gap-3 px-4 py-2.5 text-[15px] transition-colors duration-150",
-                  // The active row: a grey fill with a thin navy edge on the left.
-                  i === active && "bg-surface-2 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent",
+                  "relative flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors duration-100",
+                  // The active row: a soft blue fill, inset from the palette's edges.
+                  i === active && "bg-accent-soft",
                 )}
               >
                 <span className={cn("flex w-5 shrink-0 justify-center", i === active ? "text-accent" : "text-muted")}>{c.icon}</span>

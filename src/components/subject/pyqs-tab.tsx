@@ -10,7 +10,7 @@ import {
   groupByTopic, groupByYear, needsMapping, paperYear, papersForMode, questionsOf, searchQuestions, unknownExamPapers, type TopicStat,
 } from "@/lib/pyq/group";
 import type { Material, PyqQuestion, Topic, Unit } from "@/lib/types";
-import { Badge, Button, Card, Empty, Input, List, Section, Tabs, cn } from "../ui";
+import { Badge, Button, Card, Empty, Input, List, Panel, Section, Segmented, cn } from "../ui";
 import { OfflineHint, useOnline, type TabProps } from "./shared";
 
 type View = "year" | "topic";
@@ -102,8 +102,8 @@ export function PyqsTab({ subject, mode }: TabProps) {
             </Button>
           )}
         </div>
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-          <Tabs label="Sort questions" value={view} onChange={setView} options={[{ value: "year", label: "Year-wise" }, { value: "topic", label: "Topic-wise" }]} />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+          <Segmented label="Sort questions" value={view} onChange={setView} options={[{ value: "year", label: "Year-wise" }, { value: "topic", label: "Topic-wise" }]} />
           <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search questions" className="pl-9" aria-label="Search questions" />
@@ -187,7 +187,7 @@ function UnknownExamPapers({ papers }: { papers: Material[] }) {
 }
 
 const driveLink =
-  "inline-flex h-8 items-center justify-center rounded-md px-2 text-muted transition-colors duration-150 hover:bg-surface-3 hover:text-text";
+  "press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-text";
 
 const examBadge = (p: Pick<Material, "pyqExam" | "fileName">) => {
   const e = pyqMode(p);
@@ -215,8 +215,8 @@ function YearView({ papers, questions, topicById, searching }: {
             <h2 className={cn("mb-4", g.year ? "numeral text-[28px]" : "text-[15px] font-semibold")}>{g.year ?? "Year unknown"}</h2>
             <div className="space-y-5">
               {ps.map(({ paper, questions: qs }) => (
-                <div key={paper.id} className="overflow-hidden rounded-lg border border-border">
-                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 border-b border-border bg-surface-2 px-4 py-2.5">
+                <Panel key={paper.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5 border-b border-border bg-surface-2/60 px-4 py-3 sm:px-5">
                     <div className="min-w-0 flex-1 basis-48">
                       <h3 className="break-words text-[15px] font-semibold">{paper.fileName}</h3>
                       {paper.analysedAt && qs.length > 0 && (
@@ -257,13 +257,13 @@ function YearView({ papers, questions, topicById, searching }: {
                   ) : !qs.length ? (
                     <p className="px-4 py-3 text-sm text-muted">{searching ? "No matching questions." : "No questions were found in this paper."}</p>
                   ) : (
-                    <ul className="divide-y divide-border [&>li]:px-4">
+                    <ul className="divide-y divide-border [&>li]:px-4 sm:[&>li]:px-5">
                       {qs.map((q) => (
                         <QuestionRow key={q.id} q={q} topic={q.topicId ? topicById.get(q.topicId) : undefined} />
                       ))}
                     </ul>
                   )}
-                </div>
+                </Panel>
               ))}
             </div>
           </section>
@@ -332,18 +332,18 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
 
       {g.units.map(({ unit, topics: stats }) => (
         <Section key={unit.id} title={unit.title}>
-          <List>
+          <Panel as="ul" className="divide-y divide-border">
             {stats.map((s) => <TopicRow key={s.topic.id} stat={s} paperName={paperName} />)}
-          </List>
+          </Panel>
         </Section>
       ))}
 
       {g.unmatched.length > 0 && (
         <Section title={<span>Not matched yet <span className="ml-1 text-[13px] font-normal tabular-nums text-muted">{g.unmatched.length}</span></span>}>
           <p className="mb-3 max-w-prose text-sm leading-relaxed text-muted">These are matched to topics automatically. If this exam&apos;s syllabus isn&apos;t added yet, add it in the Syllabus tab.</p>
-          <List>
+          <Panel as="ul" className="divide-y divide-border [&>li]:px-4 sm:[&>li]:px-5">
             {(showAllUnmatched ? g.unmatched : g.unmatched.slice(0, 50)).map((q) => <QuestionRow key={q.id} q={q} showYear paperName={paperName.get(q.materialId)} />)}
-          </List>
+          </Panel>
           {g.unmatched.length > 50 && (
             <div className="mt-3 flex items-center justify-between gap-2 text-[13px] tabular-nums text-muted">
               <span>Showing {showAllUnmatched ? g.unmatched.length : 50} of {g.unmatched.length}</span>
@@ -357,9 +357,9 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
 
       {g.notInSyllabus.length > 0 && (
         <Section title={<span>Not in this year&apos;s syllabus <span className="ml-1 text-[13px] font-normal tabular-nums text-muted">{g.notInSyllabus.length}</span></span>}>
-          <List>
+          <Panel as="ul" className="divide-y divide-border [&>li]:px-4 sm:[&>li]:px-5">
             {g.notInSyllabus.map((q) => <QuestionRow key={q.id} q={q} showYear paperName={paperName.get(q.materialId)} />)}
-          </List>
+          </Panel>
         </Section>
       )}
 
@@ -385,7 +385,7 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="-mx-2 flex w-[calc(100%+1rem)] items-center gap-3 rounded-md px-2 py-3 text-left transition-colors duration-150 hover:bg-surface-2"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2/60 sm:px-5"
       >
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
@@ -403,7 +403,7 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
         <ChevronDown size={16} className={cn("shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
       </button>
       {open && (
-        <ul className="mb-3 ml-2 divide-y divide-border border-l-2 border-border pl-3">
+        <ul className="tab-in mx-4 mb-3 divide-y divide-border border-l-2 border-accent/30 pl-4 sm:mx-5">
           {questions.map((q) => <QuestionRow key={q.id} q={q} showYear paperName={paperName.get(q.materialId)} />)}
         </ul>
       )}

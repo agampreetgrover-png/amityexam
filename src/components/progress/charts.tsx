@@ -2,6 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { subjectStyle } from "@/components/ui";
 import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -70,7 +71,7 @@ export function CoverageChart({ data }: { data: { name: string; color?: string; 
             dataKey="value" fill="var(--accent)" maxBarSize={20} radius={[0, 3, 3, 0]} isAnimationActive={false}
             label={{ position: "right", fill: "var(--muted)", fontSize: 12, formatter: (v: unknown) => `${v}%` }}
           >
-            {data.map((d) => <Cell key={d.name} fill={d.color ?? "var(--accent)"} />)}
+            {data.map((d) => <Cell key={d.name} className="subj-fill" style={subjectStyle(d.color)} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
