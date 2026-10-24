@@ -10,7 +10,7 @@ interface SyncRequest {
   sources: DriveSource[];
   links?: { subjectId: number; folderIds: string[] }[]; // folders the user picked by hand
   maxFiles?: number;
-  maxOcr?: number; // scanned files read with Gemini per run (each costs one AI request)
+  maxOcr?: number; // scanned files read with AI per run (each costs one AI request)
 }
 
 export interface SyncedFile {

@@ -11,7 +11,7 @@ interface DriveSyncState {
   running: boolean;
   message: string; // short human status line
   imported: number;
-  deferred: number; // left for a later sync (scan budget, AI busy, no Gemini key)
+  deferred: number; // left for a later sync (scan budget, AI busy, no AI key that reads files)
   errors: string[];
   notices: string[]; // things the student can fix, e.g. a subject that fits two folders
   remaining: number; // files found but not fetched this time
@@ -35,7 +35,7 @@ export function useDriveSync(): DriveSyncState {
 
 const AUTO_INTERVAL = 30 * 60_000; // don't re-sync on every reload
 const MAX_ROUNDS = 4; // each round fetches up to 60 files
-const OCR_PER_OPEN = 10; // scanned papers read by Gemini per app open
+const OCR_PER_OPEN = 10; // scanned papers read by AI per app open
 
 let inFlight = false; // set synchronously, so two calls in the same tick can't both start a sync
 let rerun = false; // a manual sync was asked for while one was running (e.g. a subject was just added)

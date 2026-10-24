@@ -1,8 +1,8 @@
 import { ApiError as GeminiApiError, GoogleGenAI, ThinkingLevel, type Content } from "@google/genai";
 import Groq from "groq-sdk";
 
-// Server-only AI providers. OpenRouter is tried first; Gemini (bigger limits, reads PDFs/images), then Groq,
-// are the automatic fallbacks when it's rate-limited, down or misconfigured. Reading scans is Gemini-only.
+// Server-only AI providers. OpenRouter is tried first for everything; Gemini (bigger limits), then Groq, are the
+// automatic fallbacks when it's rate-limited, down or misconfigured. Groq can't read files, so scans stop at Gemini.
 
 export type Msg = { role: "system" | "user" | "assistant"; content: string };
 export type ProviderName = "gemini" | "groq" | "openrouter";
@@ -243,6 +243,10 @@ function openrouter(apiKey: string): Provider {
     fast
       ? list(process.env.OPENROUTER_FAST_MODEL, "nvidia/nemotron-3.5-lightning:free,recursive/flint-v1.0:free,poolside/laguna-s-2.1:free")
       : list(process.env.OPENROUTER_MODEL, "nvidia/nemotron-3.5-super-vl:free,nvidia/nemotron-3-ultra-550b-a55b:free,dots-studio/dots-3-note-preview:free");
+  // Photos need models that take images; not every text model above does.
+  const visionModels = () =>
+    list(process.env.OPENROUTER_VISION_MODEL, "nvidia/nemotron-3.5-super-vl:free,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free");
+  const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
   async function call(body: Record<string, unknown>) {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -264,19 +268,51 @@ function openrouter(apiKey: string): Provider {
     return res;
   }
 
+  async function complete(body: Record<string, unknown>): Promise<string | undefined> {
+    const data = await (await call(body)).json();
+    // OpenRouter can answer 200 with an error from the upstream model.
+    if (data.error) throw new OpenRouterHttpError(data.error.message ?? "upstream error", Number(data.error.code) || 502);
+    return data.choices?.[0]?.message?.content;
+  }
+
   return {
     name: "openrouter",
     maxContextChars: 200_000, // the free models take 256K+ tokens; same material as Gemini gets
     chatHistory: 10,
     async json(messages, opts) {
       try {
-        const res = await call({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3 });
-        const data = await res.json();
-        // OpenRouter can answer 200 with an error from the upstream model.
-        if (data.error) throw new OpenRouterHttpError(data.error.message ?? "upstream error", Number(data.error.code) || 502);
-        return data.choices?.[0]?.message?.content ?? "{}";
+        return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3 })) ?? "{}";
       } catch (e) {
         throw openrouterError(e);
+      }
+    },
+    async extract(file, prompt, opts) {
+      const pdf = file.mimeType === "application/pdf";
+      // HEIC and the like: let Gemini read those.
+      if (!pdf && !IMAGE_TYPES.has(file.mimeType)) throw new AiProviderError(`can't send ${file.mimeType}`, 415, "config", undefined, "openrouter");
+      const url = `data:${file.mimeType};base64,${file.data}`;
+      try {
+        const text = await complete({
+          // PDFs go through OpenRouter's OCR parser (free) before the model sees them, so any text model will do.
+          models: pdf ? model(opts?.fast) : visionModels(),
+          messages: [
+            {
+              role: "user",
+              content: [
+                pdf ? { type: "file", file: { filename: "scan.pdf", file_data: url } } : { type: "image_url", image_url: { url } },
+                { type: "text", text: prompt },
+              ],
+            },
+          ],
+          ...(pdf ? { plugins: [{ id: "file-parser", pdf: { engine: "mistral-ocr" } }] } : {}),
+          temperature: 0.1,
+        });
+        return text ?? "";
+      } catch (e) {
+        const err = openrouterError(e);
+        // A file OpenRouter refuses may still be readable by Gemini.
+        if (err.kind === "other") err.kind = "config";
+        throw err;
       }
     },
     async *stream(messages, opts) {
@@ -359,6 +395,25 @@ export async function runWithFallback<T>(
     }
   }
   throw summarise(errors);
+}
+
+/**
+ * Scans and photos → text with each provider that can read files (OpenRouter, then Gemini).
+ * `fast` picks which Gemini model goes first; the lite and main models have separate quotas,
+ * so when one is limited the other stands in before moving on.
+ */
+export function extractWithFallback(file: { mimeType: string; data: string }, prompt: string, fast = false) {
+  return runWithFallback(
+    async (p) => {
+      try {
+        return await p.extract!(file, prompt, { fast });
+      } catch (e) {
+        if (p.name !== "gemini" || !(e instanceof AiProviderError) || (e.kind !== "day" && e.kind !== "minute")) throw e;
+        return await p.extract!(file, prompt, { fast: !fast });
+      }
+    },
+    getProviders().filter((p) => p.extract),
+  );
 }
 
 /** Pick the most useful error to show when every provider failed. */

@@ -61,7 +61,7 @@ export function DriveSettings() {
     <Section title="Google Drive" className="py-8 first:pt-0 last:pb-0">
       <p className="-mt-1 mb-5 max-w-prose text-sm text-muted">
         Notes, slides and past papers for your subjects are pulled from these shared folders. New files are fetched when you open the app.
-        Past papers are tagged mid-sem or major from their names, and scanned ones are read by Gemini, up to 10 per open to save your AI quota.
+        Past papers are tagged mid-sem or major from their names, and scanned ones are read by AI, up to 10 per open to save your AI quota.
       </p>
 
       <ul className="mb-4 max-w-xl divide-y divide-border border-y border-border">

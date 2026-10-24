@@ -1,16 +1,16 @@
 // Server-only: download a public Drive file and turn it into plain text.
 import path from "node:path";
 import { Worker } from "node:worker_threads";
-import { AiProviderError, getProviders } from "@/lib/ai/providers";
+import { AiProviderError, extractWithFallback, getProviders } from "@/lib/ai/providers";
 
 const MAX_BYTES = 40 * 1024 * 1024; // skip anything bigger (usually full textbooks)
-const MAX_OCR_BYTES = 15 * 1024 * 1024; // Gemini inline-data limit with headroom
+const MAX_OCR_BYTES = 15 * 1024 * 1024; // Gemini inline-data limit with headroom (it is the fallback reader)
 const MAX_TEXT = 400_000; // same cap the AI routes accept for `context`
 const MAX_PDF_PAGES = 150; // longer PDFs are textbooks, not notes
 
 /** Permanently ignore this file (wrong type, too big, empty). */
 export class SkipFile extends Error {}
-/** Can't read it right now (no Gemini key, or this run's scan budget is used up); try again on a later sync. */
+/** Can't read it right now (no AI key that reads files, or this run's scan budget is used up); try again on a later sync. */
 export class DeferFile extends Error {}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -96,27 +96,19 @@ export async function fileText(
     if (pages > MAX_PDF_PAGES) throw new SkipFile(`looks like a full book (${pages} pages)`);
     // Under ~40 characters per page means scanned images, not real text.
     if (text.length >= Math.max(200, pages * 40)) return { text: clip(text), ocr: false };
-    const gemini = getProviders().find((p) => p.name === "gemini");
     if (buf.length > MAX_OCR_BYTES) throw new SkipFile("scanned PDF too large to read with AI");
-    if (!gemini?.extract) throw new DeferFile("scanned PDF: add a Gemini key to read it");
+    if (!getProviders().some((p) => p.extract)) throw new DeferFile("scanned PDF: add an OpenRouter or Gemini key to read it");
     if (!takeOcrSlot()) throw new DeferFile("scanned PDF: queued for a later sync to save AI quota");
     const data = buf.toString("base64");
-    // Transcribing is easy work: the lite model does it well and its free quota is far larger (the main
-    // model's is ~20 requests a day), so it goes first and the main model only stands in when it's limited.
-    const read = async () => {
-      try {
-        return await gemini.extract!({ mimeType: "application/pdf", data }, OCR_PROMPT, { fast: true });
-      } catch (e) {
-        if (!(e instanceof AiProviderError) || (e.kind !== "day" && e.kind !== "minute")) throw e;
-        return await gemini.extract!({ mimeType: "application/pdf", data }, OCR_PROMPT);
-      }
-    };
+    // OpenRouter reads it first. If Gemini has to, transcribing is easy work: the lite model does it well and its
+    // free quota is far larger (the main model's is ~20 requests a day), so it goes first there.
+    const read = async () => (await extractWithFallback({ mimeType: "application/pdf", data }, OCR_PROMPT, true)).result;
     try {
       let ocr: string;
       try {
         ocr = await read();
       } catch (e) {
-        // Gemini's "high demand" 503s are usually brief: one retry, then leave it for a later sync.
+        // "High demand" 503s are usually brief: one retry, then leave it for a later sync.
         if (!(e instanceof AiProviderError) || e.kind !== "unavailable") throw e;
         await sleep(4000);
         ocr = await read();
