@@ -56,6 +56,18 @@ export default function TodayPage() {
   const examTopics = (e: (typeof exams)[number]) => examSyllabus(e, topics, units, mode);
   const examCoverage = (e: (typeof exams)[number]) => coverage(examTopics(e));
   const shownCoverage = shown ? examCoverage(shown) : 0;
+  const shownTopics = shown ? examTopics(shown) : [];
+  const shownRevised = shownTopics.filter((t) => t.status === "revised").length;
+  const shownStudied = shownTopics.filter((t) => t.status === "studied").length;
+  // The exam written out as a row from the date sheet. Date and day always show; time and hall only when known.
+  const detailCells = shown
+    ? [
+        { label: "Date", value: format(fromDay(shown.date), "d MMM"), num: true },
+        { label: "Day", value: format(fromDay(shown.date), "EEEE"), num: false },
+        ...(shown.time ? [{ label: "Time", value: shown.time, num: true }] : []),
+        ...(shown.venue ? [{ label: "Hall", value: shown.venue, num: false }] : []),
+      ]
+    : [];
   const mobileIcon = "press grid h-10 w-10 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-text";
 
   return (
@@ -93,30 +105,50 @@ export default function TodayPage() {
             <div
               key={shown.id}
               style={subjectStyle(shownSubject?.color)}
-              className="subj-tint subj-edge-thick count-in grid gap-x-10 gap-y-5 p-6 pl-8 sm:grid-cols-[auto_1fr] sm:items-end sm:p-7 sm:pl-10"
+              className="subj-tint subj-edge-thick count-in grid gap-x-10 gap-y-6 p-6 pl-8 sm:grid-cols-[auto_1fr] sm:items-start sm:p-7 sm:pl-10"
             >
-              <div className="flex items-end gap-3">
-                <span className="numeral subj-ink text-[92px] md:text-[112px]">
+              {/* The countdown: the figure is the hero, its unit sat directly beneath so the two read as one. */}
+              <div className="shrink-0">
+                <span className="numeral subj-ink block text-[88px] md:text-[132px]">
                   <span className={cn(shownDays <= 3 && "mark")}>{shownDays}</span>
                 </span>
-                <span className="pb-2 text-sm font-medium text-muted">{daysWord(shownDays)}</span>
+                <span className="mt-1 block text-[13px] font-medium text-muted">{daysWord(shownDays)}</span>
               </div>
-              <div className="min-w-0 sm:pb-2">
-                <p className="text-[21px] font-semibold leading-snug tracking-[-0.02em]">{shownSubject?.name ?? "Exam"}</p>
-                <p className="mt-1 text-sm text-muted">
-                  {examTypeLabel(shown.type)}, {prettyDay(shown.date)}{shown.time && ` at ${shown.time}`}{shown.venue && `, ${shown.venue}`}
-                </p>
-                <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3">
-                  <div className="flex min-w-48 flex-1 items-center gap-3">
-                    <CoverageBar topics={examTopics(shown)} className="max-w-56 bg-surface/90" />
-                    <span className="whitespace-nowrap text-[13px] text-muted"><strong className="font-semibold tabular-nums text-text">{shownCoverage}%</strong> of syllabus covered</span>
+              <div className="min-w-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h3 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.02em]">{shownSubject?.name ?? "Exam"}</h3>
+                    <p className="mt-1 text-sm text-muted">{examTypeLabel(shown.type)}{shownSubject?.code ? `, ${shownSubject.code}` : ""}</p>
                   </div>
                   <Link
                     href={`/exams/view?id=${shown.id}`}
-                    className="press group subj-line inline-flex h-8 items-center gap-1 rounded-lg border bg-surface px-3 text-[13px] font-medium shadow-control hover:bg-surface-2"
+                    className="press group subj-line inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border bg-surface px-3 text-[13px] font-medium shadow-control hover:bg-surface-2"
                   >
                     Exam kit <ChevronRight size={15} className="-mr-1 text-muted transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
                   </Link>
+                </div>
+
+                {/* The exam as a row from the date sheet: labelled cells over hairlines, the top rule in the subject's ink. */}
+                <dl className="subj-line mt-5 flex flex-wrap gap-y-3 border-t pt-4">
+                  {detailCells.map((c) => (
+                    <div key={c.label} className="min-w-0 border-l border-border pl-4 pr-6 first:border-l-0 first:pl-0">
+                      <dt className="text-[11px] font-medium text-faint">{c.label}</dt>
+                      <dd className={cn("mt-0.5 truncate text-sm font-medium text-text", c.num && "tabular-nums")}>{c.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                {/* Are you ready: the coverage bar with its figure and a plain count of what's done. */}
+                <div className="mt-5">
+                  <div className="flex items-center gap-3">
+                    <CoverageBar topics={shownTopics} className="h-2 max-w-sm bg-surface/90" />
+                    <span className="shrink-0 text-[13px] text-muted"><strong className="font-semibold tabular-nums text-text">{shownCoverage}%</strong> covered</span>
+                  </div>
+                  <p className="mt-2 text-[13px] text-muted">
+                    {shownTopics.length
+                      ? `${shownRevised} of ${shownTopics.length} topics revised${shownStudied ? `, ${shownStudied} more studied` : ""}`
+                      : "No syllabus added for this exam yet"}
+                  </p>
                 </div>
               </div>
             </div>
