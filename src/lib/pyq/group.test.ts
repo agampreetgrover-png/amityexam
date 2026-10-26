@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { PyqQuestion, Topic, Unit } from "../types";
-import { groupByTopic, groupByYear, hotThreshold, naturalCompare, needsMapping, newestFirst, papersForMode, paperYear, questionsOf, unknownExamPapers } from "./group";
+import type { PyqQuestion, Subject, Topic, Unit } from "../types";
+import { groupByTopic, groupByYear, hotThreshold, importantTopics, naturalCompare, needsMapping, newestFirst, papersForMode, paperYear, questionsOf, unknownExamPapers } from "./group";
 
 const paper = (id: number, fileName: string, extra: object = {}) => ({ id, fileName, ...extra });
 const q = (id: number, materialId: number, number: string, extra: Partial<PyqQuestion> = {}): PyqQuestion => ({
   id, subjectId: 1, materialId, number, text: `question ${id}`, ...extra,
 });
 const unit = (id: number, title: string): Unit => ({ id, subjectId: 1, title, order: id });
-const topic = (id: number, unitId: number, title: string): Topic => ({
-  id, subjectId: 1, unitId, title, confidence: 3, status: "not-started",
+const topic = (id: number, unitId: number, title: string, subjectId = 1): Topic => ({
+  id, subjectId, unitId, title, confidence: 3, status: "not-started",
 });
+const subject = (id: number, name: string): Subject => ({ id, name, color: "#000", createdAt: 0 });
 
 describe("paper year and exam", () => {
   it("prefers the year read from the paper, else the file name", () => {
@@ -104,5 +105,36 @@ describe("topic-wise grouping", () => {
     const qs = [1, 2, 3].map((i) => q(i, 1, `Q${i}`, { topicId: 20 })).concat([q(4, 1, "Q4", { topicId: 10 })]);
     const g = groupByTopic(qs, units, topics);
     expect(g.units.flatMap((u) => u.topics).filter((t) => t.hot).map((t) => t.topic.id)).toEqual([20]);
+  });
+});
+
+describe("important topics across subjects", () => {
+  const subjects = [subject(1, "DBMS"), subject(2, "OS")];
+  const topics = [topic(10, 1, "ER model", 1), topic(11, 1, "Keys", 1), topic(20, 1, "Scheduling", 2)];
+
+  it("ranks matched topics by how often they're asked, across subjects", () => {
+    const qs = [
+      q(1, 1, "Q1", { topicId: 10, year: 2019, marks: 5 }),
+      q(2, 1, "Q2", { topicId: 10, year: 2022, marks: 10 }),
+      q(3, 2, "Q1", { topicId: 20, subjectId: 2, year: 2021 }),
+      q(4, 1, "Q3", { topicId: 11, year: 2020 }),
+      q(5, 1, "Q4", { topicId: null, year: 2022 }), // not in syllabus
+      q(6, 1, "Q5", { topicId: 99, year: 2022 }), // topic since deleted
+    ];
+    const ranked = importantTopics(qs, topics, subjects);
+    // ER model (asked twice) leads; the two one-offs tie on count, so the more recent (Scheduling, 2021) wins.
+    expect(ranked.map((r) => r.topic.id)).toEqual([10, 20, 11]);
+    const er = ranked[0];
+    expect(er).toMatchObject({ count: 2, years: [2019, 2022], marks: 15 });
+    expect(er.subject.name).toBe("DBMS");
+    expect(ranked[1].subject.name).toBe("OS"); // other subject's topic is included
+  });
+
+  it("drops questions with no topic, a deleted topic, or a deleted subject", () => {
+    const qs = [
+      q(1, 1, "Q1", { topicId: 20, subjectId: 2 }),
+      q(2, 1, "Q2", { topicId: 11 }),
+    ];
+    expect(importantTopics(qs, topics, [subject(1, "DBMS")]).map((r) => r.topic.id)).toEqual([11]);
   });
 });

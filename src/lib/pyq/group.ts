@@ -1,6 +1,6 @@
 // Pure helpers for the past-paper question bank: no I/O, so they're easy to test.
 import { pyqMode } from "../mode";
-import type { ExamMode, Material, PyqQuestion, Topic, Unit } from "../types";
+import type { ExamMode, Material, PyqQuestion, Subject, Topic, Unit } from "../types";
 
 /** The paper's year: read from the paper by AI when analysed, else the first plausible year in its name. */
 export function paperYear(m: Pick<Material, "paperYear" | "fileName">): number | undefined {
@@ -113,6 +113,59 @@ export function groupByTopic(questions: PyqQuestion[], units: Unit[], topics: To
     if (asked.length) out.push({ unit, topics: asked });
   }
   return { units: out, notInSyllabus: notInSyllabus.sort(byNewest), unmatched: unmatched.sort(byNewest), neverAsked };
+}
+
+export interface ImportantTopic {
+  topic: Topic;
+  subject: Subject;
+  questions: PyqQuestion[]; // newest first
+  count: number;
+  years: [number, number] | null; // first and last year asked
+  marks: number; // total marks where known
+  hot: boolean; // among the most-asked topics
+}
+
+/**
+ * Every syllabus topic any past-paper question has been matched to, across all subjects, ranked by how often
+ * it's been asked. `questions` should already be scoped to the exam mode (see the Important Topics page). The
+ * busiest topics come first; `hot` marks the top quarter (the same threshold the per-subject topic view uses).
+ */
+export function importantTopics(questions: PyqQuestion[], topics: Topic[], subjects: Subject[]): ImportantTopic[] {
+  const topicById = new Map(topics.map((t) => [t.id!, t]));
+  const subjectById = new Map(subjects.map((s) => [s.id!, s]));
+  const byTopic = new Map<number, PyqQuestion[]>();
+  for (const q of questions) {
+    // Only questions matched to a topic that still exists; "not in syllabus" and unmatched ones aren't topics.
+    if (typeof q.topicId === "number" && topicById.has(q.topicId)) {
+      byTopic.set(q.topicId, [...(byTopic.get(q.topicId) ?? []), q]);
+    }
+  }
+  const threshold = hotThreshold([...byTopic.values()].map((qs) => qs.length));
+  const out: ImportantTopic[] = [];
+  for (const [topicId, qs] of byTopic) {
+    const topic = topicById.get(topicId)!;
+    const subject = subjectById.get(topic.subjectId);
+    if (!subject) continue; // subject deleted but its questions lingered
+    const sorted = [...qs].sort(byNewest);
+    const years = sorted.map((q) => q.year).filter((y): y is number => !!y);
+    out.push({
+      topic,
+      subject,
+      questions: sorted,
+      count: sorted.length,
+      years: years.length ? [Math.min(...years), Math.max(...years)] : null,
+      marks: sorted.reduce((a, q) => a + (q.marks ?? 0), 0),
+      hot: sorted.length >= threshold,
+    });
+  }
+  // Most-asked first, then by marks, most recent, and finally name so the order is stable.
+  return out.sort(
+    (a, b) =>
+      b.count - a.count ||
+      b.marks - a.marks ||
+      (b.years?.[1] ?? -1) - (a.years?.[1] ?? -1) ||
+      a.topic.title.localeCompare(b.topic.title),
+  );
 }
 
 /** Case-insensitive text search over questions. */
