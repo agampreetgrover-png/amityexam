@@ -41,11 +41,20 @@ If a provider hits a limit, times out or fails, the app moves to the next one on
    - **Notes**: short notes or one-page cheat sheets per topic
    - **Quiz**: MCQ and short-answer practice. AI grades short answers, and low scores mark topics as weak
    - **Predict**: repeated questions, weightage and likely questions from past papers
-   - **Ask**: doubt chat answered from your own notes
-5. **Progress**: syllabus coverage, quiz scores and weak topics.
-6. **Exam page**: exam details, a packing checklist, the cheat sheet and weak topics. Printable.
+   - **Ask**: a quick doubt chat for that subject, answered from your own notes
+5. **Chat**: the study chat. Pick a subject and ask anything:
+   - Answers are taught from your teacher's notes, which they cite by file name.
+   - They're checked against past papers, with the year and marks when a question has been set before, e.g. "PYQ 2023, 10 marks".
+   - They're pitched at your coming exam: its date, the most-asked topics and your weak ones.
+   - Each answer lists its sources underneath, and most end with an **In the exam** tip.
+   - Choose **Auto**, **Simple**, **Exam answer** (sized to the marks) or **Quick revise**.
+   - Every conversation is saved in **History**: grouped by date, searchable, and you can rename or delete each one.
+6. **Important**: the topics asked most often in this exam's past papers, across all your subjects, with the questions under each.
+7. **Zero prep**: topics you can learn cold, without studying anything else first. AI rates each topic for groundwork needed, time and importance, and the quickest wins come first.
+8. **Progress**: syllabus coverage, quiz scores and weak topics.
+9. **Exam page**: exam details, a packing checklist, the cheat sheet and weak topics. Printable.
 
-Press **Ctrl+K** (⌘K on Mac) anywhere to jump to a subject or exam, or switch mode.
+Press **Ctrl+K** (⌘K on Mac) anywhere to jump to a page, subject or exam, or switch mode.
 
 ### Google Drive
 
@@ -55,7 +64,7 @@ The app pulls notes, slides and past papers from shared Drive folders when you o
 
 - **Appearance**: light, dark or follow the system.
 - **Reminders**: an alert the day before each exam, while the app is open.
-- **Your data**: **Export backup** and import. Use the same file to move data between phone and laptop.
+- **Your data**: **Export backup** and import (saved chats included). Use the same file to move data between phone and laptop. A backup is checked before it replaces anything, so a damaged file can't wipe your data.
 
 ## Tech
 
