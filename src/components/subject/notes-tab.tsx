@@ -30,10 +30,11 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
     useLiveQuery(
       () => db.docs.where({ subjectId }).filter((d) => d.kind === "summary" || d.kind === "cheatsheet").reverse().sortBy("createdAt"),
       [subjectId],
-    ) ?? [];
-  const shown = filter === "all" ? docs : docs.filter((d) => String(d.topicId ?? "") === filter);
+    );
+  const shown = filter === "all" ? docs : docs?.filter((d) => String(d.topicId ?? "") === filter);
 
   const generate = async () => {
+    if (!materials) return; // still loading; the button waits for them
     setViewing(null);
     const topic = topics.find((t) => String(t.id) === topicId);
     const texts = noteTexts(materials);
@@ -67,10 +68,10 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
           {gen.busy ? (
             <StopButton onClick={gen.stop} />
           ) : (
-            <Button onClick={generate} disabled={!online}><Sparkles size={16} /> Write notes</Button>
+            <Button onClick={generate} disabled={!online || !materials}><Sparkles size={16} /> Write notes</Button>
           )}
         </div>
-        {!materials.length && <p className="mt-3 text-[13px] text-muted">No materials uploaded, so notes will come from general knowledge.</p>}
+        {materials?.length === 0 && <p className="mt-3 text-[13px] text-muted">No materials uploaded, so notes will come from general knowledge.</p>}
         <div className="mt-3 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
       </Card>
 
@@ -93,7 +94,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
         title="Saved notes"
         action={<TopicSelect units={units} topics={topics} value={filter === "all" ? "" : filter} onChange={(v) => setFilter(v || "all")} className="h-8 w-auto max-w-[60%] text-xs" />}
       >
-        {shown.length ? (
+        {!shown ? null : shown.length ? (
           <DocList docs={shown} selected={viewing?.id} onSelect={setViewing} />
         ) : (
           <Empty icon={<FileText size={20} />} title="Nothing saved yet">Write short notes or a cheat sheet above.</Empty>

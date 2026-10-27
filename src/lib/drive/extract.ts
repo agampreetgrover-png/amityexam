@@ -97,8 +97,10 @@ function runNext() {
     busy = false;
     runNext();
   };
-  const onMessage = ({ result, error }: { result?: Parsed; error?: string }) =>
-    finish(error !== undefined ? { error: new Error(error) } : { result: result! });
+  // A file the parser rejects (encrypted, corrupt) will be rejected again, so it's skipped for good rather than
+  // downloaded on every sync. A parser that failed to load is the server's problem, so that file is tried again.
+  const onMessage = ({ result, error, transient }: { result?: Parsed; error?: string; transient?: boolean }) =>
+    finish(error === undefined ? { result: result! } : { error: transient ? new Error(error) : new SkipFile(`couldn't be read (${error.slice(0, 150)})`) });
   const onError = (e: Error & { code?: string }) =>
     // Out of heap is the file's doing (a zip bomb); anything else may be passing, so the file is tried again later.
     finish({ error: e.code === "ERR_WORKER_OUT_OF_MEMORY" ? new SkipFile("needs too much memory to read") : e }, true);

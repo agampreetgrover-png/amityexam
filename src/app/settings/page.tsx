@@ -156,11 +156,11 @@ export default function SettingsPage() {
   );
 }
 
-const PROVIDER_LABELS: Record<string, string> = { gemini: "Gemini", groq: "Groq", openrouter: "OpenRouter" };
+const PROVIDER_LABELS: Record<string, string> = { gemini: "Gemini", openrouter: "OpenRouter" };
 
 /** Which AI keys the server has (booleans only) and which provider answered last. */
 function AiStatus() {
-  const [status, setStatus] = useState<{ gemini: boolean; groq: boolean; openrouter?: boolean } | "error" | null>(null);
+  const [status, setStatus] = useState<{ gemini: boolean; openrouter?: boolean } | "error" | null>(null);
   const [last, setLast] = useState<ReturnType<typeof getLastProvider>>(null);
   useEffect(() => {
     setLast(getLastProvider()); // read after mount: localStorage only exists in the browser
@@ -180,15 +180,14 @@ function AiStatus() {
   return (
     <Section title="AI" className={group}>
       <p className={desc}>
-        OpenRouter is used first for everything, including reading scanned papers. Gemini, then Groq, take over automatically when it hits a limit (Groq can&apos;t read scans). Keys live in .env.local on this computer.
+        OpenRouter is used first for everything, including reading scanned papers. Gemini takes over automatically when it hits a limit. Keys live in .env.local on this computer.
       </p>
       {status === "error" ? (
         <p className="text-sm text-muted">Couldn&apos;t check the AI setup. You may be offline.</p>
       ) : (
         <ul className="max-w-sm divide-y divide-border border-y border-border text-sm">
-          {row("Gemini", status?.gemini)}
-          {row("Groq", status?.groq)}
           {row("OpenRouter", status?.openrouter)}
+          {row("Gemini", status?.gemini)}
         </ul>
       )}
       {last && (

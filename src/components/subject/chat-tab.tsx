@@ -28,19 +28,21 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
   useEffect(() => setTouch(window.matchMedia("(pointer: coarse)").matches), []);
 
   // This tab's own thread; the study chat's conversations (chatId set) live on the Chat page.
-  const messages = useLiveQuery(() => db.messages.where({ subjectId }).filter((m) => m.chatId == null).sortBy("createdAt"), [subjectId]) ?? [];
+  // Both undefined while loading, so the starter screen and "No materials uploaded" don't flash.
+  const messages = useLiveQuery(() => db.messages.where({ subjectId }).filter((m) => m.chatId == null).sortBy("createdAt"), [subjectId]);
   // Study material plus only this exam's past papers (never the other exam's or unknown ones).
-  const materials = materialsForMode(useMaterials(subjectId), mode);
+  const allMaterials = useMaterials(subjectId);
+  const materials = allMaterials && materialsForMode(allMaterials, mode);
 
   // Braces matter: newer Chrome returns a Promise from scrollIntoView, and an effect that returns one crashes React.
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
-  }, [messages.length, streaming]);
+  }, [messages?.length, streaming]);
 
   const send = async () => {
     const text = input.trim();
     // A ref, not state: two quick Enters both see the old `streaming` value before React re-renders.
-    if (!text || sending.current || !online) return; // offline: keep the question in the box instead of failing
+    if (!text || sending.current || !online || !messages || !materials) return; // offline: keep the question in the box instead of failing
     sending.current = true;
     setInput("");
     setError(null);
@@ -89,12 +91,12 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
   return (
     <div className="flex h-[calc(100dvh-17rem)] min-h-96 flex-col md:h-[calc(100dvh-18rem)]">
       <div className="mb-2 flex min-h-8 items-center justify-between gap-2 text-[13px] text-muted">
-        <span className="min-w-0">{materials.length ? `Answers use your ${materials.length} uploaded file${materials.length === 1 ? "" : "s"}` : "No materials uploaded, so answers are general"}</span>
-        {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear} disabled={streaming !== null} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
+        <span className="min-w-0">{materials && (materials.length ? `Answers use your ${materials.length} uploaded file${materials.length === 1 ? "" : "s"}` : "No materials uploaded, so answers are general")}</span>
+        {!!messages?.length && <Button variant="ghost" size="sm" onClick={clear} disabled={streaming !== null} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto rounded-xl border border-border bg-surface p-4 shadow-sheet sm:p-5">
-        {messages.length === 0 && streaming === null ? (
+        {!messages ? null : messages.length === 0 && streaming === null ? (
           <div className="flex h-full flex-col items-start justify-center gap-1.5 px-1">
             <span className="mb-2 grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent" aria-hidden><MessageCircle size={18} /></span>
             <p className="text-[15px] font-semibold">Ask about anything in {subject.name}</p>
@@ -113,7 +115,8 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
 
       {/* On phones the composer sticks above the bottom bar, so it's reachable without scrolling past the header. */}
       {/* The strip behind it is solid white with a top rule, so scrolled content passes under it instead of showing through. */}
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 border-t border-border bg-bg pb-1 pt-2 md:static md:border-t-0 md:bg-transparent md:pb-0 md:pt-0">
+      {/* The strip below it, down to the bottom bar, is painted too, so the conversation doesn't show through the gap. */}
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 border-t border-border bg-bg pb-1 pt-2 after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-bg md:static md:border-t-0 md:bg-transparent md:pb-0 md:pt-0 md:after:hidden">
         <OfflineHint online={online} />
         <AiErrorBox error={error} />
         {/* The composer is one bordered box; the textarea inside is borderless, so focus rings the whole box instead. */}

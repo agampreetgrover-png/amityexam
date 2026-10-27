@@ -179,7 +179,7 @@ ${topicLine(r)}${notes(r, maxChars)}`);
 ${topicLine(r)}
 Question/concept: ${fence(r.text)}${notes(r, maxChars)}`);
     // The study chat: grounded in the teacher's notes, shaped by the past papers, pitched at the coming exam.
-    // Notes get half the budget and past papers a quarter, leaving room for history (Groq: 12K chars in all).
+    // Notes get half the budget and past papers a quarter, leaving room for history.
     case "study": {
       const notesBlock = r.context
         ? `\n\nTeacher's notes and slides (excerpts, each headed by its file name):\n"""\n${clip(r.context, Math.min(Math.round(maxChars / 2), 40_000))}\n"""`
@@ -195,6 +195,8 @@ Question/concept: ${fence(r.text)}${notes(r, maxChars)}`);
 You are the student's exam-prep tutor for this subject. Every answer should help them score marks in the coming exam.
 ${topicLine(r)}${prep}
 How to answer:
+- The app has already given you everything the student has for ${r.subject || "this subject"}: their syllabus, teacher's notes and past papers, synced from their Drive. Never ask them to paste, upload or share notes, a syllabus or papers. If something isn't in the material below, say so in one line and answer from standard knowledge.
+- If the question is clearly about a different subject, say in one line that this chat is set to ${r.subject || "another subject"} and that they can start a new chat on the right subject from the subject menu, then still give a useful answer from standard knowledge.
 - Teach from the teacher's notes first: their definitions, terms, examples and order. Cite them like (Notes: <file name>). If the notes don't cover it, say so in one short line, then answer from standard knowledge.
 - Use the past papers to show how it is examined. When the question is, or resembles, a PYQ, say so with its year and marks, e.g. (PYQ 2023, 10 marks), and answer the way that question asks. Only cite PYQs listed below; never invent questions, years or marks.
 - Fit the length to the marks: 2 marks ≈ 3–4 lines; 5 marks ≈ half a page; 10 marks ≈ a full answer with headings, a diagram described in words, and an example.
@@ -205,7 +207,7 @@ ${STYLE[r.answerStyle ?? "auto"]}${notesBlock}${pyqBlock}`,
         { role: "user", content: r.text ?? "" },
       ];
     }
-    // Chat excerpts get two-thirds of the budget, leaving room for history (Groq: 8K chars).
+    // Chat excerpts get two-thirds of the budget, leaving room for history.
     case "chat":
       return [
         {

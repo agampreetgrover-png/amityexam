@@ -35,7 +35,7 @@ interface PasteDraft { name: string; kind: MaterialKind; exam: ExamMode; text: s
 
 export function MaterialsTab({ subject, mode }: TabProps) {
   const subjectId = subject.id!;
-  const materials = useLiveQuery(() => db.materials.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]) ?? [];
+  const materials = useLiveQuery(() => db.materials.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]);
   const [kind, setKind] = useState<MaterialKind>("notes");
   const [exam, setExam] = useState<ExamMode>(mode);
   const [busy, setBusy] = useState("");
@@ -111,7 +111,8 @@ export function MaterialsTab({ subject, mode }: TabProps) {
         <div className="mt-2"><AiErrorBox error={error} /></div>
       </Card>
 
-      {materials.length === 0 ? (
+      {/* Nothing until loaded, so "No material yet" doesn't flash on a subject that has some. */}
+      {!materials ? null : materials.length === 0 ? (
         <Empty icon={<FileText size={20} />} title="No material yet">
           Notes, slides and past papers from your Google Drive folders appear here automatically after a sync (Settings → Google Drive). You can also upload your own.
           Every AI tool for this subject uses them.
@@ -126,8 +127,8 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                 ) : (
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-border" aria-hidden><FileText size={15} /></span>
                 )}
-                {/* On phones the name gets the whole first line; the controls wrap underneath. */}
-                <div className="min-w-0 flex-1 basis-[calc(100%-2.75rem)] sm:basis-auto">
+                {/* On phones the name shares the first line with the icon (2rem + the 0.875rem gap); the controls wrap underneath. */}
+                <div className="min-w-0 flex-1 basis-[calc(100%-2.875rem)] sm:basis-auto">
                   <p className="truncate text-[15px] font-medium">{m.fileName}</p>
                   <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
                     {m.source && <span className="truncate">Drive{m.source.path?.length ? ` / ${m.source.path.at(-1)}` : ""}</span>}
@@ -137,15 +138,24 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                   </p>
                 </div>
                 {/* Type (and, for past papers, which exam) can be fixed after upload instead of deleting and re-uploading. */}
-                <div className="ml-[2.875rem] flex flex-wrap items-center gap-1 sm:ml-0 sm:shrink-0 sm:flex-nowrap">
+                <div className="flex w-full flex-wrap items-center gap-1 sm:w-auto sm:shrink-0 sm:flex-nowrap">
                   <Select
                     value={m.kind}
                     aria-label={`Type of ${m.fileName}`}
                     className="h-8 w-auto py-0 text-xs"
                     onChange={async (e) => {
                       const next = e.target.value as MaterialKind;
-                      await db.materials.update(m.id, next === "pyq" && !m.pyqExam ? { kind: next, pyqExam: mode } : { kind: next });
-                      if (next === "pyq") analyseSubject(subjectId);
+                      if (next === "pyq") {
+                        await db.materials.update(m.id, m.pyqExam ? { kind: next } : { kind: next, pyqExam: mode });
+                        analyseSubject(subjectId);
+                        return;
+                      }
+                      // No longer a past paper: drop its questions so Important, Zero prep and the chat stop counting them,
+                      // and clear analysedAt so it's split again if it's turned back into one.
+                      await db.transaction("rw", db.materials, db.pyqQuestions, async () => {
+                        await db.pyqQuestions.where({ materialId: m.id }).delete();
+                        await db.materials.update(m.id, { kind: next, analysedAt: undefined });
+                      });
                     }}
                   >
                     {KINDS.map((k) => <option key={k.value} value={k.value}>{k.value === "notes" && m.source?.format === "ppt" ? "Slides" : k.label}</option>)}
@@ -158,28 +168,31 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                       onChange={(e) => setPaperExam(m.id!, e)}
                     />
                   )}
-                {m.source && (
-                  <a
-                    href={m.source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="Open in Google Drive"
-                    title="Open in Google Drive"
-                    className="press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
-                  >
-                    <ExternalLink size={14} />
-                  </a>
-                )}
-                <Button variant="ghost" size="icon" onClick={() => setPreview(m)} aria-label="Preview" title="Preview"><Eye size={14} /></Button>
-                <Button
-                  variant="danger"
-                  size="icon"
-                  title="Delete"
-                  aria-label="Delete"
-                  onClick={() => confirm(`Delete "${m.fileName}"?`) && deleteMaterial(m.id!)}
-                >
-                  <Trash2 size={14} />
-                </Button>
+                  {/* The actions stay together at the row's end, even when the selects take a line of their own. */}
+                  <span className="ml-auto flex items-center gap-1">
+                    {m.source && (
+                      <a
+                        href={m.source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Open in Google Drive"
+                        title="Open in Google Drive"
+                        className="press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-text"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={() => setPreview(m)} aria-label={`Preview ${m.fileName}`} title="Preview"><Eye size={14} /></Button>
+                    <Button
+                      variant="danger"
+                      size="icon"
+                      title="Delete"
+                      aria-label={`Delete ${m.fileName}`}
+                      onClick={() => confirm(`Delete "${m.fileName}"?`) && deleteMaterial(m.id!)}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </span>
                 </div>
               </li>
             ))}

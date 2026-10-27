@@ -11,7 +11,7 @@ export const subjectLabels = (subjects: Pick<Subject, "name" | "code">[]) =>
 const HEADER_LINES = 8;
 const DATE = /\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(mon|tues|wednes|thurs|fri|satur|sun)day\b/i;
 const TIME_RANGE = /\d{1,2}[:.]\d{2}\s*(am|pm)?\s*(to|-|–)\s*\d{1,2}[:.]\d{2}/i;
-const SMALL_ENOUGH = 10_000; // fits the smallest provider budget (Groq clips at ~12K)
+const SMALL_ENOUGH = 10_000; // short enough to send whole, with no need to trim it to the relevant part
 
 /**
  * University date sheets list every programme. When a sheet is big, keep the first few lines

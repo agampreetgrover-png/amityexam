@@ -69,7 +69,7 @@ export default function ImportantTopicsPage() {
         action={
           withTopics.length > 1 && (
             <Select
-              value={subjectId}
+              value={filter}
               onChange={(e) => {
                 setSubjectId(e.target.value === "all" ? "all" : Number(e.target.value));
                 setShowAll(false);
@@ -109,7 +109,7 @@ export default function ImportantTopicsPage() {
               <span aria-hidden className="w-5 shrink-0" />
             </div>
             <ul className="divide-y divide-border">
-              {shown.map((r, i) => <Row key={r.topic.id} rank={i + 1} stat={r} showSubject={subjectId === "all"} />)}
+              {shown.map((r, i) => <Row key={r.topic.id} rank={i + 1} stat={r} showSubject={filter === "all"} />)}
             </ul>
           </Panel>
 
@@ -142,26 +142,28 @@ function Row({ rank, stat, showSubject }: { rank: number; stat: ImportantTopic; 
         aria-expanded={open}
         className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2/60 sm:px-5"
       >
-        <span className="numeral w-7 shrink-0 text-[15px] text-muted">{rank}</span>
+        <span className="numeral w-6 shrink-0 text-[15px] text-muted sm:w-7">{rank}</span>
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
             <span className="min-w-0 break-words">{topic.title}</span>
             {hot && <HotBadge />}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted">
-            {showSubject && (
-              <span className="inline-flex items-center gap-1.5">
-                <span aria-hidden className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: subject.color }} />
-                {subject.name}
-              </span>
-            )}
+          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted">
             <span className="sm:hidden">{span}</span>
             {marks > 0 && <span className="sm:hidden">{marks} marks</span>}
+            {showSubject && (
+              // Its own line on phones, cut to one line: a long subject name otherwise wraps three times.
+              <span className="flex w-full min-w-0 items-center gap-1.5 sm:inline-flex sm:w-auto">
+                <span aria-hidden className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: subject.color }} />
+                <span className="truncate">{subject.name}</span>
+              </span>
+            )}
           </p>
         </div>
         <span className="hidden w-28 shrink-0 text-[13px] tabular-nums text-muted sm:block">{span}</span>
         <span className="hidden w-24 shrink-0 text-right text-[13px] tabular-nums text-muted sm:block">{marks > 0 ? `${marks}` : "—"}</span>
-        <span className="w-20 shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted">
+        {/* Fixed width only where it lines up with the columns beside it; on phones it just fits "4×". */}
+        <span className="shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted sm:w-20">
           <span className={cn("font-semibold", hot ? "text-accent" : "text-text")}>{count}×</span>
         </span>
         <ChevronDown size={16} className={cn("w-5 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />

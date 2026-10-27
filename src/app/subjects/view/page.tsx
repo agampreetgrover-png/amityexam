@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
-import { Empty, SyllabusStrip, Tabs, subjectStyle } from "@/components/ui";
+import { Empty, SyllabusStrip, TabScroller, Tabs, subjectStyle, tabPanelProps } from "@/components/ui";
 import { SyllabusTab } from "@/components/subject/syllabus-tab";
 import { MaterialsTab } from "@/components/subject/materials-tab";
 import { PyqsTab } from "@/components/subject/pyqs-tab";
@@ -136,22 +136,23 @@ function Subject({ subjectId }: { subjectId: number }) {
         )}
       </header>
 
-      {/* Scrolls sideways on phones instead of wrapping the tab row. The padding keeps focus rings and the first
-          tab's hover wash from being clipped by the scroller. */}
-      <div className="no-print -mx-4 mb-7 overflow-x-auto px-4 py-1">
+      {/* Scrolls sideways on phones instead of wrapping the tab row, fading at the edge that has more tabs. The
+          padding keeps focus rings and the first tab's hover wash from being clipped by the scroller. */}
+      <TabScroller className="no-print -mx-4 mb-7 px-4 py-1">
         <Tabs
           label="Subject sections"
+          idBase="subject"
           value={tab}
           onChange={setTab}
           options={TABS.map((t) => ({ value: t.key, label: t.label }))}
           className="min-w-max"
         />
-      </div>
+      </TabScroller>
 
       {/* Keyed so a mode switch (or another subject) starts each tab fresh instead of keeping a half-built quiz on the old syllabus.
           Opened tabs stay mounted and are only hidden, so switching tabs never throws work away. */}
       {TABS.filter((t) => visited.has(t.key)).map(({ key, C }) => (
-        <div key={`${subject.id}-${mode}-${key}`} hidden={key !== tab} className="tab-in">
+        <div key={`${subject.id}-${mode}-${key}`} {...tabPanelProps("subject", key)} hidden={key !== tab} className="tab-in">
           {/* The Syllabus tab gets every unit so new ones are numbered after all of them; it lists only this mode's part, like the rest. */}
           <C subject={subject} units={key === "syllabus" ? allUnits : units} topics={key === "syllabus" ? allTopics : topics} mode={mode} />
         </div>

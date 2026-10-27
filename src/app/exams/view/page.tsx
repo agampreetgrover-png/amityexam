@@ -117,7 +117,12 @@ function ExamKit({ id }: { id: number }) {
             {(exam.venue || exam.seat) && (
               <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
                 <dt className="text-[13px] leading-6 text-muted">Venue</dt>
-                <dd className="break-words">{[exam.venue, exam.seat && `Seat ${exam.seat}`].filter(Boolean).join(", ")}</dd>
+                {/* The seat stays on one line: "A-117" split at its hyphen reads as two seats. */}
+                <dd className="break-words">
+                  {exam.venue}
+                  {exam.venue && exam.seat && ", "}
+                  {exam.seat && <span className="whitespace-nowrap">Seat {exam.seat}</span>}
+                </dd>
               </div>
             )}
             <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
@@ -157,8 +162,9 @@ function ExamKit({ id }: { id: number }) {
                 />
                 <span className={cn("min-w-0 break-words transition-colors duration-150", item.done && "text-muted line-through decoration-muted/60")}>{item.text}</span>
                 <button
-                  // Always visible on touch screens; on a mouse it appears on hover or keyboard focus.
-                  className="no-print ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                  // Always visible on touch screens (tablets included); with a mouse it appears on hover or keyboard focus.
+                  // On touch an invisible ring widens it for a thumb.
+                  className="no-print relative ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-[''] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
                   aria-label={`Remove ${item.text}`}
                   onClick={async () => {
                     let removed = false;

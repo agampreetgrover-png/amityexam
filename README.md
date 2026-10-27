@@ -1,6 +1,6 @@
 # Amity Exams
 
-A personal exam companion and AI study helper for Amity semesters. Keep your date sheet, syllabus, notes and past papers in one place, then use AI to make notes, quiz yourself, predict likely questions and ask doubts. It installs as an app (PWA) on your phone and laptop and works offline. Your data stays on the device. AI runs on free APIs: OpenRouter first, then Gemini, then Groq as backups.
+A personal exam companion and AI study helper for Amity semesters. Keep your date sheet, syllabus, notes and past papers in one place, then use AI to make notes, quiz yourself, predict likely questions and ask doubts. It installs as an app (PWA) on your phone and laptop and works offline. Your data stays on the device. AI runs on free APIs: OpenRouter first, with Gemini as the backup.
 
 ## Setup
 
@@ -22,13 +22,12 @@ Drive sync parses PDFs, DOCX and PPTX in a worker loaded from `src/lib/drive/ext
 
 ## Getting API keys
 
-All three keys are free and all are optional; set at least one in `.env.local`.
+Both keys are free and both are optional; set at least one in `.env.local`.
 
 - **OpenRouter** (tried first): create a key at https://openrouter.ai/keys. Uses free models only, and tries several in turn. Also reads scanned PDFs and photos.
-- **Gemini**: create a key at https://aistudio.google.com/apikey. A Gemini app subscription (Google AI Pro) is **not** needed and doesn't add API quota. Also reads scans and photos.
-- **Groq**: create a key at https://console.groq.com/keys. Very fast, but the free tier allows only ~8K tokens/minute, so long notes are trimmed. It can't read scans.
+- **Gemini** (the backup): create a key at https://aistudio.google.com/apikey. A Gemini app subscription (Google AI Pro) is **not** needed and doesn't add API quota. Also reads scans and photos.
 
-If a provider hits a limit, times out or fails, the app moves to the next one on its own. **Settings → AI** shows which keys are set and which provider answered last. Never commit `.env.local`; it's already in `.gitignore`.
+If OpenRouter hits a limit, times out or fails, the app moves to Gemini on its own. **Settings → AI** shows which keys are set and which provider answered last. Never commit `.env.local`; it's already in `.gitignore`.
 
 ## Workflow
 
@@ -46,9 +45,10 @@ If a provider hits a limit, times out or fails, the app moves to the next one on
    - Answers are taught from your teacher's notes, which they cite by file name.
    - They're checked against past papers, with the year and marks when a question has been set before, e.g. "PYQ 2023, 10 marks".
    - They're pitched at your coming exam: its date, the most-asked topics and your weak ones.
-   - Each answer lists its sources underneath, and most end with an **In the exam** tip.
+   - Most answers end with an **In the exam** tip.
+   - The chat never asks you to paste notes: it already has the subject's syllabus, notes and papers. Ask about another subject (by name, code or initials, like "ADA") and it moves the question there.
    - Choose **Auto**, **Simple**, **Exam answer** (sized to the marks) or **Quick revise**.
-   - Every conversation is saved in **History**: grouped by date, searchable, and you can rename or delete each one.
+   - Every conversation is saved in **History**: grouped by date and searchable. You can rename, pin, copy or delete each one.
 6. **Important**: the topics asked most often in this exam's past papers, across all your subjects, with the questions under each.
 7. **Zero prep**: topics you can learn cold, without studying anything else first. AI rates each topic for groundwork needed, time and importance, and the quickest wins come first.
 8. **Progress**: syllabus coverage, quiz scores and weak topics.
@@ -76,8 +76,6 @@ AI providers and default models, each overridable in `.env.local`:
 | --- | --- | --- | --- |
 | OpenRouter | `nvidia/nemotron-3.5-super-vl:free`, then two more free models | `nvidia/nemotron-3.5-lightning:free`, then two more | `OPENROUTER_MODEL`, `OPENROUTER_FAST_MODEL`, `OPENROUTER_VISION_MODEL` (comma-separated lists) |
 | Gemini | `gemini-3.5-flash` | `gemini-3.5-flash-lite` | `GEMINI_MODEL`, `GEMINI_FAST_MODEL` |
-| Groq | `openai/gpt-oss-120b` | `openai/gpt-oss-20b` | `GROQ_MODEL`, `GROQ_FAST_MODEL` |
-
 The full default lists are in `.env.example`.
 
 `npm test` runs the unit tests and `npm run lint` runs ESLint.

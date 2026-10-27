@@ -98,6 +98,8 @@ body {
   color: var(--text);
   font-feature-settings: "tnum";
   min-height: 100dvh;
+  /* A long unbroken word (a URL, a file name, a run of underscores in a paper) wraps instead of widening a phone page. */
+  overflow-wrap: break-word;
 }
 
 ::selection { background: var(--selection); color: var(--text); }
@@ -126,6 +128,10 @@ body {
    instead of the OS menu. Elsewhere selects fall back to the native list. */
 @supports (appearance: base-select) {
   .select-chevron, .select-chevron::picker(select) { appearance: base-select; }
+  /* A base-select is a flex box whose text sits at the top unless centred; its height comes from the h-* class. */
+  .select-chevron { align-items: center; padding-block: 0; }
+  /* A long choice (a subject's full name) stays on one line, cut before the chevron, instead of spilling out of the box. */
+  .select-chevron { white-space: nowrap; overflow: clip; overflow-clip-margin: content-box; }
   .select-chevron::picker-icon { display: none; }
   .select-chevron::picker(select) {
     margin-block: 6px;
@@ -178,6 +184,19 @@ body {
   .select-chevron optgroup option { font-size: 13px; font-weight: 400; letter-spacing: normal; text-transform: none; color: var(--text); }
 }
 
+/* Chat: three dots that rise in turn while an answer is on its way. Still under reduced motion. */
+.thinking-dots { display: inline-flex; gap: 4px; }
+.thinking-dots > span { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; animation: thinking 1.2s ease-in-out infinite; }
+.thinking-dots > span:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dots > span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes thinking {
+  0%, 70%, 100% { opacity: 0.3; transform: translateY(0); }
+  35% { opacity: 0.9; transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots > span { animation: none; opacity: 0.6; }
+}
+
 /* Highlighter stroke behind a short run of text. */
 .mark {
   background: linear-gradient(transparent 12%, var(--mark) 12%, var(--mark) 88%, transparent 88%);
@@ -206,6 +225,8 @@ body {
   text-underline-offset: 0.09em;
   text-decoration-skip-ink: none;
 }
+/* The rule hangs below the figure's tight 0.9 line box; room for it keeps it off the caption underneath. */
+.numeral:has(.mark), .numeral.mark { padding-bottom: 0.14em; }
 
 /* Titles: the same family, heavier and tighter, so headings carry the voice without a second typeface. */
 .font-display {

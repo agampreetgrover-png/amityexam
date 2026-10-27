@@ -12,22 +12,27 @@ import { prettyDay } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES } from "@/lib/exams";
 import type { ExamType } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
+import { useOnline } from "../subject/shared";
 import { Button, Empty, Input, Segmented, Select } from "../ui";
 
 type Source = "upload" | "drive";
 type DriveSheet = { id: string; name: string; path: string[] };
 
-/** Upload or pick a university date sheet; AI finds the student's exams; they review and save. */
-export function DatesheetImport({ onDone }: { onDone: () => void }) {
+/** The exams found in a date sheet, waiting for the student's review. */
+export interface ImportDraft { rows: ImportRow[]; fileName: string }
+
+/**
+ * Upload or pick a university date sheet; AI finds the student's exams; they review and save.
+ * The review is held by the caller (the dialog's content unmounts on close), so an accidental Esc doesn't lose it.
+ */
+export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft | null; onDraft: (d: ImportDraft | null) => void; onDone: () => void }) {
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
   const [source, setSource] = useState<Source>("upload");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<unknown>(null);
-  const [rows, setRows] = useState<ImportRow[] | null>(null);
-  const [fileName, setFileName] = useState("");
   const [showSkipped, setShowSkipped] = useState(false);
   const [saved, setSaved] = useState<{ added: number; updated: number } | null>(null);
-  const online = typeof navigator === "undefined" || navigator.onLine;
+  const online = useOnline();
 
   if (!subjects) return null;
   if (!subjects.length) {
@@ -41,14 +46,13 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
 
   const analyse = async (file: File) => {
     setError(null);
-    setFileName(file.name);
     try {
       setBusy(`Reading ${file.name}…`);
       const text = await readDatesheet(file, (s) => setBusy(s));
       setBusy("Finding your exams…");
       // The file name often carries the exam season ("MID-SEM Schedule…", "Odd Semester Examination…") when the sheet doesn't.
       const found = await aiJson("datesheet", { text: `File: ${file.name}\n${relevantRows(text, subjects)}`, topics: subjectLabels(subjects) });
-      setRows(planImport(found.exams, subjects, await db.exams.toArray()));
+      onDraft({ rows: planImport(found.exams, subjects, await db.exams.toArray()), fileName: file.name });
     } catch (e) {
       setError(e);
     } finally {
@@ -70,17 +74,20 @@ export function DatesheetImport({ onDone }: { onDone: () => void }) {
     );
   }
 
-  if (rows) {
+  if (draft) {
     return (
       <Review
-        rows={rows}
-        setRows={setRows}
+        rows={draft.rows}
+        setRows={(rows) => onDraft({ ...draft, rows })}
         subjects={subjects}
-        fileName={fileName}
+        fileName={draft.fileName}
         showSkipped={showSkipped}
         setShowSkipped={setShowSkipped}
-        onBack={() => setRows(null)}
-        onSaved={setSaved}
+        onBack={() => onDraft(null)}
+        onSaved={(s) => {
+          setSaved(s);
+          onDraft(null);
+        }}
       />
     );
   }

@@ -2,8 +2,8 @@
 
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type ReactNode, type RefObject, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { MoreHorizontal, X } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type CSSProperties, type InputHTMLAttributes, type KeyboardEvent, type ReactNode, type RefObject, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import type { Topic, Unit } from "@/lib/types";
 
 export const cn = (...c: ClassValue[]) => twMerge(clsx(c));
@@ -19,11 +19,13 @@ const variants: Record<Variant, string> = {
   ghost: "text-muted hover:bg-surface-2 hover:text-text",
   danger: "text-muted hover:bg-bad/10 hover:text-bad",
 };
+// On touch screens an invisible ring widens the 32px sizes to 40px, so a row of them stays compact but tappable.
+const touchRing = "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']";
 const sizes = {
-  sm: "h-8 px-2.5 text-[13px]",
+  sm: `h-8 px-2.5 text-[13px] ${touchRing}`,
   md: "h-9 px-3.5 text-sm",
   // Square, for a lone icon; give it an aria-label.
-  icon: "h-8 w-8 px-0",
+  icon: `h-8 w-8 px-0 ${touchRing}`,
 };
 
 export function Button({ variant = "primary", size = "md", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof sizes }) {
@@ -84,8 +86,9 @@ export function List({ className, children }: { className?: string; children: Re
 }
 
 // Focus shows as the blue border plus a soft ring, so the global outline is switched off for fields.
+// Touch screens get 16px text: iOS zooms the whole page into any field set smaller when it takes focus.
 const field =
-  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text shadow-control transition-[border-color,box-shadow] duration-150 placeholder:text-faint hover:border-line-strong focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-[invalid=true]:border-bad";
+  "w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text shadow-control transition-[border-color,box-shadow] duration-150 placeholder:text-faint pointer-coarse:text-base hover:border-line-strong focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-[invalid=true]:border-bad";
 export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input className={cn(field, "h-9", className)} {...p} />;
 export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea className={cn(field, "min-h-24 leading-relaxed", className)} {...p} />;
 export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => <select className={cn(field, "select-chevron h-9", className)} {...p} />;
@@ -134,22 +137,48 @@ function useSlider(wrap: RefObject<HTMLElement | null>, selector: string, deps: 
 }
 
 /** Underlined tabs for switching sections of a page. The rule under the chosen tab slides when it changes. */
-export function Tabs<T extends string>({ value, onChange, options, className, label }: {
+export function Tabs<T extends string>({ value, onChange, options, className, label, idBase }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
   className?: string;
   label: string;
+  idBase?: string; // links each tab to its panel: give the panel tabPanelProps(idBase, value)
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const { box: bar, ready } = useSlider(wrap, '[aria-selected="true"]', [value, options.length]);
+  // Inside a sideways scroller (TabScroller on phones), keep the chosen tab in view, even when opened by link.
+  useEffect(() => {
+    const on = wrap.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    const sc = wrap.current?.parentElement;
+    if (!on || !sc || sc.scrollWidth <= sc.clientWidth) return;
+    const a = on.getBoundingClientRect();
+    const b = sc.getBoundingClientRect();
+    const by = a.left < b.left + 24 ? a.left - b.left - 24 : a.right > b.right - 24 ? a.right - b.right + 24 : 0;
+    if (by) sc.scrollBy({ left: by, behavior: ready ? "smooth" : "instant" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  // One Tab stop for the row; the arrow keys (and Home/End) move between tabs, as screen-reader users expect.
+  const onKey = (e: KeyboardEvent) => {
+    const i = options.findIndex((o) => o.value === value);
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: options.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = options[(to + options.length) % options.length];
+    onChange(next.value);
+    wrap.current?.querySelectorAll<HTMLElement>('[role="tab"]')[options.indexOf(next)]?.focus();
+  };
   return (
-    <div ref={wrap} role="tablist" aria-label={label} className={cn("relative flex gap-1 border-b border-border", className)}>
+    <div ref={wrap} role="tablist" aria-label={label} onKeyDown={onKey} className={cn("relative flex gap-1 border-b border-border", className)}>
       {options.map((o) => (
         <button
           key={o.value}
+          type="button"
           role="tab"
+          id={idBase && `${idBase}-tab-${o.value}`}
+          aria-controls={idBase && value === o.value ? `${idBase}-panel-${o.value}` : undefined}
           aria-selected={value === o.value}
+          tabIndex={value === o.value ? 0 : -1}
           onClick={() => onChange(o.value)}
           className={cn(
             // The first tab's label lines up with the page edge; its hover wash may reach past it.
@@ -171,6 +200,34 @@ export function Tabs<T extends string>({ value, onChange, options, className, la
           style={{ transform: `translateX(${bar.x + 14}px)`, width: Math.max(0, bar.w - 28) }}
         />
       )}
+    </div>
+  );
+}
+
+/** Spread on the element showing a Tabs option's content, with the same idBase. */
+export const tabPanelProps = (idBase: string, value: string) => ({ id: `${idBase}-panel-${value}`, role: "tabpanel", "aria-labelledby": `${idBase}-tab-${value}` });
+
+/** A row that scrolls sideways when it doesn't fit, fading at whichever edge has more to show. */
+export function TabScroller({ children, className }: { children: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setMore({ left: el.scrollLeft > 2, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 2 });
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", check);
+      ro.disconnect();
+    };
+  }, []);
+  const mask = `linear-gradient(to right, ${more.left ? "transparent, #000 2rem" : "#000"}, ${more.right ? "#000 calc(100% - 2rem), transparent" : "#000"})`;
+  return (
+    <div ref={ref} className={cn("overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", className)} style={{ maskImage: mask, WebkitMaskImage: mask }}>
+      {children}
     </div>
   );
 }
@@ -208,7 +265,8 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
           onClick={() => value !== o.value && onChange(o.value)}
           className={cn(
             "relative z-10 inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-150",
-            size === "sm" ? "h-7 px-2.5 text-[13px]" : "h-8 px-3.5 text-sm",
+            // One step taller on touch screens, where 28px is a small target for a thumb.
+            size === "sm" ? "h-7 px-2.5 text-[13px] pointer-coarse:h-8" : "h-8 px-3.5 text-sm pointer-coarse:h-9",
             value === o.value ? "text-text" : "text-muted hover:text-text",
             !box && value === o.value && "bg-surface shadow-control",
           )}
@@ -225,6 +283,7 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
   // Children mount only once the dialog is showing, so their autoFocus lands inside it
   // instead of showModal() moving focus to the close button. On close they stay until the fade-out ends.
   const [shown, setShown] = useState(false);
+  const titleId = useId();
   useLayoutEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -241,13 +300,15 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
     <dialog
       ref={ref}
       onClose={onClose}
+      aria-labelledby={titleId}
       className="sheet m-auto w-[calc(100%-2rem)] max-w-lg rounded-xl border border-border bg-surface p-0 text-text shadow-float"
     >
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5 sm:px-6">
-        <h2 className="min-w-0 truncate text-[16px] font-semibold tracking-[-0.01em]">{title}</h2>
+        <h2 id={titleId} className="min-w-0 truncate text-[16px] font-semibold tracking-[-0.01em]">{title}</h2>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close" className="-mr-1.5"><X size={18} /></Button>
       </div>
-      <div className="max-h-[75vh] overflow-y-auto px-5 pb-6 pt-5 sm:px-6">{shown && children}</div>
+      {/* dvh: the visible height, so the buttons at the foot stay reachable with the phone's keyboard and browser bars up. */}
+      <div className="max-h-[75dvh] overflow-y-auto px-5 pb-6 pt-5 sm:px-6">{shown && children}</div>
     </dialog>
   );
 }
@@ -353,7 +414,8 @@ export function Tick({ done, onClick, label }: { done: boolean; onClick: () => v
       aria-pressed={done}
       onClick={onClick}
       className={cn(
-        "flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-150",
+        // On touch screens an invisible ring widens the target to ~42px without changing how it looks.
+        "relative flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-150 pointer-coarse:before:absolute pointer-coarse:before:-inset-2.5 pointer-coarse:before:content-['']",
         done ? "border-good bg-good text-bg" : "border-line-strong hover:border-accent",
         pop && "tick-done",
       )}
@@ -364,5 +426,87 @@ export function Tick({ done, onClick, label }: { done: boolean; onClick: () => v
         </svg>
       )}
     </button>
+  );
+}
+
+export type MenuItem = { label: string; icon?: ReactNode; onSelect: () => void; danger?: boolean };
+
+/**
+ * A "⋯" button with a short list of actions. The list opens in the top layer (a popover), so a scrolling list
+ * can't clip it, and Escape or a click elsewhere closes it. It opens below the button, or above when there's
+ * no room, and keeps inside the window. Arrow keys move between the actions.
+ */
+export function Menu({ label, items, className }: { label: string; items: MenuItem[]; className?: string }) {
+  const id = useId();
+  const button = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = list.current;
+    if (!el) return;
+    const onToggle = (e: Event) => {
+      if ((e as ToggleEvent).newState !== "open" || !button.current) return;
+      const b = button.current.getBoundingClientRect();
+      const { width, height } = el.getBoundingClientRect();
+      const below = b.bottom + 4 + height <= window.innerHeight - 8;
+      el.style.top = `${below ? b.bottom + 4 : Math.max(8, b.top - 4 - height)}px`;
+      el.style.left = `${Math.max(8, Math.min(b.right - width, window.innerWidth - width - 8))}px`;
+      el.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    };
+    el.addEventListener("toggle", onToggle);
+    return () => el.removeEventListener("toggle", onToggle);
+  }, []);
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const all = [...(list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const at = all.indexOf(document.activeElement as HTMLElement);
+    all[(at + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length]?.focus();
+  };
+  return (
+    <>
+      <button
+        ref={button}
+        type="button"
+        popoverTarget={id}
+        aria-label={label}
+        aria-haspopup="menu"
+        title={label}
+        className={cn(
+          "relative grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted hover:bg-surface-3 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']",
+          className,
+        )}
+      >
+        <MoreHorizontal size={16} aria-hidden />
+      </button>
+      <div
+        ref={list}
+        id={id}
+        popover="auto"
+        role="menu"
+        aria-label={label}
+        onKeyDown={onKeyDown}
+        // Fixed and placed on open (see above); the browser's default popover centring is switched off.
+        className="fixed inset-auto m-0 w-44 rounded-lg border border-border bg-surface p-1 text-text shadow-float"
+      >
+        {items.map((it) => (
+          <button
+            key={it.label}
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              list.current?.hidePopover();
+              it.onSelect();
+            }}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] outline-none pointer-coarse:py-2.5 [&_svg]:shrink-0",
+              it.danger ? "text-bad hover:bg-bad/10 focus-visible:bg-bad/10" : "hover:bg-surface-2 focus-visible:bg-surface-2",
+            )}
+          >
+            {it.icon}
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }

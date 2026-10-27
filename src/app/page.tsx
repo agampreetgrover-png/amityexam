@@ -116,9 +116,10 @@ export default function TodayPage() {
                 <span className="mt-1 block text-[13px] font-medium text-muted">{daysWord(shownDays)}</span>
               </div>
               <div className="min-w-0">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="truncate text-[22px] font-semibold leading-tight tracking-[-0.02em]">{shownSubject?.name ?? "Exam"}</h3>
+                {/* Phones: the name takes the full width and the Exam kit button drops below it. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 sm:flex-nowrap">
+                  <div className="min-w-0 basis-full sm:basis-auto">
+                    <h3 className="line-clamp-2 break-words text-[22px] font-semibold leading-tight tracking-[-0.02em]">{shownSubject?.name ?? "Exam"}</h3>
                     <p className="mt-1 text-sm text-muted">{examTypeLabel(shown.type)}{shownSubject?.code ? `, ${shownSubject.code}` : ""}</p>
                   </div>
                   <Link
@@ -130,11 +131,12 @@ export default function TodayPage() {
                 </div>
 
                 {/* The exam as a row from the date sheet: labelled cells over hairlines, the top rule in the subject's ink. */}
-                <dl className="subj-line mt-5 flex flex-wrap gap-y-3 border-t pt-4">
+                {/* Phones: a two-column grid, since a wrapped row would start with a stray divider. */}
+                <dl className="subj-line mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 sm:flex sm:flex-wrap sm:gap-x-0">
                   {detailCells.map((c) => (
-                    <div key={c.label} className="min-w-0 border-l border-border pl-4 pr-6 first:border-l-0 first:pl-0">
+                    <div key={c.label} className="min-w-0 sm:border-l sm:border-border sm:pl-4 sm:pr-6 sm:first:border-l-0 sm:first:pl-0">
                       <dt className="text-[11px] font-medium text-faint">{c.label}</dt>
-                      <dd className={cn("mt-0.5 truncate text-sm font-medium text-text", c.num && "tabular-nums")}>{c.value}</dd>
+                      <dd className={cn("mt-0.5 break-words text-sm font-medium text-text sm:truncate", c.num && "tabular-nums")}>{c.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -154,7 +156,8 @@ export default function TodayPage() {
               </div>
             </div>
             {modeExams.length > 1 && (
-              <div role="tablist" aria-label="Choose an exam" className="divide-y divide-border border-t border-border">
+              // Toggle buttons, not tabs: picking a row re-points the countdown above rather than opening a panel of its own.
+              <div role="group" aria-label="Choose an exam" className="divide-y divide-border border-t border-border">
                 {modeExams.slice(0, 8).map((e) => {
                   const s = subject(e.subjectId);
                   const d = daysBetween(t, e.date);
@@ -163,8 +166,7 @@ export default function TodayPage() {
                     <button
                       key={e.id}
                       type="button"
-                      role="tab"
-                      aria-selected={on}
+                      aria-pressed={on}
                       onClick={() => setPickedExam(e.id!)}
                       style={subjectStyle(s?.color)}
                       className={cn(
@@ -174,7 +176,7 @@ export default function TodayPage() {
                     >
                       <span className="numeral text-[26px]"><span className={cn(d <= 3 && "mark")}>{d}</span></span>
                       <span className="min-w-0">
-                        <span className={cn("block truncate text-sm", on ? "subj-ink font-semibold" : "font-medium")}>{s?.name}</span>
+                        <span className={cn("line-clamp-2 break-words text-sm", on ? "subj-ink font-semibold" : "font-medium")}>{s?.name}</span>
                         <span className="mt-0.5 block truncate text-[13px] text-muted">{s?.code ? `${s.code}, ` : ""}{examTypeLabel(e.type)}</span>
                       </span>
                       <span className="hidden text-[13px] tabular-nums text-muted sm:block">{prettyDay(e.date)}{e.time && `, ${e.time}`}</span>

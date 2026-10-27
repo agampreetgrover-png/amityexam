@@ -166,6 +166,7 @@ export interface Chat {
   title: string; // the first question, until renamed
   createdAt: number;
   updatedAt: number;
+  pinned?: boolean; // kept at the top of History
 }
 
 export interface ChatSource {

@@ -18,6 +18,8 @@ type Difficulty = "easy" | "medium" | "hard";
 interface Graded { score: number; feedback?: string }
 
 const scoreColor = (s: number) => (s >= 80 ? "text-good" : s >= 60 ? "text-warn" : "text-bad");
+const attemptMeta = (a: QuizAttempt) =>
+  `${a.questions.length} question${a.questions.length === 1 ? "" : "s"}, ${new Date(a.createdAt).toLocaleDateString()}`;
 
 export function QuizTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
@@ -38,11 +40,12 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
   const [reviewing, setReviewing] = useState<QuizAttempt | null>(null);
 
   const materials = useMaterials(subjectId);
-  const attempts = useLiveQuery(() => db.quizzes.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]) ?? [];
+  const attempts = useLiveQuery(() => db.quizzes.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]);
 
   const toggle = (id: number) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const start = async () => {
+    if (!materials) return; // still loading; the button waits for them
     setBusy("Writing your quiz…");
     setError(null);
     try {
@@ -221,7 +224,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         {topics.length === 0 ? (
           <p className="text-sm text-muted">Add topics in the Syllabus tab first.</p>
         ) : (
-          <div className="max-h-72 space-y-4 overflow-y-auto pr-1">
+          // Phones list every topic in the page's own scroll; a box scrolling inside it cut chips in half.
+          <div className="space-y-4 sm:max-h-72 sm:overflow-y-auto sm:pr-1">
             {units.map((u) => {
               const ts = topics.filter((t) => t.unitId === u.id);
               if (!ts.length) return null;
@@ -231,13 +235,13 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   <label className="mb-2 flex items-center gap-2 text-sm font-semibold">
                     <input
                       type="checkbox"
-                      className="accent-[var(--accent)]"
+                      className="size-4 shrink-0 accent-[var(--accent)]"
                       checked={all}
                       onChange={() => setPicked((p) => (all ? p.filter((x) => !ts.some((t) => t.id === x)) : [...new Set([...p, ...ts.map((t) => t.id!)])]))}
                     />
                     {u.title}
                   </label>
-                  <div className="ml-6 flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 sm:ml-6">
                     {ts.map((t) => (
                       <button
                         key={t.id}
@@ -245,7 +249,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                         aria-pressed={picked.includes(t.id!)}
                         onClick={() => toggle(t.id!)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] transition-colors duration-150",
+                          // rounded-lg, not a pill: a long topic name wraps to two lines on a phone.
+                          "inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-3 py-1 text-left text-[13px] transition-colors duration-150 pointer-coarse:min-h-10",
                           picked.includes(t.id!)
                             ? "border-accent bg-accent-soft font-medium text-accent"
                             : "border-border bg-surface text-muted hover:bg-surface-2 hover:text-text",
@@ -274,7 +279,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
               <option value="hard">Hard</option>
             </Select>
           </Field>
-          <Button onClick={start} disabled={!picked.length || !!busy || !online} className="col-span-2 sm:col-span-1 sm:justify-self-end">
+          <Button onClick={start} disabled={!picked.length || !!busy || !online || !materials} className="col-span-2 sm:col-span-1 sm:justify-self-end">
             <Sparkles size={16} /> {busy || (picked.length ? `Start quiz on ${picked.length} topic${picked.length === 1 ? "" : "s"}` : "Pick topics to start")}
           </Button>
         </div>
@@ -282,7 +287,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
       </Card>
 
       <Section title="Past attempts">
-        {attempts.length === 0 ? (
+        {!attempts ? null : attempts.length === 0 ? (
           <Empty icon={<ClipboardList size={18} />} title="No quizzes taken yet" />
         ) : (
           <Panel as="ul" className="divide-y divide-border">
@@ -296,10 +301,14 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2/60 disabled:pointer-events-none sm:px-5"
                 >
                   <span className={cn("numeral w-16 shrink-0 text-[28px]", scoreColor(a.score))}>{a.score}%</span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
+                  {/* Phones: the count and date go under the topics, so the topics get the row's width. */}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">
+                      {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] tabular-nums text-muted sm:hidden">{attemptMeta(a)}</span>
                   </span>
-                  <span className="shrink-0 text-[13px] tabular-nums text-muted">{a.questions.length} questions, {new Date(a.createdAt).toLocaleDateString()}</span>
+                  <span className="hidden shrink-0 text-[13px] tabular-nums text-muted sm:block">{attemptMeta(a)}</span>
                   {a.questions.length > 0 && <ChevronRight size={16} className="shrink-0 text-faint transition-transform duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-muted" aria-hidden />}
                 </button>
               </li>

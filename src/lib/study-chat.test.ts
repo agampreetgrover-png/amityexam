@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatTitle, matchingPyqs, noteExcerpts, prepSummary, starterQuestions, type PrepInput } from "./study-chat";
+import { chatTitle, matchingPyqs, namedSubject, noteExcerpts, prepSummary, starterQuestions, type PrepInput } from "./study-chat";
 import type { PyqQuestion } from "./types";
 
 const q = (id: number, text: string, extra: Partial<PyqQuestion> = {}): PyqQuestion =>
@@ -76,4 +76,24 @@ describe("prep summary and starters", () => {
 it("titles a chat from its first question", () => {
   expect(chatTitle("  what   is 3NF? ")).toBe("what is 3NF?");
   expect(chatTitle("x".repeat(80))).toHaveLength(58);
+});
+
+describe("namedSubject", () => {
+  const subjects = [
+    { id: 1, name: "Exploring the Networks", code: "ITN101" },
+    { id: 2, name: "Analysis & Design of Algorithms", code: "CSE303" },
+    { id: 3, name: "Database Management Systems" },
+  ];
+  it("finds another subject by its initials, full name or code", () => {
+    expect(namedSubject("so how i should start preparing for ada", subjects, 1)?.id).toBe(2);
+    expect(namedSubject("plan for analysis and design of algorithms?", subjects, 1)?.id).toBe(2);
+    expect(namedSubject("Important topics in CSE303", subjects, 1)?.id).toBe(2);
+    expect(namedSubject("explain normal forms in database management systems", subjects, 1)?.id).toBe(3);
+  });
+  it("leaves the question where it is when it names the current subject or nothing", () => {
+    expect(namedSubject("explain routing algorithms", subjects, 1)).toBeUndefined();
+    expect(namedSubject("ada", subjects, 2)).toBeUndefined();
+    expect(namedSubject("how is ada different from exploring the networks", subjects, 1)).toBeUndefined();
+    expect(namedSubject("adapt the answer for 5 marks", subjects, 1)).toBeUndefined();
+  });
 });

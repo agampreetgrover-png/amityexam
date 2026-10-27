@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight, BarChart3, BookOpen, CornerDownLeft, GraduationCap, House, MessagesSquare, Search, Settings } from "lucide-react";
+import { ArrowLeftRight, BarChart3, BookOpen, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/db";
@@ -80,6 +80,8 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       { id: "p-today", group: "Go to", label: "Today", icon: <House size={16} />, run: go("/") },
       { id: "p-subjects", group: "Go to", label: "Subjects", icon: <BookOpen size={16} />, keywords: "syllabus notes", run: go("/subjects") },
       { id: "p-chat", group: "Go to", label: "Chat", icon: <MessagesSquare size={16} />, keywords: "ask doubt pyq notes history", run: go("/chat") },
+      { id: "p-important", group: "Go to", label: "Important", icon: <Flame size={16} />, keywords: "topics most asked pyq", run: go("/important") },
+      { id: "p-zero-prep", group: "Go to", label: "Zero prep", icon: <Sprout size={16} />, keywords: "last minute cram", run: go("/zero-prep") },
       { id: "p-exams", group: "Go to", label: "Exams", icon: <GraduationCap size={16} />, keywords: "date sheet", run: go("/exams") },
       { id: "p-progress", group: "Go to", label: "Progress", icon: <BarChart3 size={16} />, keywords: "stats charts", run: go("/progress") },
       { id: "p-settings", group: "Go to", label: "Settings", icon: <Settings size={16} />, keywords: "backup reminders", run: go("/settings") },

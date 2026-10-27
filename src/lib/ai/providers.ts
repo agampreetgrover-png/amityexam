@@ -1,16 +1,15 @@
 import { ApiError as GeminiApiError, GoogleGenAI, ThinkingLevel, type Content } from "@google/genai";
-import Groq from "groq-sdk";
 
-// Server-only AI providers. OpenRouter is tried first for everything; Gemini (bigger limits), then Groq, are the
-// automatic fallbacks when it's rate-limited, down or misconfigured. Groq can't read files, so scans stop at Gemini.
+// Server-only AI providers. OpenRouter is tried first for everything; Gemini is the automatic fallback when it's
+// rate-limited, down or misconfigured.
 
 export type Msg = { role: "system" | "user" | "assistant"; content: string };
-export type ProviderName = "gemini" | "groq" | "openrouter";
+export type ProviderName = "gemini" | "openrouter";
 type CallOpts = { fast?: boolean; kind?: "json" | "text" | "chat" };
 
-// Output caps (tokens) for OpenRouter and Gemini; Groq has smaller ones of its own. Roomy enough for the longest
-// real answers (a whole paper split into questions, a scan transcribed), but a model that runs away can't keep
-// the server busy streaming and parsing megabytes. Gemini counts its thinking against the same cap.
+// Output caps (tokens) for OpenRouter and Gemini. Roomy enough for the longest real answers (a whole paper split
+// into questions, a scan transcribed), but a model that runs away can't keep the server busy streaming and parsing
+// megabytes. Gemini counts its thinking against the same cap.
 const OUT_CAP = { json: 16_384, text: 8_192, chat: 4_096, extract: 16_384 } as const;
 const outCap = (kind?: CallOpts["kind"]) => OUT_CAP[kind ?? "text"];
 
@@ -48,7 +47,7 @@ const TIMEOUT_MS = 90_000;
 /** Strip API keys from text before it is logged. */
 export function redact(s: string): string {
   let out = s.replace(/AIza[\w-]{20,}|gsk_\w{20,}|AQ\.[\w-]{20,}|sk-or-[\w-]{20,}/g, "[redacted]");
-  for (const k of [process.env.GEMINI_API_KEY, process.env.GROQ_API_KEY, process.env.OPENROUTER_API_KEY]) if (k) out = out.split(k).join("[redacted]");
+  for (const k of [process.env.GEMINI_API_KEY, process.env.OPENROUTER_API_KEY]) if (k) out = out.split(k).join("[redacted]");
   return out;
 }
 
@@ -107,7 +106,8 @@ function gemini(apiKey: string): Provider {
       const { system, contents } = toGemini(messages);
       try {
         const res = await ai.models.generateContent({ model: model(opts?.fast), contents, config: config(system, "json") });
-        return res.text ?? "{}";
+        // No reply at all has to fail JSON parsing, so the next provider gets a turn; "{}" would pass as an empty answer.
+        return res.text ?? "";
       } catch (e) {
         throw geminiError(e);
       }
@@ -115,10 +115,20 @@ function gemini(apiKey: string): Provider {
     async *stream(messages, opts) {
       const { system, contents } = toGemini(messages);
       let stream: AsyncGenerator<{ text?: string }>;
+      // The client's timeout stays armed while the stream is read and would cut a long answer off,
+      // so here it only covers waiting for the reply to start.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
       try {
-        stream = await ai.models.generateContentStream({ model: model(opts?.fast), contents, config: config(system, opts?.kind === "chat" ? "chat" : "text") });
+        stream = await ai.models.generateContentStream({
+          model: model(opts?.fast),
+          contents,
+          config: { ...config(system, opts?.kind === "chat" ? "chat" : "text"), httpOptions: { timeout: 0 }, abortSignal: ctrl.signal },
+        });
       } catch (e) {
         throw geminiError(e);
+      } finally {
+        clearTimeout(timer);
       }
       try {
         for await (const chunk of stream) if (chunk.text) yield chunk.text;
@@ -136,80 +146,6 @@ function gemini(apiKey: string): Provider {
         return res.text ?? "";
       } catch (e) {
         throw geminiError(e);
-      }
-    },
-  };
-}
-
-// ---------- Groq ----------
-
-function groqError(e: unknown): AiProviderError {
-  if (e instanceof Groq.APIError) {
-    const msg = e.message ?? "";
-    const status = e.status ?? 500;
-    const retry = Number(e.headers?.["retry-after"] ?? 0) || undefined;
-    if (status === 429) {
-      const daily = /per day|\(RPD\)|\(TPD\)/i.test(msg);
-      return new AiProviderError(msg, 429, daily ? "day" : "minute", daily ? undefined : retry, "groq");
-    }
-    if (status === 401 || status === 403) return new AiProviderError(msg, status, "auth", undefined, "groq");
-    if (status === 404) return new AiProviderError(msg, 404, "config", undefined, "groq");
-    if (status === 413) return new AiProviderError(msg, 413, "too-large", undefined, "groq");
-    if (status >= 500) return new AiProviderError(msg, status, "unavailable", undefined, "groq");
-    return new AiProviderError(msg, status, "other", undefined, "groq");
-  }
-  return networkError(e, "groq");
-}
-
-function groq(apiKey: string): Provider {
-  const client = new Groq({ apiKey, maxRetries: 1, timeout: TIMEOUT_MS });
-  const model = (fast?: boolean) =>
-    fast ? (process.env.GROQ_FAST_MODEL ?? "openai/gpt-oss-20b") : (process.env.GROQ_MODEL ?? "openai/gpt-oss-120b");
-  // Free tier is 8K tokens/min and Groq counts requested output against it, so keep caps small.
-  const maxOut = (kind?: CallOpts["kind"]) => (kind === "json" ? 3000 : kind === "chat" ? 1500 : 2500);
-
-  return {
-    name: "groq",
-    maxContextChars: 12_000,
-    chatHistory: 6,
-    async json(messages, opts) {
-      try {
-        const res = await client.chat.completions.create({
-          model: model(opts?.fast),
-          messages,
-          response_format: { type: "json_object" },
-          temperature: 0.3,
-          max_completion_tokens: maxOut("json"),
-          reasoning_effort: "low",
-          include_reasoning: false,
-        });
-        return res.choices[0]?.message?.content ?? "{}";
-      } catch (e) {
-        throw groqError(e);
-      }
-    },
-    async *stream(messages, opts) {
-      let stream;
-      try {
-        stream = await client.chat.completions.create({
-          model: model(opts?.fast),
-          messages,
-          temperature: opts?.kind === "chat" ? 0.5 : 0.3,
-          max_completion_tokens: maxOut(opts?.kind),
-          reasoning_effort: "low",
-          include_reasoning: false,
-          stream: true,
-        });
-      } catch (e) {
-        throw groqError(e);
-      }
-      try {
-        for await (const chunk of stream) {
-          const t = chunk.choices[0]?.delta?.content;
-          if (t) yield t;
-        }
-      } catch (e) {
-        throw groqError(e);
       }
     },
   };
@@ -256,12 +192,15 @@ function openrouter(apiKey: string): Provider {
   const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
   async function call(body: Record<string, unknown>) {
+    // A stream's timeout only covers waiting for the reply to start; a long answer may take longer than that to arrive.
+    const ctrl = body.stream ? new AbortController() : undefined;
+    const timer = ctrl && setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "X-Title": "Amity Exams" },
       body: JSON.stringify({ ...body, reasoning: { effort: "low", exclude: true } }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+      signal: ctrl?.signal ?? AbortSignal.timeout(TIMEOUT_MS),
+    }).finally(() => clearTimeout(timer));
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       let msg = text;
@@ -288,7 +227,7 @@ function openrouter(apiKey: string): Provider {
     chatHistory: 10,
     async json(messages, opts) {
       try {
-        return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3, max_tokens: OUT_CAP.json })) ?? "{}";
+        return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3, max_tokens: OUT_CAP.json })) ?? "";
       } catch (e) {
         throw openrouterError(e);
       }
@@ -374,13 +313,11 @@ export function getProviders(): Provider[] {
   const out: Provider[] = [];
   if (process.env.OPENROUTER_API_KEY) out.push(openrouter(process.env.OPENROUTER_API_KEY));
   if (process.env.GEMINI_API_KEY) out.push(gemini(process.env.GEMINI_API_KEY));
-  if (process.env.GROQ_API_KEY) out.push(groq(process.env.GROQ_API_KEY));
   return out;
 }
 
 export const providerStatus = () => ({
   gemini: !!process.env.GEMINI_API_KEY,
-  groq: !!process.env.GROQ_API_KEY,
   openrouter: !!process.env.OPENROUTER_API_KEY,
 });
 

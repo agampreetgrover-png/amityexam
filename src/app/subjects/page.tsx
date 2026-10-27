@@ -73,12 +73,14 @@ function SubjectRow({ subject: s, topics: ts, onEdit }: { subject: Subject; topi
     >
       <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 rounded-md after:absolute after:inset-0">
         <span className="flex items-center gap-2">
-          <span className="truncate text-[15px] font-semibold tracking-[-0.01em] transition-colors duration-150 group-hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))]">
+          {/* Phones: the name may take two lines, and the weak count moves down to the line below. */}
+          <span className="line-clamp-2 break-words text-[15px] font-semibold tracking-[-0.01em] transition-colors duration-150 group-hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))] sm:truncate">
             {s.name}
           </span>
-          {weak > 0 && <Badge className="shrink-0 bg-bad/10 text-bad">{weak} weak</Badge>}
+          {weak > 0 && <Badge className="hidden shrink-0 bg-bad/10 text-bad sm:inline-flex">{weak} weak</Badge>}
         </span>
-        <span className="mt-1 flex flex-wrap gap-x-3 text-[13px] text-muted">
+        <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
+          {weak > 0 && <Badge className="bg-bad/10 text-bad sm:hidden">{weak} weak</Badge>}
           {s.code && <span className="font-medium text-text/70">{s.code}</span>}
           <span>{ts.length} topic{ts.length === 1 ? "" : "s"}</span>
           {s.credits ? <span>{s.credits} credits</span> : null}
@@ -167,7 +169,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
               aria-label={`Colour ${i + 1}`}
               aria-checked={color === c}
               onClick={() => setColor(c)}
-              className="h-7 w-7 rounded-full transition-shadow duration-150"
+              className="h-7 w-7 rounded-full transition-shadow duration-150 pointer-coarse:h-9 pointer-coarse:w-9"
               // The chosen swatch gets a ring in its own colour, set off by a white gap.
               style={{
                 background: c,

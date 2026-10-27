@@ -167,6 +167,34 @@ export function sourcesOf(files: string[], picked: Pick<PyqQuestion, "year" | "n
   ];
 }
 
+// Left out of a subject's initials, so "Analysis and Design of Algorithms" is "ADA".
+const MINOR_WORDS = new Set(["and", "of", "the", "in", "to", "for", "with", "a", "an", "on"]);
+const tokens = (s: string) => s.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+
+/**
+ * The one subject a question names, if it isn't `currentId`: by its full name, its code ("CSE201") or its
+ * initials ("ada"). Nothing when it names the current subject too, or more than one other, so a passing
+ * mention never moves a question.
+ */
+export function namedSubject<S extends { id?: number; name: string; code?: string }>(question: string, subjects: S[], currentId?: number): S | undefined {
+  // Small words are dropped on both sides, so "analysis and design of algorithms" matches "Analysis & Design of Algorithms".
+  const major = (t: string[]) => t.filter((w) => !MINOR_WORDS.has(w));
+  const q = tokens(question);
+  const said = new Set(q);
+  const flat = ` ${major(q).join(" ")} `;
+  const hits = subjects.filter((s) => {
+    const name = major(tokens(s.name));
+    const initials = name.map((w) => w[0]).join("");
+    return (
+      (name.length > 1 && flat.includes(` ${name.join(" ")} `)) ||
+      (!!s.code && said.has(s.code.toLowerCase().replace(/[^a-z0-9]/g, ""))) ||
+      (initials.length >= 3 && said.has(initials))
+    );
+  });
+  if (hits.some((s) => s.id === currentId)) return undefined;
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
 /** A conversation's title from its first question. */
 export const chatTitle = (question: string) => {
   const t = question.replace(/\s+/g, " ").trim();

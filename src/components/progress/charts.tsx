@@ -2,7 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { subjectStyle } from "@/components/ui";
+import { cn, subjectStyle } from "@/components/ui";
 import {
   Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
@@ -31,15 +31,17 @@ function TooltipBox({ active, payload, label, unit }: TipProps) {
 }
 
 /** Wraps a chart with a visually-hidden-by-default table view for accessibility. */
-function ChartFrame({ children, rows, columns, height = 240 }: {
+function ChartFrame({ children, rows, columns, height = 240, phone }: {
   children: ReactNode;
   rows: (string | number)[][];
   columns: string[];
   height?: number;
+  phone?: ReactNode; // a form that suits a narrow screen better; the chart then shows from sm up
 }) {
   return (
     <div>
-      <div style={{ height }} className="w-full">{children}</div>
+      {phone && <div className="sm:hidden">{phone}</div>}
+      <div style={{ height }} className={cn("w-full", phone && "hidden sm:block")}>{children}</div>
       <details className="mt-2 text-[13px] text-muted">
         <summary className="inline-flex cursor-pointer select-none items-center gap-1 rounded-md py-1 transition-colors duration-150 hover:text-text"><ChevronRight size={14} className="chev" aria-hidden /> Show as table</summary>
         <table className="mt-2 w-full text-left">
@@ -59,8 +61,24 @@ function ChartFrame({ children, rows, columns, height = 240 }: {
 // interval={0} on the y axes skips measuring each tick label; the ticks are always 40px+ apart.
 export function CoverageChart({ data }: { data: { name: string; color?: string; value: number }[] }) {
   const height = Math.max(120, data.length * 40 + 40);
+  // Phones: a 132px label column would cut every name short, so each bar gets its full name and value above it.
+  const phone = (
+    <ul className="space-y-3.5">
+      {data.map((d) => (
+        <li key={d.name} style={subjectStyle(d.color)}>
+          <div className="flex items-baseline justify-between gap-3 text-[13px]">
+            <span className="min-w-0 break-words text-text">{d.name}</span>
+            <span className="shrink-0 tabular-nums text-muted">{d.value}%</span>
+          </div>
+          <div className="mt-1.5 h-2 rounded-full bg-surface-2" aria-hidden>
+            <div className="subj-dot h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, d.value))}%` }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
   return (
-    <ChartFrame height={height} columns={["Subject", "Coverage %"]} rows={data.map((d) => [d.name, d.value])}>
+    <ChartFrame height={height} columns={["Subject", "Coverage %"]} rows={data.map((d) => [d.name, d.value])} phone={phone}>
       <ResponsiveContainer>
         <BarChart data={data} layout="vertical" margin={{ left: 0, right: 36, top: 4, bottom: 4 }}>
           <CartesianGrid {...GRID} vertical horizontal={false} />

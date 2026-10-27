@@ -214,7 +214,7 @@ function StatusSelect({ status, onChange }: { status: TopicStatus; onChange: (s:
         onChange={(e) => onChange(e.target.value as TopicStatus)}
         aria-label="Status"
         className={cn(
-          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-line-strong focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
+          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium pointer-coarse:h-9 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-line-strong focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
           tone.pill,
         )}
       >
@@ -264,9 +264,10 @@ function TopicRow({ topic }: { topic: Topic }) {
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      {/* On a phone this wraps under the title; the actions keep to the right edge so they don't shift with the pill's width. */}
+      <div className="flex items-center gap-2 max-sm:w-full">
         <StatusSelect status={topic.status} onChange={(status) => db.topics.update(id, { status })} />
-        <span className={rowActions}>
+        <span className={cn(rowActions, "ml-auto")}>
           <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label="Rename topic" title="Rename"><Pencil size={13} /></Button>
           <Button variant="danger" size="icon" onClick={remove} aria-label="Delete topic" title="Delete"><Trash2 size={13} /></Button>
         </span>
@@ -396,13 +397,14 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
 
   return (
     <div className="space-y-3">
-      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-line-strong p-4 text-sm text-muted transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 hover:text-text">
+      {/* sr-only, not hidden: a display:none input can't take focus, so the keyboard could never reach the upload. */}
+      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-line-strong p-4 text-sm text-muted transition-colors duration-150 hover:border-accent/40 hover:bg-surface-2 hover:text-text focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent">
         <Upload size={18} className="shrink-0" aria-hidden />
         Upload the syllabus as a PDF, photo or text file
         <input
           type="file"
           accept="application/pdf,.txt,.md,image/*"
-          className="hidden"
+          className="sr-only"
           disabled={!!reading}
           onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }}
         />

@@ -3,8 +3,11 @@
 // page requests while a sync runs; here it gets a thread of its own.
 import { parentPort } from "node:worker_threads";
 
+// A parser that fails to load says nothing about the file, so its error is marked to be tried again later.
+const load = (name) => import(name).catch((e) => { throw Object.assign(e instanceof Error ? e : new Error(String(e)), { transient: true }); });
+
 async function pdfText(data) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await load("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({ data, disableFontFace: true, useSystemFonts: false, useWorkerFetch: false });
   const doc = await task.promise;
   const pages = [];
@@ -29,7 +32,7 @@ async function pdfText(data) {
 }
 
 async function pptxText(data) {
-  const { default: JSZip } = await import("jszip");
+  const { default: JSZip } = await load("jszip");
   const zip = await JSZip.loadAsync(data);
   const slides = Object.keys(zip.files)
     .map((f) => f.match(/^ppt\/slides\/slide(\d+)\.xml$/))
@@ -49,7 +52,7 @@ async function pptxText(data) {
 }
 
 async function docxText(data) {
-  const { default: mammoth } = await import("mammoth");
+  const { default: mammoth } = await load("mammoth");
   const buffer = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
   return { text: (await mammoth.extractRawText({ buffer })).value, pages: 0 };
 }
@@ -61,6 +64,6 @@ parentPort.on("message", async ({ ext, data }) => {
   try {
     parentPort.postMessage({ result: await PARSERS[ext](data) });
   } catch (e) {
-    parentPort.postMessage({ error: e instanceof Error ? e.message : String(e) });
+    parentPort.postMessage({ error: e instanceof Error ? e.message : String(e), transient: e?.transient === true });
   }
 });

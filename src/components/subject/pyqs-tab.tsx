@@ -283,6 +283,8 @@ function QuestionRow({ q, topic, showYear, paperName }: { q: PyqQuestion; topic?
       <div className="min-w-0 flex-1">
         <p className="whitespace-pre-line break-words text-[15px] leading-relaxed">{q.text}</p>
         <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] tabular-nums text-muted empty:hidden">
+          {/* Phones: marks join this line, so the question gets the full width. */}
+          {q.marks ? <span className="font-medium text-text/80 sm:hidden">{q.marks} marks</span> : null}
           {showYear && <span>{q.number}</span>}
           {q.section && <span>{q.section}</span>}
           {topic && <Badge className="bg-accent-soft text-accent">{topic.title}</Badge>}
@@ -290,7 +292,7 @@ function QuestionRow({ q, topic, showYear, paperName }: { q: PyqQuestion; topic?
           {paperName && <span className="min-w-0 truncate">{paperName}</span>}
         </p>
       </div>
-      {q.marks ? <span className="shrink-0 whitespace-nowrap pt-0.5 text-right text-[13px] tabular-nums text-muted">{q.marks} marks</span> : null}
+      {q.marks ? <span className="hidden shrink-0 whitespace-nowrap pt-0.5 text-right text-[13px] tabular-nums text-muted sm:block">{q.marks} marks</span> : null}
     </li>
   );
 }

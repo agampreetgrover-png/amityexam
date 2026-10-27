@@ -7,9 +7,9 @@ import { db } from "@/lib/db";
 import type { ExamMode, Material, Subject, Topic, Unit } from "@/lib/types";
 import { Select } from "../ui";
 
-/** All uploaded materials for a subject (empty while loading). */
-export function useMaterials(subjectId: number): Material[] {
-  return useLiveQuery(() => db.materials.where({ subjectId }).toArray(), [subjectId]) ?? [];
+/** All uploaded materials for a subject (undefined while loading, so it isn't mistaken for none). */
+export function useMaterials(subjectId: number): Material[] | undefined {
+  return useLiveQuery(() => db.materials.where({ subjectId }).toArray(), [subjectId]);
 }
 
 /** Study material texts, excluding past papers (those only feed predictions and chat). */

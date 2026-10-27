@@ -158,7 +158,7 @@ export default function ProgressPage() {
                     <li key={x.id} className="flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-surface-2/60 sm:px-5">
                       <span aria-hidden className="h-5 w-[3px] shrink-0 rounded-full" style={{ background: s?.color }} />
                       <div className="min-w-0 flex-1">
-                        <Link href={`/subjects/view?id=${x.subjectId}`} className="block truncate font-medium text-text hover:text-accent hover:underline">{x.title}</Link>
+                        <Link href={`/subjects/view?id=${x.subjectId}`} className="line-clamp-2 break-words font-medium text-text hover:text-accent hover:underline sm:block sm:truncate">{x.title}</Link>
                         <p className="truncate text-[13px] text-muted sm:hidden">{s?.name}</p>
                       </div>
                       <span className="hidden w-40 truncate text-[13px] text-muted sm:block">{s?.name}</span>

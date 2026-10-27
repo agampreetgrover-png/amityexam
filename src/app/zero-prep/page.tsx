@@ -101,8 +101,10 @@ export default function ZeroPrepPage() {
       {header}
 
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Phones: a tidy two-column grid with the switches full width, instead of controls wrapping ragged. */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <Segmented
+            className="col-span-2 flex sm:inline-flex [&>button]:flex-1 sm:[&>button]:flex-none"
             label="How much prep"
             value={prep}
             onChange={(v) => {
@@ -114,13 +116,13 @@ export default function ZeroPrepPage() {
               { value: "light", label: <><PrepGlyph level={1} />Light prep too</> },
             ]}
           />
-          <Select value={asked} onChange={(e) => setAsked(e.target.value as AskedFilter)} className="h-9 w-auto text-[13px]" aria-label="How often asked">
+          <Select value={asked} onChange={(e) => setAsked(e.target.value as AskedFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="How often asked">
             <option value="any">Asked or not</option>
             <option value="asked">Asked in PYQs</option>
             <option value="often">Asked 2+ times</option>
             <option value="hot">Most asked</option>
           </Select>
-          <Select value={importance} onChange={(e) => setImportance(e.target.value as ImportanceFilter)} className="h-9 w-auto text-[13px]" aria-label="Importance">
+          <Select value={importance} onChange={(e) => setImportance(e.target.value as ImportanceFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="Importance">
             <option value="any">Any importance</option>
             <option value="medium">Core and regular</option>
             <option value="high">Core only</option>
@@ -129,7 +131,7 @@ export default function ZeroPrepPage() {
             <Select
               value={subject}
               onChange={(e) => setSubjectId(e.target.value === "all" ? "all" : Number(e.target.value))}
-              className="h-9 w-auto max-w-48 text-[13px]"
+              className="col-span-2 h-9 w-full min-w-0 text-[13px] sm:w-auto sm:max-w-48"
               aria-label="Subject"
             >
               <option value="all">All subjects</option>
@@ -139,7 +141,7 @@ export default function ZeroPrepPage() {
           <Segmented
             size="sm"
             label="Sort by"
-            className="sm:ml-auto"
+            className="col-span-2 flex sm:ml-auto sm:inline-flex [&>button]:flex-1 sm:[&>button]:flex-none"
             value={sort}
             onChange={setSort}
             options={[
@@ -302,10 +304,10 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
       {runs.length > 1 && (
         <ul className="flex flex-wrap gap-x-5 gap-y-1.5 text-[13px] text-muted" aria-label="Subjects">
           {runs.map((run) => (
-            <li key={run.subject.id} className="inline-flex items-center gap-2" style={subjectStyle(run.subject.color)}>
-              <span aria-hidden className="subj-dot h-2.5 w-3.5 rounded-[2px]" />
-              <span className="text-text">{run.subject.name}</span>
-              <span className="tabular-nums">{formatMins(run.mins)}</span>
+            <li key={run.subject.id} className="inline-flex min-w-0 max-w-full items-center gap-2" style={subjectStyle(run.subject.color)}>
+              <span aria-hidden className="subj-dot h-2.5 w-3.5 shrink-0 rounded-[2px]" />
+              <span className="min-w-0 truncate text-text" title={run.subject.name}>{run.subject.name}</span>
+              <span className="whitespace-nowrap tabular-nums">{formatMins(run.mins)}</span>
             </li>
           ))}
         </ul>
@@ -337,27 +339,31 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
               <span className={cn("min-w-0 break-words transition-colors duration-200", done && "text-muted")}>{topic.title}</span>
               {hot && <Badge className="bg-accent-soft text-accent">Hot</Badge>}
             </p>
-            <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted">
-              <span className="inline-flex items-center gap-1.5" title={PREP_WORD[prep.level]}>
+            {/* Phones fold the Time and Weight columns in here, first, so the facts the list is sorted by lead. */}
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted">
+              <span className="font-medium text-text sm:hidden">{formatMins(prep.mins)}</span>
+              <span className={cn("sm:hidden", prep.importance === 3 && "font-medium text-text")}>{IMPORTANCE[prep.importance]}</span>
+              {/* Alone, the staircase reads as a stray dash on a phone; it shows there only beside what to learn first. */}
+              <span className={cn("inline-flex min-w-0 items-center gap-1.5", !prep.needs && "max-sm:hidden")} title={PREP_WORD[prep.level]}>
                 <PrepGlyph level={prep.level} />
                 <span className="sr-only">{PREP_WORD[prep.level]}</span>
-                {prep.needs ? <span>First: {prep.needs}</span> : <span className="sm:hidden">{PREP_WORD[prep.level]}</span>}
+                {prep.needs && <span>First: {prep.needs}</span>}
               </span>
               {showSubject && (
-                <span className="inline-flex items-center gap-1.5">
+                // Its own line on phones, cut to one line: a long subject name otherwise wraps three times.
+                <span className="flex w-full min-w-0 items-center gap-1.5 sm:inline-flex sm:w-auto">
                   <span aria-hidden className="subj-dot h-2.5 w-2.5 flex-none rounded-full" />
-                  {subject.name}
+                  <span className="truncate">{subject.name}</span>
                 </span>
               )}
-              <span className="sm:hidden">{formatMins(prep.mins)}</span>
-              <span className="sm:hidden">{IMPORTANCE[prep.importance]}</span>
             </p>
           </div>
           <span className="hidden w-24 shrink-0 text-[13px] tabular-nums text-muted sm:block">{formatMins(prep.mins)}</span>
           <span className={cn("hidden w-20 shrink-0 text-[13px] sm:block", prep.importance === 3 ? "font-medium text-text" : "text-muted")}>
             {IMPORTANCE[prep.importance]}
           </span>
-          <span className="w-16 shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted">
+          {/* Fixed width only where it lines up with the columns beside it; on phones it just fits "2×". */}
+          <span className="shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted sm:w-16">
             {count ? <span className={cn("font-semibold", hot ? "text-accent" : "text-text")}>{count}×</span> : "—"}
           </span>
           <ChevronDown size={16} className={cn("w-5 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />

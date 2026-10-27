@@ -16,7 +16,7 @@ const PROMPT = `Transcribe ALL the text in this file faithfully, in reading orde
 - If handwriting is unclear, give your best reading followed by [?].
 Output only the transcription, with no preamble.`;
 
-/** Scanned PDFs and photos of notes → text: OpenRouter first, then Gemini (Groq can't read files). */
+/** Scanned PDFs and photos of notes → text: OpenRouter first, then Gemini. */
 export async function POST(req: Request) {
   if (!getProviders().some((p) => p.extract))
     return Response.json({ error: "Reading scans/photos needs an OPENROUTER_API_KEY or GEMINI_API_KEY." }, { status: 501 });

@@ -62,6 +62,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
         kind: chat ? "chat" : "text",
       })[Symbol.asyncIterator]();
       const first = await it.next();
+      // A stream that ends before any text is a failed answer, not an empty one: let the next provider try.
+      if (first.done) throw new AiProviderError("The AI returned an empty answer. Try again.", 502, "bad-output", undefined, p.name);
       return { it, first };
     });
     return streamResponse(result.it, result.first, provider);

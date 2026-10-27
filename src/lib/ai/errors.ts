@@ -1,8 +1,8 @@
 import { readLimited } from "@/lib/read-limited";
 import { AiProviderError, redact, type ProviderName } from "./providers";
 
-export const NO_KEYS = "No AI key set. Add GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY to .env.local and restart.";
-const KEY_NAMES: Record<ProviderName, string> = { gemini: "GEMINI_API_KEY", groq: "GROQ_API_KEY", openrouter: "OPENROUTER_API_KEY" };
+export const NO_KEYS = "No AI key set. Add OPENROUTER_API_KEY or GEMINI_API_KEY to .env.local and restart.";
+const KEY_NAMES: Record<ProviderName, string> = { gemini: "GEMINI_API_KEY", openrouter: "OPENROUTER_API_KEY" };
 
 /** Thrown by readJsonBody; carries the HTTP status to reply with. */
 export class BadRequest extends Error {
@@ -42,7 +42,7 @@ export function errorResponse(err: unknown) {
       case "too-large":
         return reply("Input too long for the model. Use less material or a single topic.", 413);
       case "config":
-        return reply(err.message === "No AI key set" ? NO_KEYS : "The configured AI model isn't available. Check GEMINI_MODEL / GROQ_MODEL / OPENROUTER_MODEL.", 500);
+        return reply(err.message === "No AI key set" ? NO_KEYS : "The configured AI model isn't available. Check OPENROUTER_MODEL / GEMINI_MODEL.", 500);
       case "bad-output":
         return reply(err.message, 502); // our own fixed messages
       case "unavailable":

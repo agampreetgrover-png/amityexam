@@ -26,6 +26,8 @@ export const viewport: Viewport = {
     { media: "(prefers-color-scheme: dark)", color: "#1e2925" },
   ],
   colorScheme: "light dark",
+  // Without "cover", iOS reports every env(safe-area-inset-*) as 0 and the bottom bar sits under the home indicator.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

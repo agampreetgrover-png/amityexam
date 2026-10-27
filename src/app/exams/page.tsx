@@ -11,7 +11,7 @@ import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
 import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
 import { Button, Empty, Field, Input, Modal, PageHeader, Panel, Section, Select, cn, subjectStyle, tableHead } from "@/components/ui";
-import { DatesheetImport } from "@/components/exams/datesheet-import";
+import { DatesheetImport, type ImportDraft } from "@/components/exams/datesheet-import";
 import { toast } from "@/components/toast";
 import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
 
@@ -24,6 +24,8 @@ export default function ExamsPage() {
   const [editing, setEditing] = useState<Exam | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Held here, not in the dialog (its content unmounts on close), so an accidental Esc doesn't lose the review.
+  const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const [showAll, setShowAll] = useState(false);
   const mode = useExamMode();
   const t = useToday();
@@ -66,7 +68,7 @@ export default function ExamsPage() {
         {/* Stacked under the subject on narrow tables; its own three columns on wide ones. */}
         <div className="min-w-0 space-y-1.5 @xl:contents @xl:space-y-0">
           <div className="min-w-0">
-            <h2 className={cn("truncate text-[15px] font-semibold tracking-[-0.01em]", past && "font-medium")}>{s?.name ?? "Unknown subject"}</h2>
+            <h2 className={cn("line-clamp-2 break-words text-[15px] font-semibold tracking-[-0.01em] @xl:truncate", past && "font-medium")}>{s?.name ?? "Unknown subject"}</h2>
             <p className="mt-1 text-[13px] text-muted">
               {examTypeLabel(e.type)}
               {e.topicIds.length > 0 && `, ${e.topicIds.length} topic${e.topicIds.length === 1 ? "" : "s"} in scope`}
@@ -93,8 +95,8 @@ export default function ExamsPage() {
           >
             <Briefcase size={14} className="text-muted" /> Exam kit
           </Link>
-          <Button variant="ghost" size="icon" aria-label="Edit exam" title="Edit" onClick={() => setEditing(e)}><Pencil size={15} /></Button>
-          <Button variant="danger" size="icon" aria-label="Delete exam" title="Delete" onClick={() => confirm("Delete this exam?") && deleteExam(e.id!)}><Trash2 size={15} /></Button>
+          <Button variant="ghost" size="icon" aria-label={`Edit ${s?.name ?? "this"} exam`} title="Edit" onClick={() => setEditing(e)}><Pencil size={15} /></Button>
+          <Button variant="danger" size="icon" aria-label={`Delete ${s?.name ?? "this"} exam`} title="Delete" onClick={() => confirm("Delete this exam?") && deleteExam(e.id!)}><Trash2 size={15} /></Button>
         </div>
       </li>
     );
@@ -175,7 +177,7 @@ export default function ExamsPage() {
         />
       </Modal>
       <Modal open={importing} onClose={() => setImporting(false)} title="Upload date sheet">
-        <DatesheetImport onDone={() => setImporting(false)} />
+        <DatesheetImport draft={importDraft} onDraft={setImportDraft} onDone={() => setImporting(false)} />
       </Modal>
     </>
   );
@@ -192,6 +194,8 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
   const [time, setTime] = useState(initial?.time ?? "10:00");
   const [duration, setDuration] = useState(initial?.durationMins?.toString() ?? "180");
   const [scope, setScope] = useState<Set<number>>(new Set(initial?.topicIds ?? []));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   // The picker shows the syllabus of the exam's season (by type; "other" follows the app mode),
   // plus any unit that already has ticked topics so nothing saved is ever hidden.
@@ -208,14 +212,22 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!sid) return;
+    // The guard stops a double tap adding the exam twice.
+    if (!sid || saving) return;
+    setSaving(true);
+    setSaveError(false);
     const data = {
       subjectId: sid, type, date, time: time || undefined, durationMins: Number(duration) || undefined,
       topicIds: [...scope],
     };
-    if (initial?.id) await db.exams.update(initial.id, data);
-    else await db.exams.add({ ...data, checklist: DEFAULT_CHECKLIST });
-    onDone(type);
+    try {
+      if (initial?.id) await db.exams.update(initial.id, data);
+      else await db.exams.add({ ...data, checklist: DEFAULT_CHECKLIST });
+      onDone(type);
+    } catch {
+      setSaving(false);
+      setSaveError(true);
+    }
   };
 
   return (
@@ -282,7 +294,8 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
           />
         )}
       </fieldset>
-      <div className="flex justify-end pt-1"><Button type="submit">Save exam</Button></div>
+      {saveError && <p className="text-sm text-bad" role="alert">Couldn&apos;t save the exam. Try again.</p>}
+      <div className="flex justify-end pt-1"><Button type="submit" disabled={saving}>Save exam</Button></div>
     </form>
   );
 }

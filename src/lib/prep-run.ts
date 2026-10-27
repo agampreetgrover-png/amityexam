@@ -67,7 +67,8 @@ export async function ratePrep({ again = false, subjectId }: { again?: boolean; 
         try {
           const res = await aiJson("prep", {
             subject: subject.name,
-            topics: batch.map((t) => (unitTitle.get(t.unitId) ? `${t.title} (${unitTitle.get(t.unitId)})` : t.title)),
+            // The AI route refuses a topic over 300 characters, which would fail this batch on every run.
+            topics: batch.map((t) => (unitTitle.get(t.unitId) ? `${t.title} (${unitTitle.get(t.unitId)})` : t.title).slice(0, 300)),
           });
           rated += await save(batch, res.topics);
         } catch (e) {

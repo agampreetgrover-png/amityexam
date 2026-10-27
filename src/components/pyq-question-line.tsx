@@ -8,11 +8,13 @@ export function QuestionLine({ q }: { q: PyqQuestion }) {
       <div className="min-w-0 flex-1">
         <p className="whitespace-pre-line break-words text-[14px] leading-relaxed">{q.text}</p>
         <p className="mt-1 flex flex-wrap items-center gap-x-3 text-[12px] tabular-nums text-muted empty:hidden">
+          {/* Phones: marks join this line, so the question gets the full width. */}
+          {q.marks ? <span className="font-medium text-text/80 sm:hidden">{q.marks} marks</span> : null}
           <span>{q.number}</span>
           {q.section && <span>{q.section}</span>}
         </p>
       </div>
-      {q.marks ? <span className="shrink-0 whitespace-nowrap pt-0.5 text-right text-[13px] tabular-nums text-muted">{q.marks} marks</span> : null}
+      {q.marks ? <span className="hidden shrink-0 whitespace-nowrap pt-0.5 text-right text-[13px] tabular-nums text-muted sm:block">{q.marks} marks</span> : null}
     </li>
   );
 }

@@ -45,6 +45,9 @@ const callJson = (action: "pyq" | "pyqmap", body: AiRequest): Promise<unknown> =
 
 const MAX_PAPER_CHARS = 60_000; // a paper is a few pages; anything longer is mostly OCR noise
 const MAP_BATCH = 40;
+// What the AI route accepts in `topics` (see AiRequestSchema); anything over is refused outright.
+const MAP_TOPICS = 150;
+const MAX_TOPIC_CHARS = 300;
 
 function cleanPaper(raw: unknown): PaperResult {
   const r = (raw ?? {}) as Partial<PaperResult>;
@@ -125,6 +128,12 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
       set({ done: state.done + 1 }); // a failed paper is still one step through the list
       continue;
     }
+    // Saved with no questions, the paper would count as analysed and never be read again.
+    if (!result.questions.length) {
+      fail(paper.id!, "The AI found no questions in this paper.");
+      set({ done: state.done + 1 });
+      continue;
+    }
     await savePaper(paper, result);
     analysed++;
     set({ done: state.done + 1 });
@@ -176,7 +185,7 @@ export async function setPaperExam(materialId: number, exam: ExamMode) {
   else if (m) void analyseSubject(m.subjectId);
 }
 
-async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopped: boolean }> {
+async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopped: boolean; error?: string }> {
   const [subject, units, topics, papers, all] = await Promise.all([
     db.subjects.get(subjectId),
     db.units.where({ subjectId }).sortBy("order"),
@@ -202,47 +211,60 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
   if (!scopes.size) return { mapped: 0, stopped: false };
 
   let mapped = 0;
+  let error: string | undefined;
   set({ total: [...scopes.values()].reduce((a, s) => a + s.qs.length, 0), done: 0 });
   for (const { scoped, qs } of scopes.values()) {
     const titles = scoped.map((t) => {
       const unit = units.find((u) => u.id === t.unitId)?.title;
-      return unit ? `${t.title} (${unit})` : t.title;
+      return (unit ? `${t.title} (${unit})` : t.title).slice(0, MAX_TOPIC_CHARS);
     });
     for (let i = 0; i < qs.length; i += MAP_BATCH) {
-      if (offline()) return { mapped, stopped: true };
+      if (offline()) return { mapped, stopped: true, error };
       const batch = qs.slice(i, i + MAP_BATCH);
       set({ message: `Matching questions to your ${subject.name} syllabus…` });
-      let raw: unknown;
-      try {
-        raw = await callJson("pyqmap", {
-          subject: subject.name,
-          topics: titles,
-          text: JSON.stringify(batch.map((q, j) => ({ i: j, q: q.text.slice(0, 500) }))),
-        });
-      } catch (e) {
-        if (isLimit(e)) {
-          set({ message: "AI limit reached. The remaining questions will be matched later." });
-          return { mapped, stopped: true };
+      // The API takes so many topics a request, so a long syllabus goes in slices. A question takes the first
+      // slice's match, and counts as fitting no topic only once every slice has said so.
+      const hit = new Map<number, number>(); // question's index in batch → topic's index in scoped
+      const misses = new Map<number, Set<number>>(); // question's index in batch → slices that found no topic
+      const slices = Math.ceil(titles.length / MAP_TOPICS);
+      for (let k = 0; k < titles.length; k += MAP_TOPICS) {
+        let raw: unknown;
+        try {
+          raw = await callJson("pyqmap", {
+            subject: subject.name,
+            topics: titles.slice(k, k + MAP_TOPICS),
+            text: JSON.stringify(batch.map((q, j) => ({ i: j, q: q.text.slice(0, 500) }))),
+          });
+        } catch (e) {
+          if (isLimit(e)) {
+            set({ message: "AI limit reached. The remaining questions will be matched later." });
+            return { mapped, stopped: true, error };
+          }
+          error = e instanceof Error && e.message ? e.message : "the AI request failed";
+          continue;
         }
-        continue;
-      }
-      const entries = Array.isArray((raw as { map?: unknown })?.map) ? (raw as { map: { i?: unknown; t?: unknown }[] }).map : [];
-      await db.transaction("rw", db.pyqQuestions, async () => {
+        const entries = Array.isArray((raw as { map?: unknown })?.map) ? (raw as { map: { i?: unknown; t?: unknown }[] }).map : [];
         for (const m of entries) {
-          const q = typeof m.i === "number" ? batch[m.i] : undefined;
-          if (!q) continue; // questions the AI skipped stay unmapped and are retried next time
+          if (typeof m.i !== "number" || !batch[m.i] || hit.has(m.i)) continue;
+          if (typeof m.t === "number" && m.t >= 0 && k + m.t < Math.min(k + MAP_TOPICS, scoped.length)) hit.set(m.i, k + m.t);
+          else misses.set(m.i, (misses.get(m.i) ?? new Set()).add(k));
+        }
+      }
+      await db.transaction("rw", db.pyqQuestions, async () => {
+        for (const [j, q] of batch.entries()) {
+          const t = hit.get(j) ?? (misses.get(j)?.size === slices ? -1 : undefined);
+          if (t === undefined) continue; // questions the AI skipped stay unmapped and are retried next time
           // The paper may have been re-tagged while the AI was answering; this match is for the old syllabus then.
           const cur = await db.pyqQuestions.get(q.id!);
           if (!cur || cur.exam !== q.exam || cur.topicId !== q.topicId) continue;
-          const t = typeof m.t === "number" && m.t >= 0 && m.t < scoped.length ? scoped[m.t].id! : null;
-          await db.pyqQuestions.update(q.id, { topicId: t });
+          await db.pyqQuestions.update(q.id, { topicId: t >= 0 ? scoped[t].id! : null });
           mapped++;
         }
       });
       set({ done: mapped });
     }
   }
-  return { mapped, stopped: false };
+  return { mapped, stopped: false, error };
 }
 
 // ---- Public API ------------------------------------------------------------------------------
@@ -271,12 +293,16 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
   }
 }
 
-const finalMessage = (papers: number, mapped: number, stopped: boolean) =>
+const finalMessage = (papers: number, mapped: number, stopped: boolean, mapError?: string) =>
   set({
     message: stopped
       ? state.message
-      : papers || mapped
-        ? [papers && `${papers} paper${papers === 1 ? "" : "s"} analysed`, mapped && `${mapped} question${mapped === 1 ? "" : "s"} matched to topics`].filter(Boolean).join(" · ")
+      : papers || mapped || mapError
+        ? [
+            papers && `${papers} paper${papers === 1 ? "" : "s"} analysed`,
+            mapped && `${mapped} question${mapped === 1 ? "" : "s"} matched to topics`,
+            mapError && `Some questions couldn't be matched (${mapError})`,
+          ].filter(Boolean).join(" · ")
         : "",
   });
 
@@ -284,8 +310,8 @@ const finalMessage = (papers: number, mapped: number, stopped: boolean) =>
 export const analyseSubject = (subjectId: number, { max = 8 } = {}) =>
   exclusive(async () => {
     const a = await analysePapersStep(subjectId, max);
-    const m = a.stopped ? { mapped: 0, stopped: true } : await mapTopicsStep(subjectId);
-    finalMessage(a.analysed, m.mapped, a.stopped || m.stopped);
+    const m = a.stopped ? { mapped: 0, stopped: true, error: undefined } : await mapTopicsStep(subjectId);
+    finalMessage(a.analysed, m.mapped, a.stopped || m.stopped, m.error);
   });
 
 /** Every subject: new papers first (newest year first, capped per run), then topic matching. */
@@ -301,18 +327,20 @@ const analyseAllNow = (max: number) =>
   exclusive(async () => {
     const a = await analysePapersStep(undefined, max);
     let mapped = 0;
+    let mapError: string | undefined;
     let stopped = a.stopped;
     if (!stopped) {
       for (const s of await db.subjects.toArray()) {
         const m = await mapTopicsStep(s.id!);
         mapped += m.mapped;
+        mapError = m.error ?? mapError;
         if (m.stopped) {
           stopped = true;
           break;
         }
       }
     }
-    finalMessage(a.analysed, mapped, stopped);
+    finalMessage(a.analysed, mapped, stopped, mapError);
   });
 
 /** Forget every topic match for a subject and match again (after the syllabus changed). */
@@ -322,5 +350,5 @@ export const remapSubject = (subjectId: number) =>
       delete q.topicId;
     });
     const m = await mapTopicsStep(subjectId);
-    finalMessage(0, m.mapped, m.stopped);
+    finalMessage(0, m.mapped, m.stopped, m.error);
   });
