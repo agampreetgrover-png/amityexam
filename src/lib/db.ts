@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import {
   DEFAULT_SETTINGS,
-  type ChatMessage, type DriveFile, type Exam, type PyqQuestion, type GeneratedDoc, type Material,
+  type Chat, type ChatMessage, type DriveFile, type Exam, type PyqQuestion, type GeneratedDoc, type Material,
   type QuizAttempt, type Settings, type Subject, type Topic, type Unit,
 } from "./types";
 
@@ -16,6 +16,7 @@ class ExamDB extends Dexie {
   quizzes!: EntityTable<QuizAttempt, "id">;
   docs!: EntityTable<GeneratedDoc, "id">;
   messages!: EntityTable<ChatMessage, "id">;
+  chats!: EntityTable<Chat, "id">;
   settings!: EntityTable<Settings, "id">;
 
   constructor() {
@@ -37,6 +38,8 @@ class ExamDB extends Dexie {
     this.version(3).stores({ driveFiles: "driveId, subjectId, status" }); // Google Drive sync bookkeeping
     this.version(4).stores({ pyqQuestions: "++id, subjectId, materialId, topicId, year" }); // past-paper question bank
     this.version(5).stores({ sessions: null, topics: "++id, subjectId, unitId, status" }); // the planner and spaced revision were removed
+    // Study chat: saved conversations, and their messages found by chatId. Existing messages are untouched.
+    this.version(6).stores({ chats: "++id, subjectId, updatedAt", messages: "++id, subjectId, createdAt, chatId" });
   }
 }
 
@@ -48,8 +51,8 @@ export async function getSettings(): Promise<Settings> {
 
 /** Delete a subject and everything hanging off it. */
 export async function deleteSubject(subjectId: number) {
-  await db.transaction("rw", [db.subjects, db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions], async () => {
-    for (const table of [db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.driveFiles, db.pyqQuestions]) {
+  await db.transaction("rw", [db.subjects, db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.chats, db.driveFiles, db.pyqQuestions], async () => {
+    for (const table of [db.units, db.topics, db.exams, db.materials, db.quizzes, db.docs, db.messages, db.chats, db.driveFiles, db.pyqQuestions]) {
       await (table as Dexie.Table<{ subjectId: number }>).where({ subjectId }).delete();
     }
     await db.subjects.delete(subjectId);
@@ -61,6 +64,14 @@ export async function deleteMaterial(materialId: number) {
   await db.transaction("rw", db.materials, db.pyqQuestions, async () => {
     await db.pyqQuestions.where({ materialId }).delete();
     await db.materials.delete(materialId);
+  });
+}
+
+/** Delete a study-chat conversation and its messages. */
+export async function deleteChat(chatId: number) {
+  await db.transaction("rw", db.chats, db.messages, async () => {
+    await db.messages.where({ chatId }).delete();
+    await db.chats.delete(chatId);
   });
 }
 
@@ -97,6 +108,24 @@ function validateBackup(backup: unknown): Record<string, Record<string, unknown>
   if (total > MAX_BACKUP_ROWS) throw new Error("Backup is too large to import");
   const settings = data.settings as Record<string, unknown>[] | undefined;
   if (settings?.some((s) => s.id !== "settings")) throw new Error('Backup table "settings" is malformed');
+  // Rows are checked too: one bad exam date or exam mode would otherwise crash Today on every launch.
+  const isId = (v: unknown) => Number.isSafeInteger(v) && (v as number) > 0;
+  for (const [name, rows] of Object.entries(data) as [string, Record<string, unknown>[]][]) {
+    if (name === "settings" || name === "driveFiles") continue;
+    if (rows.some((r) => (r.id !== undefined && !isId(r.id)) || (r.subjectId !== undefined && !isId(r.subjectId)))) {
+      throw new Error(`Backup table "${name}" is malformed`);
+    }
+  }
+  const exams = (data.exams ?? []) as Record<string, unknown>[];
+  if (exams.some((e) => !isId(e.subjectId) || typeof e.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(e.date))) {
+    throw new Error('Backup table "exams" has an exam without a valid subject or date');
+  }
+  // Repair what can be repaired rather than refuse the whole file.
+  for (const e of exams) {
+    e.topicIds = Array.isArray(e.topicIds) ? e.topicIds.filter(isId) : [];
+    e.checklist = Array.isArray(e.checklist) ? e.checklist.filter((c) => isPlainObject(c) && typeof c.text === "string") : [];
+  }
+  for (const s of settings ?? []) if (s.examMode !== undefined && s.examMode !== "mid-term" && s.examMode !== "end-term") delete s.examMode; // asked again on launch
   return data as Record<string, Record<string, unknown>[]>;
 }
 

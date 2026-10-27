@@ -29,11 +29,20 @@ export function Notifier() {
       running = true;
       try {
         const settings = await getSettings();
+        if (!settings.notifications || Notification.permission !== "granted") return;
         const d = today();
-        if (!settings.notifications || Notification.permission !== "granted" || localStorage.getItem(KEY) === d) return;
-        // Claim the day first so overlapping checks or a failing notification can't repeat it.
-        localStorage.setItem(KEY, d);
-        const examsTomorrow = await db.exams.where("date").equals(addDay(d, 1)).toArray();
+        // Remember which exams were announced today, not just the day: one added this evening still gets its alert.
+        let sent: { day: string; ids: number[] } = { day: d, ids: [] };
+        try {
+          const saved = JSON.parse(localStorage.getItem(KEY) ?? "null");
+          if (saved?.day === d && Array.isArray(saved.ids)) sent = saved;
+        } catch {
+          // older format (just the day) or garbage: start fresh; `tag` still stops a duplicate
+        }
+        const examsTomorrow = (await db.exams.where("date").equals(addDay(d, 1)).toArray()).filter((e) => !sent.ids.includes(e.id!));
+        if (!examsTomorrow.length) return;
+        // Claim them first so overlapping checks or a failing notification can't repeat them.
+        localStorage.setItem(KEY, JSON.stringify({ day: d, ids: [...sent.ids, ...examsTomorrow.map((e) => e.id!)] }));
         for (const e of examsTomorrow) {
           const s = await db.subjects.get(e.subjectId);
           await notify("Exam tomorrow", `${s?.name ?? "Exam"}${e.time ? ` at ${e.time}` : ""}. Open the exam-day kit.`, `exam-${e.id}-${d}`);

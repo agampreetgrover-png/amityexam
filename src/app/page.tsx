@@ -6,9 +6,10 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { BarChart3, Check, ChevronRight, Search, Settings as SettingsIcon } from "lucide-react";
 import { useState } from "react";
 import { db } from "@/lib/db";
-import { daysBetween, fromDay, prettyDay, today } from "@/lib/dates";
+import { daysBetween, fromDay, prettyDay } from "@/lib/dates";
+import { useToday } from "@/lib/use-today";
 import { examTypeLabel } from "@/lib/exams";
-import { examInMode, examSyllabus, modeShort, topicsInScope, useExamMode } from "@/lib/mode";
+import { examInMode, examSyllabus, modeShort, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
 import { openCommandPalette } from "@/components/command-palette-loader";
 import { ModePill } from "@/components/mode-pill";
@@ -17,32 +18,32 @@ import { CoverageBar, Panel, cn, subjectStyle } from "@/components/ui";
 const daysWord = (d: number) => (d === 0 ? "today" : d === 1 ? "day to go" : "days to go");
 
 export default function TodayPage() {
-  const t = today();
+  const t = useToday();
   const data = useLiveQuery(async () => {
-    const [subjects, topics, units, exams, examCount] = await Promise.all([
+    const [subjects, topics, units, exams, examCount, syllabusFiles] = await Promise.all([
       db.subjects.toArray(),
       db.topics.toArray(),
       db.units.toArray(),
       db.exams.where("date").aboveOrEqual(t).sortBy("date"),
       db.exams.count(),
+      db.materials.where("kind").equals("syllabus").count(),
     ]);
-    return { subjects, topics, units, exams, examCount };
+    return { subjects, topics, units, exams, examCount, syllabusFiles };
   }, [t]);
   const mode = useExamMode();
   const [pickedExam, setPickedExam] = useState<number | null>(null);
   if (!data) return null;
 
-  const { subjects, topics, units, exams, examCount } = data;
+  const { subjects, topics, units, exams, examCount, syllabusFiles } = data;
   // Everything on this page follows the chosen exam mode and its own syllabus.
-  const scoped = topicsInScope(topics, units, mode);
-  const modeName = mode === "mid-term" ? "mid-sem" : mode === "end-term" ? "major" : "";
   const subject = (id?: number) => subjects.find((s) => s.id === id);
 
   const steps = [
     { done: subjects.length > 0, label: "Add your subjects", href: "/subjects" },
     {
-      done: scoped.length > 0,
-      label: `Import your ${modeName ? `${modeName} ` : ""}syllabus (AI reads it from a PDF)`,
+      // Any syllabus counts, mid-sem or major: topics from the Syllabus tab, or a syllabus uploaded or pasted as material.
+      done: topics.length > 0 || syllabusFiles > 0,
+      label: "Import your syllabus (AI reads it from a PDF)",
       href: subjects[0] ? `/subjects/view?id=${subjects[0].id}` : "/subjects",
     },
     { done: examCount > 0, label: "Add your exam date sheet", href: "/exams" },

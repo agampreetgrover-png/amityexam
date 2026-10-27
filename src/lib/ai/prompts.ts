@@ -109,6 +109,25 @@ ${clip(r.text, maxChars)}
 """`,
         },
       ];
+    case "prep":
+      return [
+        { role: "system", content: sys },
+        {
+          role: "user",
+          content: `For each syllabus topic below, judge how much groundwork a student needs BEFORE they can start learning it, how long it takes to learn, and how much it matters in the exam.
+- "prep": 0 = zero prep: self-contained, can be learned cold from its own notes (definitions, lists, classifications, descriptive or theory topics, standalone concepts) without studying another topic, maths or code first. 1 = light prep: needs one or two basic ideas first that take a few minutes. 2 = needs groundwork: builds on earlier topics, derivations, numericals, algorithms or a previous course. Be strict with 0.
+- "mins": realistic minutes for an average student to learn it well enough to answer an exam question on it (5 to 180).
+- "imp": 3 = core topic examiners regularly set long questions on, 2 = regular topic, 1 = minor or peripheral.
+- "needs": for prep 1 or 2, what to learn first in a few words (name the topic from this list when it is one); null for 0.
+- "why": one short sentence explaining the rating.
+Shape: {"topics":[{"i":number,"prep":0|1|2,"mins":number,"imp":1|2|3,"needs":string|null,"why":string}]} (one entry per topic; "i" is the topic's index number)
+${r.subject ? `Subject: ${fence(r.subject)}` : ""}
+Topics ("index. topic (unit)"):
+"""
+${fence((r.topics ?? []).map((t, n) => `${n}. ${t}`).join("\n"))}
+"""`,
+        },
+      ];
     case "pyqmap":
       return [
         { role: "system", content: sys },
@@ -129,6 +148,14 @@ ${clip(r.text, maxChars)}
       ];
   }
 }
+
+/** How the study chat shapes an answer; picked by the student per chat. */
+const STYLE: Record<NonNullable<AiRequest["answerStyle"]>, string> = {
+  auto: "Pick the form that fits the question: a direct answer for a quick doubt, an exam-style answer for a question that could be set.",
+  simple: "Explain it simply, as to a classmate the night before the exam: plain words, one everyday analogy, one small example.",
+  exam: "Write it as a model exam answer the student could reproduce: an opening definition, headed points, a diagram described in words where one fits, an example, and a one-line conclusion. Size it to the marks the PYQs give this question (10 marks if unknown).",
+  revise: "Keep it to a quick-revision card: at most 8 short bullets of the must-know points, key terms in bold, plus one memory hook.",
+};
 
 export function buildTextPrompt(action: TextAction, r: AiRequest, { maxChars, chatHistory }: PromptLimits): Msg[] {
   const ask = (content: string): Msg[] => [{ role: "system", content: SYSTEM }, { role: "user", content }];
@@ -151,6 +178,33 @@ ${topicLine(r)}${notes(r, maxChars)}`);
       return ask(`Explain this simply, as if teaching a classmate the night before the exam, then give one example and one likely exam question with a model answer.
 ${topicLine(r)}
 Question/concept: ${fence(r.text)}${notes(r, maxChars)}`);
+    // The study chat: grounded in the teacher's notes, shaped by the past papers, pitched at the coming exam.
+    // Notes get half the budget and past papers a quarter, leaving room for history (Groq: 12K chars in all).
+    case "study": {
+      const notesBlock = r.context
+        ? `\n\nTeacher's notes and slides (excerpts, each headed by its file name):\n"""\n${clip(r.context, Math.min(Math.round(maxChars / 2), 40_000))}\n"""`
+        : "\n\nNo notes from the teacher matched this question.";
+      const pyqBlock = r.pyqs
+        ? `\n\nPast exam questions (PYQs) on this, with year and marks:\n"""\n${clip(r.pyqs, Math.min(Math.round(maxChars / 4), 20_000))}\n"""`
+        : "\n\nNo past exam questions matched this question.";
+      const prep = r.prepNotes ? `\nWhere the student stands:\n"""\n${clip(r.prepNotes, Math.min(Math.round(maxChars / 10), 3000))}\n"""` : "";
+      return [
+        {
+          role: "system",
+          content: `${SYSTEM}
+You are the student's exam-prep tutor for this subject. Every answer should help them score marks in the coming exam.
+${topicLine(r)}${prep}
+How to answer:
+- Teach from the teacher's notes first: their definitions, terms, examples and order. Cite them like (Notes: <file name>). If the notes don't cover it, say so in one short line, then answer from standard knowledge.
+- Use the past papers to show how it is examined. When the question is, or resembles, a PYQ, say so with its year and marks, e.g. (PYQ 2023, 10 marks), and answer the way that question asks. Only cite PYQs listed below; never invent questions, years or marks.
+- Fit the length to the marks: 2 marks ≈ 3–4 lines; 5 marks ≈ half a page; 10 marks ≈ a full answer with headings, a diagram described in words, and an example.
+- For study questions, end with one line starting "**In the exam:**": how often it has been asked, the usual marks, and what examiners look for. Skip it for small talk or quick checks.
+${STYLE[r.answerStyle ?? "auto"]}${notesBlock}${pyqBlock}`,
+        },
+        ...(r.history ?? []).slice(-chatHistory).map((m) => ({ role: m.role, content: clip(m.content, 4000) })),
+        { role: "user", content: r.text ?? "" },
+      ];
+    }
     // Chat excerpts get two-thirds of the budget, leaving room for history (Groq: 8K chars).
     case "chat":
       return [

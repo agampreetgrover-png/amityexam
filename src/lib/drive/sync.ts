@@ -1,7 +1,7 @@
 // Server-only: find each subject's material in the Drive sources and yield it as events.
 import { bestSubject, classify, pickFolders, skipFolder, type DriveKind, type PyqExam, type SubjectRef } from "./classify";
 import { DeferFile, fileText, SkipFile } from "./extract";
-import { crawl, listFolder, type CrawledFile } from "./list";
+import { claimFolder, crawl, listFolder, newCrawlRun, type CrawledFile } from "./list";
 import type { DriveSource } from "./sources";
 
 interface SyncRequest {
@@ -36,7 +36,8 @@ export type SyncEvent =
 
 const PYQ_FOLDER = /\b(pyqs?|papers?|question ?papers?|previous)\b/i;
 const yearOf = (n: string) => Number(n.match(/(?:^|[^0-9])(20\d\d)(?![0-9])/)?.[1] ?? 0);
-const sameName = (n: string) => n.toLowerCase().replace(/\s*\(\d+\)(?=\.[a-z0-9]+$)/, "").replace(/\s+/g, " ").trim();
+// Whitespace is collapsed first: on a raw name, `\s*\(` rescans a long run of spaces from every position.
+const sameName = (n: string) => n.toLowerCase().replace(/\s+/g, " ").replace(/ ?\(\d+\)(?=\.[a-z0-9]+$)/, "").trim();
 
 async function pool<T>(items: T[], n: number, fn: (t: T) => Promise<void>) {
   let i = 0;
@@ -52,12 +53,14 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   // subjectId → candidate files
   const found = new Map<number, CrawledFile[]>();
   const add = (sid: number, files: CrawledFile[]) => found.set(sid, [...(found.get(sid) ?? []), ...files]);
+  // Every folder is listed at most once this run, and the run lists a bounded number of folders (see CrawlRun).
+  const run = newCrawlRun();
 
   // Folders linked by hand come first, so their files go to that subject even if another one also matches.
   for (const link of req.links ?? []) {
     for (const folderId of link.folderIds) {
       try {
-        add(link.subjectId, await crawl(folderId, { skipFolder, signal }));
+        add(link.subjectId, await crawl(folderId, { skipFolder, signal, run }));
       } catch (e) {
         yield { type: "error", subjectId: link.subjectId, message: `Linked folder: ${e instanceof Error ? e.message : "unavailable"}` };
       }
@@ -66,6 +69,7 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
 
   const names = new Map(subjects.map((s) => [s.id, s.name]));
   for (const src of sources) {
+    if (!claimFolder(run, src.id)) continue; // the same source twice, or already crawled as a linked folder
     let top;
     try {
       top = await listFolder(src.id, signal);
@@ -86,7 +90,7 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
       // A subject's own folders: everything inside belongs to it.
       for (const f of fs) {
         try {
-          add(subjectId, await crawl(f.id, { path: [f.name], skipFolder, signal }));
+          add(subjectId, await crawl(f.id, { path: [f.name], skipFolder, signal, run }));
         } catch (e) {
           yield { type: "error", subjectId, message: `${f.name}: ${e instanceof Error ? e.message : "unavailable"}` };
         }
@@ -98,7 +102,7 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
       try {
         if (entry.type === "folder" && PYQ_FOLDER.test(entry.name)) {
           // A mixed past-papers folder: assign each file by its own name.
-          for (const f of await crawl(entry.id, { path: [entry.name], skipFolder, signal })) {
+          for (const f of await crawl(entry.id, { path: [entry.name], skipFolder, signal, run })) {
             const s = bestSubject(f.name, subjects);
             if (s) add(s.id, [f]);
           }
@@ -111,6 +115,7 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
       }
     }
   }
+  if (run.left <= 0) yield { type: "error", message: "Your Drive folders hold more subfolders than one sync reads, so some were left out." };
 
   // Classify, drop known files, and de-duplicate copies that appear in both drives.
   const queue: { subjectId: number; f: CrawledFile; kind: DriveKind; pyqExam?: PyqExam }[] = [];

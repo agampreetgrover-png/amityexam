@@ -142,8 +142,12 @@ export function pickFolders<F extends { name: string }>(folders: F[], subjects: 
   return { picked, ambiguous };
 }
 
+// \b treats "_" and digits as word characters, so "DBMS_Minor_2023" or "Endsem2021" would hide the word from
+// every pattern below. Names are spaced out first: "DBMS Minor 2023", "Endsem 2021".
+const spaced = (name: string) => name.replace(/_/g, " ").replace(/([a-z])(?=\d)|(\d)(?=[a-z])/gi, "$1$2 ");
+
 const SKIP_FOLDER = /\b(books?|e-?books?|labs?|practicals?|assignments?|attendance)\b/i;
-export const skipFolder = (name: string) => SKIP_FOLDER.test(name);
+export const skipFolder = (name: string) => SKIP_FOLDER.test(spaced(name));
 
 const PYQ_FOLDER = /\b(pyqs?|papers?|question ?papers?|previous|qp)\b/i;
 const PYQ_NAME = /\b(pyqs?|major|minor|mid[ -]?sem|mid[ -]?term|end[ -]?sem|end[ -]?term|question ?paper|qp|paper|set[ -]?\d)\b/i;
@@ -157,13 +161,14 @@ const ext = (name: string) => name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ??
 const SUPPORTED_EXT = new Set(["pdf", "docx", "pptx", "txt", "md"]);
 
 /** Decide what a Drive file is, or null to skip it. `type` is the Drive entry type (gdoc/gslides are native Google files). */
-export function classify(name: string, path: string[], type: string): { kind: DriveKind; pyqExam?: PyqExam } | null {
-  const e = ext(name);
+export function classify(fileName: string, path: string[], type: string): { kind: DriveKind; pyqExam?: PyqExam } | null {
+  const e = ext(fileName);
+  const name = spaced(fileName);
   const native = type === "gdoc" || type === "gslides";
   if (!native && !SUPPORTED_EXT.has(e)) return null; // images, spreadsheets, archives, legacy .ppt/.doc
   if (SKIP_NAME.test(name) || path.some(skipFolder)) return null;
 
-  const inPyqFolder = path.some((p) => PYQ_FOLDER.test(p));
+  const inPyqFolder = path.some((p) => PYQ_FOLDER.test(spaced(p)));
   const isSlides = type === "gslides" || e === "pptx";
   // "Mod 1,2 Minor ppt.pdf" is slides for the minor exam, not a minor paper: study-material words win
   // over an exam word unless the name also says it's a paper.

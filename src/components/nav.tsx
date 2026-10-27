@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { BarChart3, BookOpen, Flame, GraduationCap, House, Moon, Search, Settings, Sun } from "lucide-react";
+import { BarChart3, BookOpen, Flame, GraduationCap, House, MessagesSquare, Moon, Search, Settings, Sprout, Sun } from "lucide-react";
 import { openCommandPalette } from "./command-palette-loader";
 import { setTheme, useTheme } from "@/lib/theme";
 import { DevWarmup } from "./dev-warmup";
@@ -13,7 +13,9 @@ import { cn } from "./ui";
 const primary = [
   { href: "/", label: "Today", icon: House },
   { href: "/subjects", label: "Subjects", icon: BookOpen },
+  { href: "/chat", label: "Chat", icon: MessagesSquare },
   { href: "/important", label: "Important", icon: Flame },
+  { href: "/zero-prep", label: "Zero prep", icon: Sprout },
   { href: "/exams", label: "Exams", icon: GraduationCap },
 ];
 const secondary = [
@@ -147,7 +149,7 @@ export function Nav() {
         </div>
       </nav>
 
-      {/* Mobile: four-item bottom bar; Progress and Settings live in the Today header. The current item's icon
+      {/* Mobile: bottom bar of the primary items; Progress and Settings live in the Today header. The current item's icon
           sits on a soft pill that slides between them. */}
       <nav
         className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md backdrop-saturate-150 md:hidden"

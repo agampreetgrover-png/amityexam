@@ -32,6 +32,20 @@ export interface Topic {
   confidence: number; // 1–5
   status: TopicStatus;
   weak?: boolean; // set from quiz scores / low confidence
+  prep?: TopicPrep; // how much groundwork it needs, rated by AI for the Zero prep page
+}
+
+/** 0 = learn it cold, 1 = a little groundwork first, 2 = builds on other topics. */
+export type PrepLevel = 0 | 1 | 2;
+
+/** AI's read on a topic: how much it needs before it, how long it takes, how much it matters. */
+export interface TopicPrep {
+  level: PrepLevel;
+  mins: number; // to learn it to exam standard
+  importance: 1 | 2 | 3; // 3 = core, 1 = minor
+  needs?: string; // what to learn first (levels 1 and 2)
+  why?: string;
+  at: number;
 }
 
 export interface ChecklistItem {
@@ -138,9 +152,25 @@ export interface GeneratedDoc {
 export interface ChatMessage {
   id?: number;
   subjectId: number;
+  chatId?: number; // a study-chat conversation; unset = the subject page's own chat
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  sources?: ChatSource[]; // what an answer was based on (study chat)
+}
+
+/** One conversation in the study chat, kept so the student can come back to it. */
+export interface Chat {
+  id?: number;
+  subjectId: number;
+  title: string; // the first question, until renamed
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ChatSource {
+  kind: "notes" | "pyq";
+  label: string; // file name, or e.g. "2023 · Q3(b) · 10 marks"
 }
 
 export interface Settings {

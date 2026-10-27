@@ -209,7 +209,9 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
   // Changing what the row is re-runs the existing-exam check, so a duplicate can't sneak in as "add".
   const repatch = (r: ImportRow, p: Partial<ImportRow>) => {
     const next = { ...r, ...p };
-    patch(r.key, { ...p, ...clashFor(existing, next.subjectId, next.type, next.date) });
+    const match = clashFor(existing, next.subjectId, next.type, next.date);
+    // An exam that's already saved is unticked, or saving would add it a second time.
+    patch(r.key, { ...p, ...match, include: next.include && !match.duplicate });
   };
   const mine = rows.filter((r) => r.subjectId != null);
   const skipped = rows.length - mine.length;
@@ -223,10 +225,14 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
     setError(null);
     try {
       let added = 0, updated = 0;
+      // Two rows can clash with the same saved exam (same subject and type, different dates). Only the first
+      // updates it; the rest are added, or the second update would silently overwrite the first.
+      const updatedIds = new Set<number>();
       await db.transaction("rw", db.exams, async () => {
         for (const r of chosen) {
           const data = { subjectId: r.subjectId!, type: r.type, date: r.date, time: r.time || undefined, durationMins: r.durationMins };
-          if (r.clash?.id && r.action === "update") {
+          if (r.clash?.id && r.action === "update" && !updatedIds.has(r.clash.id)) {
+            updatedIds.add(r.clash.id);
             await db.exams.update(r.clash.id, data);
             updated++;
           } else {

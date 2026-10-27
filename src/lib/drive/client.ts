@@ -108,7 +108,8 @@ async function sync(auto: boolean) {
       // Keep going while files remain and this round got through some of them.
       if (!state.remaining || !handledThisRound) break;
     }
-    await db.settings.put({ ...(await getSettings()), lastDriveSync: Date.now() });
+    // In one transaction, so a setting changed while the sync ran isn't overwritten with the old value.
+    await db.transaction("rw", db.settings, async () => db.settings.put({ ...(await getSettings()), lastDriveSync: Date.now() }));
     // Split new past papers into questions and sort them by year and topic (runs in the background).
     // Imported here so the analyser isn't in every page's bundle just because sync is mounted in the layout.
     void import("@/lib/pyq/analyse").then((m) => m.analyseAll());

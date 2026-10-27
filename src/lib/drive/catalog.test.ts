@@ -16,6 +16,16 @@ describe("parseCourse", () => {
     expect(parseCourse("CSIT124 - Data Structures Using C")?.code).toBe("CSIT124");
     expect(parseCourse("DBMS")).toBeNull();
     expect(parseCourse("PYQs")).toBeNull();
+    expect(parseCourse("  CSE202: Operating System  ")).toEqual({ code: "CSE202", name: "Operating System" });
+    expect(parseCourse("CSE202 -   ")).toBeNull();
+  });
+
+  it("stays fast on crafted folder names", () => {
+    const t = performance.now();
+    parseCourse(`CSE201 - a${" ".repeat(290)}`);
+    parseCourse(`CSE201 -${" ".repeat(100_000)}x\n`);
+    parseCourse(`${" ".repeat(100_000)}CSE201`);
+    expect(performance.now() - t).toBeLessThan(100);
   });
 });
 

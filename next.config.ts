@@ -6,7 +6,7 @@ import withSerwistInit from "@serwist/next";
 // New revision per build so precached app pages refresh after every deploy.
 const revision = randomUUID();
 // /subjects/view and /exams/view take the id as ?id=, so these two entries cover every subject and exam offline.
-const PAGES = ["/", "/subjects", "/subjects/view", "/exams", "/exams/view", "/progress", "/settings", "/~offline"];
+const PAGES = ["/", "/subjects", "/subjects/view", "/important", "/zero-prep", "/chat", "/exams", "/exams/view", "/progress", "/settings", "/~offline"];
 // Listing entries by hand replaces Serwist's default public/ glob, so the pdf.js worker (copied there by
 // postinstall) must be added too, or PDFs can't be read offline. Hashed so it only re-downloads when pdf.js changes.
 const PDF_WORKER = "/pdf.worker.min.mjs";
@@ -28,10 +28,17 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=(), usb=()" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" },
+  // img-src: AI answers are Markdown, and an injected remote image would leak data to another site.
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob:" },
+  // Ignored over plain http (127.0.0.1); keeps a deployed copy on https.
+  { key: "Strict-Transport-Security", value: "max-age=31536000" },
 ];
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  // `npm run dev` only: with the list set (even empty), Next blocks other sites from reaching its /_next and
+  // /__nextjs dev endpoints (one of them restarts the server) instead of just warning. Its own host still works.
+  allowedDevOrigins: [],
   // Drive sync parses PDFs on the server; pdf.js must load its worker from node_modules, not a bundle.
   serverExternalPackages: ["pdfjs-dist", "mammoth", "jszip"],
   async headers() {

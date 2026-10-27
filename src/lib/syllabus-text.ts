@@ -6,8 +6,9 @@ export const newTopic = (subjectId: number, unitId: number, title: string): Topi
   subjectId, unitId, title, confidence: 3, status: "not-started",
 });
 
-// "1.", "1)", "(a)", "a.", "ii.", "-", "*", "•" and similar markers pasted from a PDF or a list.
-const MARKER = /^\s*(?:[-*•▪◦–]|\(?[0-9]{1,3}[.)]|\(?[a-z][.)]|[ivx]{1,4}[.)])\s*/i;
+// "1.", "1)", "1.2", "2.3.1", "(a)", "a.", "ii.", "-", "*", "•" and similar markers pasted from a PDF or a list.
+// A marker never runs into a digit, so "X.25 protocol" keeps its name.
+const MARKER = /^\s*(?:[-*•▪◦–]|\(?[0-9]{1,3}(?:\.[0-9]{1,3})+[.)]?(?=\s)|\(?[0-9]{1,3}[.)](?!\d)|\(?[a-z][.)](?!\d)|[ivx]{1,4}[.)](?!\d))\s*/i;
 
 /** Splits pasted syllabus text into topic titles: one per line, list markers, blanks and repeats dropped. */
 export function parseTopics(text: string): string[] {
@@ -26,9 +27,12 @@ export function parseTopics(text: string): string[] {
 
 const HEADING = /^(?:unit|module|chapter|part|section)\s*[-–:.]?\s*(?:\d{1,2}|[ivx]{1,5})\b/i;
 // Reading lists and outcomes that follow the units in a syllabus PDF; not topics to study.
-const OTHER_SECTION = /^(?:text\s?books?|references?|suggested readings?|course (?:objectives?|outcomes?)|learning outcomes?|examination scheme|evaluation scheme|pedagogy|pre-?requisites?)\b/i;
-// "(20%)", "20%", "[8 hours]", "Weightage: 25%", "(20% Weightage)" at the end of a line.
-const LOAD = /\s*[([]?\s*(?:weightage\s*[:-]?\s*)?\d{1,3}\s*(?:%|hours?|hrs?|lectures?)(?:\s*weightage)?\s*[)\]]?\s*$/i;
+// Only as a heading ("References", "Text Books:"), not a topic that starts with the word ("References and pointers").
+const OTHER_SECTION = /^(?:text\s?books?|references?|suggested readings?|course (?:objectives?|outcomes?)|learning outcomes?|examination scheme|evaluation scheme|pedagogy|pre-?requisites?)\s*(?:[:\-–]|$)/i;
+// "(20%)", "20%", "[8 hours]", "Weightage: 25%", "(20% Weightage)" at the end of a line. No leading \s*: with
+// the \s* after the bracket it backtracked cubically on long space padding (common in PDF tables) and froze the tab.
+// The space it leaves behind is trimmed.
+const LOAD = /[([]?\s*(?:weightage\s*[:-]?\s*)?\d{1,3}\s*(?:%|hours?|hrs?|lectures?)(?:\s*weightage)?\s*[)\]]?\s*$/i;
 // Label lines above the first unit, like "Course Contents/Syllabus:" or "Course Code: CSE101".
 const PREAMBLE = /:\s*$|^(?:course\s+(?:contents?|title|code|name)|(?:detailed\s+)?syllabus)\b/i;
 const TABLE_HEADER = /^(?:s\.?\s?no\.?|sr\.?\s?no\.?|modules?|units?|contents?|topics?|weightage|hours|syllabus|details?)$/i;
@@ -68,7 +72,7 @@ export function parseSyllabus(text: string): SyllabusResult["units"] {
   for (const raw of text.split(/\r?\n/)) {
     if (/^[\s|:-]+$/.test(raw)) continue; // blank, or a Markdown table rule "|---|---|"
     // Photos and scans come back as Markdown tables: each cell is read like a line of its own.
-    const cells = raw.replace(/\*\*|^#+\s*/g, "").split("|").map((c) => c.replace(MARKER, "").replace(LOAD, "").trim()).filter(Boolean);
+    const cells = raw.replace(/\*\*|^#+\s*/g, "").split("|").map((c) => c.replace(MARKER, "").trim().replace(LOAD, "").trim()).filter(Boolean);
     if (cells.length > 1 && cells.every((c) => TABLE_HEADER.test(c))) continue;
     for (const line of cells) {
       if (HEADING.test(line)) {

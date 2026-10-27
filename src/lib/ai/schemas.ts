@@ -23,8 +23,14 @@ export const QuizSchema = z.object({
   ),
 });
 
+// Scores should be 0–1, but models sometimes answer as a percentage ("80", "80%"); scale those down rather than zero them.
+const score = z.preprocess((v) => {
+  const n = typeof v === "string" ? Number(v.match(/\d+(\.\d+)?/)?.[0] ?? NaN) : v;
+  return typeof n === "number" && n > 1 && n <= 100 ? n / 100 : n;
+}, z.number().min(0).max(1)).catch(0);
+
 export const GradeSchema = z.object({
-  results: z.array(z.object({ score: z.coerce.number().min(0).max(1).catch(0), feedback: z.string() })),
+  results: z.array(z.object({ score, feedback: z.string() })),
 });
 
 // Models return numbers as strings ("4 marks", "2021") or junk; coerce, and fall back to null.
@@ -64,6 +70,20 @@ export const PyqMapSchema = z.object({
   map: lenientArray(z.object({ i: z.coerce.number().int(), t: z.coerce.number().int().catch(-1) })),
 });
 
+/** Topics rated by how much groundwork they need (action "prep"); i indexes the request's topics. */
+export const PrepSchema = z.object({
+  topics: lenientArray(
+    z.object({
+      i: z.coerce.number().int(),
+      prep: z.coerce.number().int().min(0).max(2),
+      mins: intOrNull(1, 600).default(null),
+      imp: z.coerce.number().int().min(1).max(3).catch(2),
+      needs: strOrNull.default(null),
+      why: strOrNull.default(null),
+    }),
+  ),
+});
+
 // "2:30 PM", "14.30", "10:00" → "HH:mm"; anything else → null.
 const timeOrNull = z.preprocess((v) => {
   if (typeof v !== "string") return null;
@@ -100,11 +120,12 @@ export type SyllabusResult = z.infer<typeof SyllabusSchema>;
 export type DatesheetResult = z.infer<typeof DatesheetSchema>;
 export type PyqPaperResult = z.infer<typeof PyqPaperSchema>;
 export type PyqMapResult = z.infer<typeof PyqMapSchema>;
+export type PrepResult = z.infer<typeof PrepSchema>;
 export type QuizResult = z.infer<typeof QuizSchema>;
 export type GradeResult = z.infer<typeof GradeSchema>;
 
-export const JSON_ACTIONS = ["syllabus", "quiz", "grade", "pyq", "pyqmap", "datesheet"] as const;
-export const TEXT_ACTIONS = ["summary", "cheatsheet", "predict", "chat", "explain"] as const;
+export const JSON_ACTIONS = ["syllabus", "quiz", "grade", "pyq", "pyqmap", "prep", "datesheet"] as const;
+export const TEXT_ACTIONS = ["summary", "cheatsheet", "predict", "chat", "explain", "study"] as const;
 export type JsonAction = (typeof JSON_ACTIONS)[number];
 export type TextAction = (typeof TEXT_ACTIONS)[number];
 
@@ -120,6 +141,10 @@ export const AiRequestSchema = z.object({
   // Which exam the student is preparing for; mid-sem also names the units it covers.
   examMode: z.enum(["mid-term", "end-term"]).optional(),
   scopeUnits: z.array(z.string().max(300)).max(50).optional(),
+  // Study chat: matching past-paper questions, where the student stands, and how to shape the answer.
+  pyqs: z.string().transform((s) => s.slice(0, 100_000)).optional(),
+  prepNotes: z.string().transform((s) => s.slice(0, 5000)).optional(),
+  answerStyle: z.enum(["auto", "simple", "exam", "revise"]).optional(),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(20_000) }))
     .max(20)

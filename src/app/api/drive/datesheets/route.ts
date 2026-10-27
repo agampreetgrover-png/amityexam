@@ -1,5 +1,6 @@
 import { listFolder, type CrawledFile } from "@/lib/drive/list";
 import { DEFAULT_DRIVE_SOURCES } from "@/lib/drive/sources";
+import { readLimited } from "@/lib/read-limited";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +11,7 @@ const NOT_A_SHEET = /\b(qp|question|papers?|pyqs?|major|minor|solutions?|notes?)
 const EXT = /\.(xlsx|xls|csv|pdf)$/i;
 const ID = /^[A-Za-z0-9_-]{10,100}$/;
 const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_SOURCES = 10; // same cap as the sync route; each source costs ~80 Drive requests
 
 type Candidate = CrawledFile & { source: string };
 const isSheet = (name: string) => NAME.test(name) && EXT.test(name) && !NOT_A_SHEET.test(name);
@@ -18,6 +20,7 @@ const isSheet = (name: string) => NAME.test(name) && EXT.test(name) && !NOT_A_SH
 // the ?id= download re-checks against this same list.
 const cache = new Map<string, { at: number; list: Candidate[] }>();
 const TTL = 10 * 60_000;
+const MAX_CACHED = 20; // distinct source lists kept; the oldest goes first
 
 /** Date-sheet-looking files in the top level and one folder deep of the Drive sources. */
 async function candidates(sourceIds: string[]): Promise<Candidate[]> {
@@ -40,7 +43,9 @@ async function candidates(sourceIds: string[]): Promise<Candidate[]> {
       for (const { f, xs } of batch) for (const e of xs) if (e.type === "file" && isSheet(e.name)) out.push({ ...e, path: [f.name], source });
     }
   }
+  cache.delete(key);
   cache.set(key, { at: Date.now(), list: out });
+  if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
   return out;
 }
 
@@ -50,7 +55,7 @@ async function candidates(sourceIds: string[]): Promise<Candidate[]> {
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const sources = url.searchParams.getAll("source").filter((s) => ID.test(s));
+  const sources = [...new Set(url.searchParams.getAll("source").filter((s) => ID.test(s)))].slice(0, MAX_SOURCES);
   const ids = sources.length ? sources : DEFAULT_DRIVE_SOURCES.map((s) => s.id);
   const id = url.searchParams.get("id");
   if (id && !ID.test(id)) return Response.json({ error: "Bad file id" }, { status: 400 });
@@ -64,18 +69,20 @@ export async function GET(req: Request) {
   const get = () => fetch(`https://drive.usercontent.google.com/download?id=${file.id}&export=download&confirm=t`, { cache: "no-store" });
   let res = await get();
   for (let attempt = 1; attempt < 3 && (res.status === 429 || res.status >= 500); attempt++) {
+    await res.body?.cancel().catch(() => {});
     await new Promise((r) => setTimeout(r, 1500 * attempt));
     res = await get();
   }
   if (!res.ok || res.headers.get("content-type")?.includes("text/html")) {
+    await res.body?.cancel().catch(() => {});
     return Response.json({ error: "Couldn't download that file from Drive. Try again in a minute." }, { status: 502 });
   }
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_BYTES) return Response.json({ error: "That file is too large" }, { status: 413 });
+  const buf = await readLimited(res.body, MAX_BYTES);
+  if (!buf) return Response.json({ error: "That file is too large" }, { status: 413 });
   return new Response(buf, {
     headers: {
       "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
       "Cache-Control": "no-store",
     },
   });

@@ -6,7 +6,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Check, Moon, Plus, Printer, Trash2 } from "lucide-react";
 import { Suspense, useState } from "react";
 import { db } from "@/lib/db";
-import { daysBetween, prettyDay, today } from "@/lib/dates";
+import { daysBetween, prettyDay } from "@/lib/dates";
+import { useToday } from "@/lib/use-today";
 import { examTypeLabel } from "@/lib/exams";
 import { examSyllabus, useExamMode } from "@/lib/mode";
 import { Markdown } from "@/components/markdown";
@@ -42,6 +43,7 @@ function ExamKit({ id }: { id: number }) {
   );
   const [newItem, setNewItem] = useState("");
   const [sheetIdx, setSheetIdx] = useState(0);
+  const day = useToday();
 
   if (exam === undefined) return null;
   if (exam === null) {
@@ -55,7 +57,7 @@ function ExamKit({ id }: { id: number }) {
   const scope = examSyllabus(exam, topics ?? [], units ?? [], mode); // the exam's own season's syllabus
   const weak = scope.filter((t) => t.weak || t.confidence <= 2);
   const notDone = scope.filter((t) => t.status === "not-started");
-  const days = daysBetween(today(), exam.date);
+  const days = daysBetween(day, exam.date);
   const checklist = exam.checklist;
   // Read-modify-write in one transaction so quick taps don't overwrite each other.
   const setChecklist = (change: (c: typeof checklist) => typeof checklist) =>
@@ -63,6 +65,10 @@ function ExamKit({ id }: { id: number }) {
       const current = await db.exams.get(id);
       if (current) await db.exams.update(id, { checklist: change(current.checklist) });
     });
+  // Where a drawn item is in the stored list now. Its drawn index alone can be stale: a double-tapped delete
+  // would remove the item that moved up into its place.
+  const indexOf = (list: typeof checklist, item: (typeof checklist)[number], i: number) =>
+    list[i]?.text === item.text ? i : list.findIndex((c) => c.text === item.text);
   const sheet = sheets?.length ? sheets[Math.min(sheetIdx, sheets.length - 1)] : undefined;
   const packed = checklist.filter((c) => c.done).length;
 
@@ -144,7 +150,10 @@ function ExamKit({ id }: { id: number }) {
                 <Tick
                   done={item.done}
                   label={item.done ? `Unpack ${item.text}` : `Pack ${item.text}`}
-                  onClick={() => setChecklist((list) => list.map((c, j) => (j === i ? { ...c, done: !c.done } : c)))}
+                  onClick={() => setChecklist((list) => {
+                    const at = indexOf(list, item, i);
+                    return list.map((c, j) => (j === at ? { ...c, done: !item.done } : c));
+                  })}
                 />
                 <span className={cn("min-w-0 break-words transition-colors duration-150", item.done && "text-muted line-through decoration-muted/60")}>{item.text}</span>
                 <button
@@ -152,7 +161,13 @@ function ExamKit({ id }: { id: number }) {
                   className="no-print ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                   aria-label={`Remove ${item.text}`}
                   onClick={async () => {
-                    await setChecklist((list) => list.filter((_, j) => j !== i));
+                    let removed = false;
+                    await setChecklist((list) => {
+                      const at = indexOf(list, item, i);
+                      removed = at >= 0;
+                      return list.filter((_, j) => j !== at);
+                    });
+                    if (!removed) return; // a second tap on an item that's already gone
                     toast(`Removed ${item.text}`, {
                       label: "Undo",
                       onClick: () => void setChecklist((list) => [...list.slice(0, i), item, ...list.slice(i)]),

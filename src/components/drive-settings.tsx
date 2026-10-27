@@ -28,7 +28,13 @@ export function DriveSettings() {
 
   // An empty list means the student removed every folder; only unset means the defaults.
   const sources = settings.driveSources ?? DEFAULT_DRIVE_SOURCES;
-  const save = async (patch: Partial<Settings>) => db.settings.put({ ...(await getSettings()), ...patch });
+  // Read-modify-write in one transaction, from the stored list rather than the one drawn: adding a folder waits
+  // on Drive for a second or two, and a folder removed meanwhile mustn't come back.
+  const save = (change: Partial<Settings> | ((s: Settings) => Partial<Settings>)) =>
+    db.transaction("rw", db.settings, async () => {
+      const cur = await getSettings();
+      await db.settings.put({ ...cur, ...(typeof change === "function" ? change(cur) : change) });
+    });
 
   const addSource = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,11 +54,15 @@ export function DriveSettings() {
     } finally {
       setChecking(false);
     }
-    // Fallback name: smallest unused number, so removing a folder and adding another can't produce two "Folder 3"s.
-    const used = new Set(sources.map((s) => s.label));
-    let n = 1;
-    while (used.has(`Folder ${n}`)) n++;
-    await save({ driveSources: [...sources, { id, label: name && !used.has(name) ? name : `Folder ${n}` }] });
+    await save((cur) => {
+      const list = cur.driveSources ?? DEFAULT_DRIVE_SOURCES;
+      if (list.some((s) => s.id === id)) return {};
+      // Fallback name: smallest unused number, so removing a folder and adding another can't produce two "Folder 3"s.
+      const used = new Set(list.map((s) => s.label));
+      let n = 1;
+      while (used.has(`Folder ${n}`)) n++;
+      return { driveSources: [...list, { id, label: name && !used.has(name) ? name : `Folder ${n}` }] };
+    });
     setLink("");
     setLinkError("");
   };
@@ -75,7 +85,7 @@ export function DriveSettings() {
             <button
               type="button"
               aria-label={`Remove ${s.label}`}
-              onClick={() => confirm(`Stop syncing "${s.label}"? Files already imported stay.`) && save({ driveSources: sources.filter((x) => x.id !== s.id) })}
+              onClick={() => confirm(`Stop syncing "${s.label}"? Files already imported stay.`) && save((cur) => ({ driveSources: (cur.driveSources ?? DEFAULT_DRIVE_SOURCES).filter((x) => x.id !== s.id) }))}
               className="-mr-2 rounded-md p-2 text-muted transition-colors duration-150 hover:bg-bad/10 hover:text-bad"
             >
               <X size={14} />

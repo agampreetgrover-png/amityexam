@@ -8,6 +8,12 @@ export type Msg = { role: "system" | "user" | "assistant"; content: string };
 export type ProviderName = "gemini" | "groq" | "openrouter";
 type CallOpts = { fast?: boolean; kind?: "json" | "text" | "chat" };
 
+// Output caps (tokens) for OpenRouter and Gemini; Groq has smaller ones of its own. Roomy enough for the longest
+// real answers (a whole paper split into questions, a scan transcribed), but a model that runs away can't keep
+// the server busy streaming and parsing megabytes. Gemini counts its thinking against the same cap.
+const OUT_CAP = { json: 16_384, text: 8_192, chat: 4_096, extract: 16_384 } as const;
+const outCap = (kind?: CallOpts["kind"]) => OUT_CAP[kind ?? "text"];
+
 interface Provider {
   name: ProviderName;
   /** How much pasted material a prompt may include for this provider. */
@@ -85,11 +91,12 @@ function gemini(apiKey: string): Provider {
   const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: TIMEOUT_MS } });
   const model = (fast?: boolean) =>
     fast ? (process.env.GEMINI_FAST_MODEL ?? "gemini-3.5-flash-lite") : (process.env.GEMINI_MODEL ?? "gemini-3.5-flash");
-  const config = (system: string | undefined, json: boolean) => ({
+  const config = (system: string | undefined, kind: CallOpts["kind"]) => ({
     systemInstruction: system,
     temperature: 0.4,
+    maxOutputTokens: outCap(kind),
     thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-    ...(json ? { responseMimeType: "application/json" } : {}),
+    ...(kind === "json" ? { responseMimeType: "application/json" } : {}),
   });
 
   return {
@@ -99,7 +106,7 @@ function gemini(apiKey: string): Provider {
     async json(messages, opts) {
       const { system, contents } = toGemini(messages);
       try {
-        const res = await ai.models.generateContent({ model: model(opts?.fast), contents, config: config(system, true) });
+        const res = await ai.models.generateContent({ model: model(opts?.fast), contents, config: config(system, "json") });
         return res.text ?? "{}";
       } catch (e) {
         throw geminiError(e);
@@ -109,7 +116,7 @@ function gemini(apiKey: string): Provider {
       const { system, contents } = toGemini(messages);
       let stream: AsyncGenerator<{ text?: string }>;
       try {
-        stream = await ai.models.generateContentStream({ model: model(opts?.fast), contents, config: config(system, false) });
+        stream = await ai.models.generateContentStream({ model: model(opts?.fast), contents, config: config(system, opts?.kind === "chat" ? "chat" : "text") });
       } catch (e) {
         throw geminiError(e);
       }
@@ -124,7 +131,7 @@ function gemini(apiKey: string): Provider {
         const res = await ai.models.generateContent({
           model: model(opts?.fast),
           contents: [{ role: "user", parts: [{ inlineData: { mimeType: file.mimeType, data: file.data } }, { text: prompt }] }],
-          config: { temperature: 0.1, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+          config: { temperature: 0.1, maxOutputTokens: OUT_CAP.extract, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
         });
         return res.text ?? "";
       } catch (e) {
@@ -281,7 +288,7 @@ function openrouter(apiKey: string): Provider {
     chatHistory: 10,
     async json(messages, opts) {
       try {
-        return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3 })) ?? "{}";
+        return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3, max_tokens: OUT_CAP.json })) ?? "{}";
       } catch (e) {
         throw openrouterError(e);
       }
@@ -306,6 +313,7 @@ function openrouter(apiKey: string): Provider {
           ],
           ...(pdf ? { plugins: [{ id: "file-parser", pdf: { engine: "mistral-ocr" } }] } : {}),
           temperature: 0.1,
+          max_tokens: OUT_CAP.extract,
         });
         return text ?? "";
       } catch (e) {
@@ -318,12 +326,12 @@ function openrouter(apiKey: string): Provider {
     async *stream(messages, opts) {
       let res: Response;
       try {
-        res = await call({ models: model(opts?.fast), messages, temperature: opts?.kind === "chat" ? 0.5 : 0.3, stream: true });
+        res = await call({ models: model(opts?.fast), messages, temperature: opts?.kind === "chat" ? 0.5 : 0.3, max_tokens: outCap(opts?.kind), stream: true });
       } catch (e) {
         throw openrouterError(e);
       }
+      const reader = res.body!.getReader();
       try {
-        const reader = res.body!.getReader();
         const dec = new TextDecoder();
         let buf = "";
         for (;;) {
@@ -351,6 +359,9 @@ function openrouter(apiKey: string): Provider {
         }
       } catch (e) {
         throw openrouterError(e);
+      } finally {
+        // Also runs when the reader stops early (the student hit stop), so the upstream request ends with it.
+        reader.cancel().catch(() => {});
       }
     },
   };

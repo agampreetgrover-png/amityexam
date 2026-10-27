@@ -6,7 +6,7 @@ import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, PenL
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { refreshWeak } from "@/lib/weak";
-import { aiJson } from "@/lib/ai/client";
+import { AiError, aiJson } from "@/lib/ai/client";
 import { aiModeFields } from "@/lib/mode";
 import type { QuizAttempt, QuizQuestion } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
@@ -86,6 +86,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         const res = await aiJson("grade", {
           answers: shortIdx.map((i) => ({ question: questions[i].question, expected: questions[i].answer, given: responses[i] })),
         });
+        // Results are matched by position; a reply missing one would shift every later score onto the wrong answer.
+        if (res.results.length !== shortIdx.length) throw new AiError("The AI marked the wrong number of answers. Submit again to re-mark.");
         shortIdx.forEach((qi, k) => {
           const r = res.results[k];
           if (r) results[qi] = { score: r.score, feedback: r.feedback };

@@ -1,9 +1,10 @@
 import type { z } from "zod";
 import { buildJsonPrompt, buildTextPrompt } from "@/lib/ai/prompts";
 import { errorResponse, NO_KEYS, readJsonBody } from "@/lib/ai/errors";
-import { AiProviderError, getProviders, runWithFallback, type ProviderName } from "@/lib/ai/providers";
+import { stripFence } from "@/lib/ai/json";
+import { AiProviderError, getProviders, redact, runWithFallback, type ProviderName } from "@/lib/ai/providers";
 import {
-  AiRequestSchema, DatesheetSchema, GradeSchema, JSON_ACTIONS, PyqMapSchema, PyqPaperSchema, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
+  AiRequestSchema, DatesheetSchema, GradeSchema, JSON_ACTIONS, PrepSchema, PyqMapSchema, PyqPaperSchema, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
   type AiRequest, type JsonAction, type TextAction,
 } from "@/lib/ai/schemas";
 
@@ -18,6 +19,7 @@ const schemas: Record<JsonAction, z.ZodTypeAny> = {
   grade: GradeSchema,
   pyq: PyqPaperSchema,
   pyqmap: PyqMapSchema,
+  prep: PrepSchema,
   datesheet: DatesheetSchema,
 };
 
@@ -40,7 +42,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
         const raw = await p.json(buildJsonPrompt(a, body, { maxChars: p.maxContextChars, chatHistory: p.chatHistory }), { kind: "json" });
         let data: unknown;
         try {
-          data = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+          data = JSON.parse(stripFence(raw));
         } catch {
           throw new AiProviderError("The AI returned invalid JSON. Try again.", 502, "bad-output", undefined, p.name);
         }
@@ -70,18 +72,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
 
 function streamResponse(it: AsyncIterator<string>, first: IteratorResult<string>, provider: ProviderName) {
   const enc = new TextEncoder();
+  let cancelled = false;
   return new Response(
     new ReadableStream({
       async start(controller) {
         try {
           if (!first.done) controller.enqueue(enc.encode(first.value));
-          for (let r = first.done ? first : await it.next(); !r.done; r = await it.next()) controller.enqueue(enc.encode(r.value));
+          for (let r = first.done ? first : await it.next(); !r.done && !cancelled; r = await it.next()) controller.enqueue(enc.encode(r.value));
         } catch (e) {
-          controller.enqueue(enc.encode(`\n\n[stream interrupted: ${e instanceof Error ? e.message.slice(0, 200) : "error"}]`));
+          if (cancelled) return; // the reader went away; enqueueing now would throw
+          console.warn(`[ai] ${provider} stream failed: ${redact(e instanceof Error ? e.message : String(e)).slice(0, 200)}`);
+          controller.enqueue(enc.encode("\n\n[stream interrupted: the AI connection dropped. Try again.]"));
         }
-        controller.close();
+        if (!cancelled) controller.close();
       },
       async cancel() {
+        cancelled = true;
         await it.return?.();
       },
     }),

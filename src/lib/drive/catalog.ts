@@ -6,12 +6,19 @@ export interface Course {
   name: string;
 }
 
-const FOLDER = /^\s*([A-Z]{2,5})\s?(\d{3}[A-Z]?)\s*[-–:]\s*(.+?)\s*$/;
+// Only the code and the separator are matched by pattern; the name is whatever follows, trimmed. Folder names
+// come from Drive, so the pattern has no two quantifiers that can trade characters (the old `(.+?)\s*$` took
+// seconds on a crafted name full of spaces).
+const PREFIX = /^([A-Z]{2,5}) ?(\d{3}[A-Z]?)\s*[-–:]/;
+const MAX_NAME = 300; // real course folders are far shorter
 
 /** Parse "CSE201 - Database Management Systems" into a course; null for other folder names. */
 export function parseCourse(folderName: string): Course | null {
-  const m = folderName.match(FOLDER);
-  return m ? { code: `${m[1]}${m[2]}`, name: m[3] } : null;
+  if (folderName.length > MAX_NAME) return null;
+  const s = folderName.trim();
+  const m = PREFIX.exec(s);
+  const name = m ? s.slice(m[0].length).trim() : "";
+  return m && name ? { code: `${m[1]}${m[2]}`, name } : null;
 }
 
 /**

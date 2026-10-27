@@ -56,10 +56,11 @@ async function docxText(data) {
 
 const PARSERS = { pdf: pdfText, pptx: pptxText, docx: docxText };
 
-parentPort.on("message", async ({ id, ext, data }) => {
+// The server sends one file at a time and waits for its answer, so replies need no id.
+parentPort.on("message", async ({ ext, data }) => {
   try {
-    parentPort.postMessage({ id, result: await PARSERS[ext](data) });
+    parentPort.postMessage({ result: await PARSERS[ext](data) });
   } catch (e) {
-    parentPort.postMessage({ id, error: e instanceof Error ? e.message : String(e) });
+    parentPort.postMessage({ error: e instanceof Error ? e.message : String(e) });
   }
 });

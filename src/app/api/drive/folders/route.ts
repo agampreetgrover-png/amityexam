@@ -20,7 +20,8 @@ export async function GET(req: Request) {
       return Response.json({ error: e instanceof Error ? e.message : "Couldn't open that folder." }, { status: 400 });
     }
   }
-  const ids = params.getAll("source").filter((s) => ID.test(s));
+  // Settings allows 10 sources; more would only multiply Drive requests.
+  const ids = [...new Set(params.getAll("source").filter((s) => ID.test(s)))].slice(0, 10);
   const sources = ids.length ? ids.map((id) => ({ id, label: id })) : DEFAULT_DRIVE_SOURCES;
   const out = [];
   for (const s of sources) {

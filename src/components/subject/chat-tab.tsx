@@ -27,7 +27,8 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
   const [touch, setTouch] = useState(false);
   useEffect(() => setTouch(window.matchMedia("(pointer: coarse)").matches), []);
 
-  const messages = useLiveQuery(() => db.messages.where({ subjectId }).sortBy("createdAt"), [subjectId]) ?? [];
+  // This tab's own thread; the study chat's conversations (chatId set) live on the Chat page.
+  const messages = useLiveQuery(() => db.messages.where({ subjectId }).filter((m) => m.chatId == null).sortBy("createdAt"), [subjectId]) ?? [];
   // Study material plus only this exam's past papers (never the other exam's or unknown ones).
   const materials = materialsForMode(useMaterials(subjectId), mode);
 
@@ -82,14 +83,14 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
   };
 
   const clear = async () => {
-    if (confirm("Clear this subject's chat history?")) await db.messages.where({ subjectId }).delete();
+    if (confirm("Clear this subject's chat history?")) await db.messages.where({ subjectId }).filter((m) => m.chatId == null).delete();
   };
 
   return (
     <div className="flex h-[calc(100dvh-17rem)] min-h-96 flex-col md:h-[calc(100dvh-18rem)]">
       <div className="mb-2 flex min-h-8 items-center justify-between gap-2 text-[13px] text-muted">
         <span className="min-w-0">{materials.length ? `Answers use your ${materials.length} uploaded file${materials.length === 1 ? "" : "s"}` : "No materials uploaded, so answers are general"}</span>
-        {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
+        {messages.length > 0 && <Button variant="ghost" size="sm" onClick={clear} disabled={streaming !== null} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto rounded-xl border border-border bg-surface p-4 shadow-sheet sm:p-5">

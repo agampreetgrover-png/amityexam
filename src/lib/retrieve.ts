@@ -2,9 +2,9 @@
 
 const STOP = new Set("the a an and or of to in on for is are was were be by with as at from that this it its what which how why when explain define describe".split(" "));
 
-const words = (s: string) => s.toLowerCase().match(/[a-z0-9]{3,}/g)?.filter((w) => !STOP.has(w)) ?? [];
+export const words = (s: string) => s.toLowerCase().match(/[a-z0-9]{3,}/g)?.filter((w) => !STOP.has(w)) ?? [];
 
-function chunk(text: string, size = 1200): string[] {
+export function chunk(text: string, size = 1200): string[] {
   const paras = text.split(/\n\s*\n/);
   const out: string[] = [];
   let cur = "";

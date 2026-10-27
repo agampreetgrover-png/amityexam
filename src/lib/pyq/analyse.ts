@@ -6,7 +6,7 @@ import { AiError, aiJson } from "../ai/client";
 import type { AiRequest } from "../ai/schemas";
 import { db } from "../db";
 import { pyqMode, topicsInScope } from "../mode";
-import type { ExamMode, Material, PyqQuestion } from "../types";
+import type { ExamMode, Material, PyqQuestion, Topic } from "../types";
 import { needsMapping, newestFirst, paperYear } from "./group";
 
 interface PyqAnalysisState {
@@ -171,7 +171,9 @@ export async function setPaperExam(materialId: number, exam: ExamMode) {
     });
   });
   const m = await db.materials.get(materialId);
-  if (m) void analyseSubject(m.subjectId);
+  // While another run is busy it would ignore this call, so queue a full run instead.
+  if (running) allQueued = true;
+  else if (m) void analyseSubject(m.subjectId);
 }
 
 async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopped: boolean }> {
@@ -182,24 +184,26 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
     db.materials.where({ subjectId }).filter((m) => m.kind === "pyq").toArray(),
     db.pyqQuestions.where({ subjectId }).toArray(),
   ]);
-  const topicIds = new Set(topics.map((t) => t.id));
-  const questions = all.filter((q) => needsMapping(q, topicIds));
-  if (!subject || !topics.length || !questions.length) return { mapped: 0, stopped: false };
+  if (!subject || !topics.length) return { mapped: 0, stopped: false };
 
   // Each question is matched against its own paper's exam syllabus (the paper's tag is the source of truth).
   // Papers of unknown exam type aren't matched at all: they're shown in neither mode until the student sorts them.
+  // A question needs matching when its topic isn't in that exam's syllabus (the same test the PYQs tab uses);
+  // checking against every topic would leave one whose unit moved out of scope "not matched" for good.
   const examOf = new Map(papers.map((p) => [p.id!, pyqMode(p)]));
-  const scopes = new Map<ExamMode, PyqQuestion[]>();
-  for (const q of questions) {
-    const exam = examOf.get(q.materialId);
-    if (exam) scopes.set(exam, [...(scopes.get(exam) ?? []), q]);
+  const scopes = new Map<ExamMode, { scoped: Topic[]; qs: PyqQuestion[] }>();
+  for (const exam of new Set(examOf.values())) {
+    if (!exam) continue;
+    const scoped = topicsInScope(topics, units, exam);
+    const ids = new Set(scoped.map((t) => t.id));
+    const qs = all.filter((q) => examOf.get(q.materialId) === exam && needsMapping(q, ids));
+    if (scoped.length && qs.length) scopes.set(exam, { scoped, qs }); // no syllabus for that exam yet: stays "not matched"
   }
+  if (!scopes.size) return { mapped: 0, stopped: false };
 
   let mapped = 0;
-  set({ total: [...scopes.values()].reduce((a, qs) => a + qs.length, 0), done: 0 });
-  for (const [scope, qs] of scopes) {
-    const scoped = topicsInScope(topics, units, scope);
-    if (!scoped.length) continue; // that exam's syllabus isn't added yet; stays "not matched"
+  set({ total: [...scopes.values()].reduce((a, s) => a + s.qs.length, 0), done: 0 });
+  for (const { scoped, qs } of scopes.values()) {
     const titles = scoped.map((t) => {
       const unit = units.find((u) => u.id === t.unitId)?.title;
       return unit ? `${t.title} (${unit})` : t.title;
@@ -227,6 +231,9 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
         for (const m of entries) {
           const q = typeof m.i === "number" ? batch[m.i] : undefined;
           if (!q) continue; // questions the AI skipped stay unmapped and are retried next time
+          // The paper may have been re-tagged while the AI was answering; this match is for the old syllabus then.
+          const cur = await db.pyqQuestions.get(q.id!);
+          if (!cur || cur.exam !== q.exam || cur.topicId !== q.topicId) continue;
           const t = typeof m.t === "number" && m.t >= 0 && m.t < scoped.length ? scoped[m.t].id! : null;
           await db.pyqQuestions.update(q.id, { topicId: t });
           mapped++;
@@ -241,6 +248,7 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
 // ---- Public API ------------------------------------------------------------------------------
 
 let running = false;
+let allQueued = false; // analyseAll (or a re-tag) was asked for while another run was busy
 
 /** Run `fn` unless another analysis is already going; resets the status line when done. */
 async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -255,6 +263,11 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
   } finally {
     running = false;
     set({ running: false });
+    // Whatever run just ended (a subject's, from the PYQs tab, or a full one), work queued meanwhile goes next.
+    if (allQueued) {
+      allQueued = false;
+      setTimeout(() => void analyseAll(), 0);
+    }
   }
 }
 
@@ -275,19 +288,13 @@ export const analyseSubject = (subjectId: number, { max = 8 } = {}) =>
     finalMessage(a.analysed, m.mapped, a.stopped || m.stopped);
   });
 
-let allQueued = false; // analyseAll was asked for (e.g. after a Drive sync) while another run was busy
-
 /** Every subject: new papers first (newest year first, capped per run), then topic matching. */
 export const analyseAll = async ({ max = 12 } = {}): Promise<void> => {
   if (running) {
-    allQueued = true;
+    allQueued = true; // picked up when the current run ends
     return;
   }
   await analyseAllNow(max);
-  if (allQueued) {
-    allQueued = false;
-    await analyseAll({ max });
-  }
 };
 
 const analyseAllNow = (max: number) =>

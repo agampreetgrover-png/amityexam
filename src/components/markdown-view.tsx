@@ -28,6 +28,9 @@ export default function MarkdownView({ children, className }: { children: string
         components={{
           // AI output can contain links; open them in a new tab without giving that page access to this one.
           a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+          // Never load images: an instruction hidden in a Drive file could make the AI add one whose URL carries
+          // the student's question off to another site. Show the alt text instead.
+          img: ({ alt }) => (alt ? <span>[{alt}]</span> : null),
         }}
       >
         {children}

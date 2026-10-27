@@ -1,22 +1,23 @@
+import { readLimited } from "@/lib/read-limited";
 import { AiProviderError, redact, type ProviderName } from "./providers";
 
 export const NO_KEYS = "No AI key set. Add GEMINI_API_KEY, GROQ_API_KEY or OPENROUTER_API_KEY to .env.local and restart.";
 const KEY_NAMES: Record<ProviderName, string> = { gemini: "GEMINI_API_KEY", groq: "GROQ_API_KEY", openrouter: "OPENROUTER_API_KEY" };
 
 /** Thrown by readJsonBody; carries the HTTP status to reply with. */
-class BadRequest extends Error {
+export class BadRequest extends Error {
   constructor(message: string, public status: number) {
     super(message);
   }
 }
 
-/** Read a JSON body, rejecting anything over maxBytes (checks the header and the real length). */
+/** Read a JSON body, rejecting anything over maxBytes (checks the header, then stops reading at the limit). */
 export async function readJsonBody(req: Request, maxBytes: number): Promise<unknown> {
   if (Number(req.headers.get("content-length") ?? 0) > maxBytes) throw new BadRequest("Request too large.", 413);
-  const raw = await req.text();
-  if (raw.length > maxBytes) throw new BadRequest("Request too large.", 413);
+  const bytes = await readLimited(req.body, maxBytes);
+  if (!bytes) throw new BadRequest("Request too large.", 413);
   try {
-    return JSON.parse(raw);
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     throw new BadRequest("Invalid JSON body", 400);
   }

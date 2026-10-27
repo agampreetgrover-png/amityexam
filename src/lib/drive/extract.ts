@@ -2,8 +2,10 @@
 import path from "node:path";
 import { Worker } from "node:worker_threads";
 import { AiProviderError, extractWithFallback, getProviders } from "@/lib/ai/providers";
+import { readLimited } from "@/lib/read-limited";
 
 const MAX_BYTES = 40 * 1024 * 1024; // skip anything bigger (usually full textbooks)
+const PARSE_TIMEOUT_MS = 90_000; // a file that takes longer is malformed (or hostile); give up on it for good
 const MAX_OCR_BYTES = 15 * 1024 * 1024; // Gemini inline-data limit with headroom (it is the fallback reader)
 const MAX_TEXT = 400_000; // same cap the AI routes accept for `context`
 const MAX_PDF_PAGES = 150; // longer PDFs are textbooks, not notes
@@ -20,51 +22,104 @@ async function fetchBytes(url: string, signal?: AbortSignal): Promise<Buffer> {
   const get = () => fetch(url, { signal, cache: "no-store", redirect: "follow" });
   let res = await get();
   for (let attempt = 1; attempt < 3 && (res.status === 429 || res.status >= 500); attempt++) {
+    await res.body?.cancel().catch(() => {});
     await sleep(1500 * attempt);
     res = await get();
   }
-  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`download failed (${res.status})`);
+  }
   const len = Number(res.headers.get("content-length") ?? 0);
-  if (len > MAX_BYTES) throw new SkipFile(`too large (${Math.round(len / 1e6)}MB)`);
+  if (len > MAX_BYTES) {
+    await res.body?.cancel().catch(() => {});
+    throw new SkipFile(`too large (${Math.round(len / 1e6)}MB)`);
+  }
   // An HTML page instead of the file means it isn't public, or Drive's download quota was hit.
-  if (res.headers.get("content-type")?.includes("text/html")) throw new Error("Drive returned a web page instead of the file (not shared publicly, or download limit hit)");
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.length > MAX_BYTES) throw new SkipFile(`too large (${Math.round(buf.length / 1e6)}MB)`);
-  return buf;
+  if (res.headers.get("content-type")?.includes("text/html")) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error("Drive returned a web page instead of the file (not shared publicly, or download limit hit)");
+  }
+  const bytes = await readLimited(res.body, MAX_BYTES);
+  if (!bytes) throw new SkipFile(`too large (over ${MAX_BYTES / 1e6}MB)`);
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 }
 
 type Parsed = { text: string; pages: number };
 
 // PDF, DOCX and PPTX parsing runs in a worker thread (extract-worker.mjs). pdf.js has no real worker on
 // Node, so on the main thread a sync's parsing would hold up every page request the server handles.
-let worker: Worker | null = null;
-const waiting = new Map<number, { resolve: (p: Parsed) => void; reject: (e: Error) => void }>();
-let nextId = 0;
+//
+// One file at a time. If files shared the worker, a slow one would eat into the time of every file sent
+// alongside it, and a good file could time out and be skipped for good because of its neighbour. So each
+// file's clock starts only when the worker actually starts on it, and a timeout or memory blow-up stops the
+// worker with only that file on it.
+const MEMORY_GROWTH = 768 * 1024 * 1024; // how much the process may grow while one file is read
+const MEMORY_CHECK_MS = 100;
 
-function parse(ext: "pdf" | "docx" | "pptx", buf: Buffer): Promise<Parsed> {
-  if (!worker) {
-    // Loaded from disk, not bundled: Next would rewrite a bundled worker URL to a /_next/ path that doesn't exist.
-    const w = new Worker(path.join(process.cwd(), "src/lib/drive/extract-worker.mjs"));
-    w.unref(); // never keeps the server process alive on its own
-    w.on("message", ({ id, result, error }: { id: number; result?: Parsed; error?: string }) => {
-      const job = waiting.get(id);
-      waiting.delete(id);
-      if (error !== undefined) job?.reject(new Error(error));
-      else job?.resolve(result!);
-    });
-    const fail = (e: Error) => {
+type Job = { ext: "pdf" | "docx" | "pptx"; buf: Buffer; resolve: (p: Parsed) => void; reject: (e: Error) => void };
+const queue: Job[] = [];
+let busy = false;
+let worker: Worker | null = null;
+
+function startWorker(): Worker {
+  // Loaded from disk, not bundled: Next would rewrite a bundled worker URL to a /_next/ path that doesn't exist.
+  // The heap cap means a zip bomb disguised as a DOCX/PPTX kills only this worker, not the server. It doesn't
+  // cover ArrayBuffers (pdf.js's decompressed streams live there), which is what the memory watch is for.
+  const w = new Worker(path.join(process.cwd(), "src/lib/drive/extract-worker.mjs"), { resourceLimits: { maxOldGenerationSizeMb: 1024 } });
+  w.unref(); // never keeps the server process alive on its own
+  return w;
+}
+
+function runNext() {
+  if (busy) return;
+  const job = queue.shift();
+  if (!job) return;
+  busy = true;
+  const w = (worker ??= startWorker());
+  const startRss = process.memoryUsage.rss();
+  let settled = false;
+
+  const finish = (outcome: { result: Parsed } | { error: Error }, stopWorker = false) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    clearInterval(watch);
+    w.off("message", onMessage);
+    w.off("error", onError);
+    w.off("exit", onExit);
+    if (stopWorker || worker !== w) {
       if (worker === w) worker = null; // the next file starts a fresh worker
-      for (const job of waiting.values()) job.reject(e);
-      waiting.clear();
-    };
-    w.on("error", fail);
-    w.on("exit", (code) => fail(new Error(`text extractor stopped (${code})`)));
-    worker = w;
-  }
-  const id = nextId++;
-  return new Promise((resolve, reject) => {
-    waiting.set(id, { resolve, reject });
-    worker!.postMessage({ id, ext, data: buf });
+      void w.terminate();
+    }
+    if ("result" in outcome) job.resolve(outcome.result);
+    else job.reject(outcome.error);
+    busy = false;
+    runNext();
+  };
+  const onMessage = ({ result, error }: { result?: Parsed; error?: string }) =>
+    finish(error !== undefined ? { error: new Error(error) } : { result: result! });
+  const onError = (e: Error & { code?: string }) =>
+    // Out of heap is the file's doing (a zip bomb); anything else may be passing, so the file is tried again later.
+    finish({ error: e.code === "ERR_WORKER_OUT_OF_MEMORY" ? new SkipFile("needs too much memory to read") : e }, true);
+  const onExit = (code: number) => finish({ error: new Error(`text extractor stopped (${code})`) }, true);
+  w.on("message", onMessage);
+  w.on("error", onError);
+  w.on("exit", onExit);
+
+  // A parse that never finishes would hold the queue forever; stopping the worker is the only way to interrupt pdf.js.
+  const timer = setTimeout(() => finish({ error: new SkipFile("took too long to read") }, true), PARSE_TIMEOUT_MS);
+  const watch = setInterval(() => {
+    if (process.memoryUsage.rss() - startRss > MEMORY_GROWTH) finish({ error: new SkipFile("needs too much memory to read") }, true);
+  }, MEMORY_CHECK_MS);
+  watch.unref();
+  w.postMessage({ ext: job.ext, data: job.buf });
+}
+
+function parse(ext: Job["ext"], buf: Buffer): Promise<Parsed> {
+  return new Promise<Parsed>((resolve, reject) => {
+    queue.push({ ext, buf, resolve, reject });
+    runNext();
   });
 }
 

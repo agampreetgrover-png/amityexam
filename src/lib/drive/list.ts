@@ -55,19 +55,43 @@ export interface CrawledFile extends DriveEntry {
   path: string[]; // folder names from the source root, e.g. ["CSE201 - Database Management Systems", "PYQs"]
 }
 
-/** Recursively collects files under a folder. Folders for which `skipFolder` returns true are not entered. */
+/**
+ * What one sync has already crawled, shared by all its crawls. A folder is listed once per run however often it
+ * turns up (linked by hand and also under a source, the same id sent twice, a shortcut looping back to a parent),
+ * and the run as a whole lists at most `left` folders, so one request can't set off hundreds of crawls.
+ */
+export interface CrawlRun {
+  visited: Set<string>;
+  left: number;
+}
+
+export const newCrawlRun = (maxFolders = 400): CrawlRun => ({ visited: new Set(), left: maxFolders });
+
+/** Marks a folder as listed in this run; false if it already was, or the run's folder budget is spent. */
+export function claimFolder(run: CrawlRun, folderId: string): boolean {
+  if (run.visited.has(folderId) || run.left <= 0) return false;
+  run.visited.add(folderId);
+  run.left--;
+  return true;
+}
+
+/**
+ * Recursively collects files under a folder. Folders for which `skipFolder` returns true are not entered.
+ * With `run`, folders this sync already listed (or past its budget) are passed over and give no files.
+ */
 export async function crawl(
   folderId: string,
-  opts: { path?: string[]; maxDepth?: number; skipFolder?: (name: string) => boolean; signal?: AbortSignal } = {},
+  opts: { path?: string[]; maxDepth?: number; skipFolder?: (name: string) => boolean; signal?: AbortSignal; run?: CrawlRun } = {},
 ): Promise<CrawledFile[]> {
-  const { path = [], maxDepth = 4, skipFolder, signal } = opts;
+  const { path = [], maxDepth = 4, skipFolder, signal, run = newCrawlRun() } = opts;
+  if (!claimFolder(run, folderId)) return [];
   const entries = await listFolder(folderId, signal);
   const files: CrawledFile[] = [];
   for (const e of entries) {
     if (e.type !== "folder") files.push({ ...e, path });
     else if (path.length < maxDepth && !skipFolder?.(e.name)) {
       try {
-        files.push(...(await crawl(e.id, { path: [...path, e.name], maxDepth, skipFolder, signal })));
+        files.push(...(await crawl(e.id, { path: [...path, e.name], maxDepth, skipFolder, signal, run })));
       } catch (err) {
         if (signal?.aborted) throw err;
         // One unreadable subfolder shouldn't lose the rest of the subject; it's tried again next sync.

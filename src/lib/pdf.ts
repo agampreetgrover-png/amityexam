@@ -30,22 +30,28 @@ async function extractText(file: File): Promise<string> {
     const pdfjs = await import("pdfjs-dist");
     // Copied to /public by the postinstall script.
     pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-    const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+    // Each document gets its own pdf.js Web Worker, which only destroy() stops; without it every upload leaks one.
+    const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
     const pages: string[] = [];
-    for (let i = 1; i <= doc.numPages; i++) {
-      const content = await (await doc.getPage(i)).getTextContent();
-      let line = "";
-      const lines: string[] = [];
-      for (const item of content.items) {
-        if (!("str" in item)) continue;
-        line += item.str;
-        if (item.hasEOL) {
-          lines.push(line);
-          line = "";
-        } else line += " ";
+    try {
+      const doc = await task.promise;
+      for (let i = 1; i <= doc.numPages; i++) {
+        const content = await (await doc.getPage(i)).getTextContent();
+        let line = "";
+        const lines: string[] = [];
+        for (const item of content.items) {
+          if (!("str" in item)) continue;
+          line += item.str;
+          if (item.hasEOL) {
+            lines.push(line);
+            line = "";
+          } else line += " ";
+        }
+        if (line.trim()) lines.push(line);
+        pages.push(lines.join("\n"));
       }
-      if (line.trim()) lines.push(line);
-      pages.push(lines.join("\n"));
+    } finally {
+      await task.destroy();
     }
     const text = pages.join("\n\n").replace(/[ \t]+/g, " ").trim();
     if (!text) throw new Error(`${SCANNED} Paste the text instead.`);

@@ -5,7 +5,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Briefcase, Check, FileSpreadsheet, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db, deleteExam } from "@/lib/db";
-import { daysBetween, prettyDay, today } from "@/lib/dates";
+import { daysBetween, prettyDay } from "@/lib/dates";
+import { useToday } from "@/lib/use-today";
 import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
 import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
@@ -25,7 +26,7 @@ export default function ExamsPage() {
   const [importing, setImporting] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const mode = useExamMode();
-  const t = today();
+  const t = useToday();
   const subject = (id: number) => subjects?.find((s) => s.id === id);
   // Only this mode's exams unless "Show all" is ticked.
   const inMode = exams?.filter((e) => examInMode(e, mode)) ?? [];
