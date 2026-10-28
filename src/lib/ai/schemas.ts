@@ -65,17 +65,21 @@ export const PyqPaperSchema = z.object({
   questions: lenientArray(PyqQuestionSchema),
 });
 
+// An index or rating from the model. z.coerce.number alone turns null and "" into 0, which reads as "the first one"
+// (or "no groundwork"); here they fail like other junk, so .catch(-1) gives "none" and a bare field drops the item.
+const num = z.preprocess((v) => (v == null || v === "" ? NaN : v), z.coerce.number().int());
+
 /** Questions mapped to syllabus topics by index (action "pyqmap"); t = -1 means no topic fits. */
 export const PyqMapSchema = z.object({
-  map: lenientArray(z.object({ i: z.coerce.number().int(), t: z.coerce.number().int().catch(-1) })),
+  map: lenientArray(z.object({ i: num, t: num.catch(-1) })),
 });
 
 /** Topics rated by how much groundwork they need (action "prep"); i indexes the request's topics. */
 export const PrepSchema = z.object({
   topics: lenientArray(
     z.object({
-      i: z.coerce.number().int(),
-      prep: z.coerce.number().int().min(0).max(2),
+      i: num,
+      prep: num.pipe(z.number().min(0).max(2)),
       mins: intOrNull(1, 600).default(null),
       imp: z.coerce.number().int().min(1).max(3).catch(2),
       needs: strOrNull.default(null),
@@ -106,7 +110,7 @@ const isoDate = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => {
 export const DatesheetSchema = z.object({
   exams: lenientArray(
     z.object({
-      subject: z.coerce.number().int().catch(-1),
+      subject: num.catch(-1),
       date: isoDate,
       time: timeOrNull.default(null),
       durationMins: intOrNull(10, 600).default(null),

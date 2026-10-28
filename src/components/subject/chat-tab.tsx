@@ -26,6 +26,8 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
   // On phones and tablets Enter adds a line (the keyboard has no Shift); the Send button sends.
   const [touch, setTouch] = useState(false);
   useEffect(() => setTouch(window.matchMedia("(pointer: coarse)").matches), []);
+  // Leaving the tab (or switching exam mode, which remounts it) stops its answer; whatever arrived is still saved.
+  useEffect(() => () => ctrl.current?.abort(), []);
 
   // This tab's own thread; the study chat's conversations (chatId set) live on the Chat page.
   // Both undefined while loading, so the starter screen and "No materials uploaded" don't flash.

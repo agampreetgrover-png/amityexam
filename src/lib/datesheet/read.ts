@@ -9,10 +9,12 @@ export const DATESHEET_ACCEPT = ".xlsx,.xls,.ods,.csv,application/pdf,image/*";
 /** Spreadsheet → "## <sheet>" headings and "cell | cell | …" rows. Dates come out as YYYY-MM-DD, not Excel serial numbers. */
 async function sheetText(data: ArrayBuffer): Promise<string> {
   const XLSX = await import("xlsx");
-  const wb = XLSX.read(data, { type: "array", cellDates: true, dense: true });
+  // dateNF belongs here: it replaces Excel's default date format (m/d/yy) as the cells are read. Given to
+  // sheet_to_json it's ignored, since the cells already carry their text, so 3 Oct read as "10/3/25".
+  const wb = XLSX.read(data, { type: "array", cellDates: true, dense: true, dateNF: "yyyy-mm-dd" });
   const parts: string[] = [];
   for (const name of wb.SheetNames) {
-    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: false, dateNF: "yyyy-mm-dd", defval: "", blankrows: false });
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, raw: false, defval: "", blankrows: false });
     // Keep empty cells so columns line up: many sheets put the time slot in a column header.
     const lines = rows
       .map((r) => {

@@ -120,11 +120,14 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   // Classify, drop known files, and de-duplicate copies that appear in both drives.
   const queue: { subjectId: number; f: CrawledFile; kind: DriveKind; pyqExam?: PyqExam }[] = [];
   const seen = new Set<string>();
+  // A copy has the same name in the same place inside the subject's folder. The folder itself (path[0]) may be
+  // named differently in each drive; below it, PYQs/2022/Major.pdf and PYQs/2023/Major.pdf are two papers.
+  const copyKey = (subjectId: number, f: CrawledFile) => `${subjectId}:${f.path.slice(1).map(sameName).join("/")}/${sameName(f.name)}`;
   // Names of files imported on an earlier round count too, or the copy in the other drive would come in next time.
-  for (const [subjectId, files] of found) for (const f of files) if (known.has(f.id)) seen.add(`${subjectId}:${sameName(f.name)}`);
+  for (const [subjectId, files] of found) for (const f of files) if (known.has(f.id)) seen.add(copyKey(subjectId, f));
   for (const [subjectId, files] of found) {
     for (const f of files) {
-      const key = `${subjectId}:${sameName(f.name)}`;
+      const key = copyKey(subjectId, f);
       if (known.has(f.id) || seen.has(f.id) || seen.has(key)) continue;
       seen.add(f.id);
       seen.add(key);

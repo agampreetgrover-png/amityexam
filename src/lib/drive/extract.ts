@@ -6,7 +6,8 @@ import { readLimited } from "@/lib/read-limited";
 
 const MAX_BYTES = 40 * 1024 * 1024; // skip anything bigger (usually full textbooks)
 const PARSE_TIMEOUT_MS = 90_000; // a file that takes longer is malformed (or hostile); give up on it for good
-const MAX_OCR_BYTES = 15 * 1024 * 1024; // Gemini inline-data limit with headroom (it is the fallback reader)
+// Gemini (the fallback reader) takes 20MB per request, and base64 adds a third: 14MiB comes to ~19.6MB.
+const MAX_OCR_BYTES = 14 * 1024 * 1024;
 const MAX_TEXT = 400_000; // same cap the AI routes accept for `context`
 const MAX_PDF_PAGES = 150; // longer PDFs are textbooks, not notes
 
@@ -173,6 +174,8 @@ export async function fileText(
       return { text: clip(ocr.trim()), ocr: true };
     } catch (e) {
       if (e instanceof AiProviderError) {
+        // Too long for the model won't change by the next sync; asking again would only spend a scan slot each time.
+        if (e.kind === "too-large") throw new SkipFile("scanned PDF too long for the AI to read");
         const why = e.kind === "day" ? "daily AI limit reached" : e.kind === "minute" ? "AI rate limit" : e.kind === "unavailable" ? "AI busy" : "AI couldn't read it";
         throw new DeferFile(`scanned PDF: ${why}, will retry on a later sync`);
       }

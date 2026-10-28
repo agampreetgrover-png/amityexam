@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { BarChart3, BookOpen, Flame, GraduationCap, House, MessagesSquare, Moon, Search, Settings, Sprout, Sun } from "lucide-react";
 import { openCommandPalette } from "./command-palette-loader";
 import { setTheme, useTheme } from "@/lib/theme";
@@ -32,6 +32,8 @@ export function Nav() {
   // The clicked item lights up straight away, before the next page has loaded. It only counts while we're still
   // on the page it was clicked from, so it clears itself once the navigation lands (or a later one does).
   const [clicked, setClicked] = useState<{ href: string; from: string } | null>(null);
+  // Forgotten once the navigation lands, so coming Back to the page it was clicked from doesn't light it up again.
+  useEffect(() => setClicked(null), [path]);
   const current = clicked?.from === path ? clicked.href : path;
   const active = (href: string) => (href === "/" ? current === "/" : current.startsWith(href));
   const onClick = (href: string) => (e: MouseEvent) => {

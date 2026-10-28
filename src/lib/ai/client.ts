@@ -38,11 +38,11 @@ async function post(action: string, body: unknown, signal?: AbortSignal) {
     body: JSON.stringify(body),
     signal,
   });
-  recordProvider(res);
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     throw new AiError(j.error ?? `AI request failed (${res.status})`, j.retryAfter);
   }
+  recordProvider(res); // an error names the provider that failed, which didn't answer
   return res;
 }
 

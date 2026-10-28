@@ -8,7 +8,7 @@ import { useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, fromDay, prettyDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
-import { examTypeLabel } from "@/lib/exams";
+import { byWhen, examTypeLabel } from "@/lib/exams";
 import { examInMode, examSyllabus, modeShort, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
 import { openCommandPalette } from "@/components/command-palette-loader";
@@ -24,7 +24,7 @@ export default function TodayPage() {
       db.subjects.toArray(),
       db.topics.toArray(),
       db.units.toArray(),
-      db.exams.where("date").aboveOrEqual(t).sortBy("date"),
+      db.exams.where("date").aboveOrEqual(t).toArray().then((es) => es.sort(byWhen)),
       db.exams.count(),
       db.materials.where("kind").equals("syllabus").count(),
     ]);

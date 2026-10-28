@@ -5,10 +5,11 @@ import { ArrowLeftRight, BarChart3, BookOpen, CornerDownLeft, Flame, GraduationC
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/db";
-import { daysBetween, prettyDay, today } from "@/lib/dates";
+import { daysBetween, prettyDay } from "@/lib/dates";
 import { MATCH_THRESHOLD, subjectScore, type SubjectRef } from "@/lib/drive/classify";
-import { examTypeLabel } from "@/lib/exams";
+import { byWhen, examTypeLabel } from "@/lib/exams";
 import { examInMode, modeShort, otherMode, setExamMode, useExamMode } from "@/lib/mode";
+import { useToday } from "@/lib/use-today";
 import { OPEN_EVENT } from "./command-palette-loader";
 import { toast } from "./toast";
 import { cn } from "./ui";
@@ -40,10 +41,12 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
 
+  // The palette stays mounted all session, so "today" has to move on by itself.
+  const t = useToday();
   const data = useLiveQuery(async () => {
-    const [subjects, exams] = await Promise.all([db.subjects.orderBy("name").toArray(), db.exams.where("date").aboveOrEqual(today()).sortBy("date")]);
+    const [subjects, exams] = await Promise.all([db.subjects.orderBy("name").toArray(), db.exams.where("date").aboveOrEqual(t).toArray().then((es) => es.sort(byWhen))]);
     return { subjects, exams };
-  });
+  }, [t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -75,7 +78,6 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
 
   const commands = useMemo<Command[]>(() => {
     const go = (href: string) => () => router.push(href);
-    const t = today();
     const list: Command[] = [
       { id: "p-today", group: "Go to", label: "Today", icon: <House size={16} />, run: go("/") },
       { id: "p-subjects", group: "Go to", label: "Subjects", icon: <BookOpen size={16} />, keywords: "syllabus notes", run: go("/subjects") },
@@ -128,7 +130,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       });
     }
     return list;
-  }, [data, mode, router]);
+  }, [data, mode, router, t]);
 
   const results = useMemo(() => {
     const q = norm(query);

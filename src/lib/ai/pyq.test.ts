@@ -40,6 +40,13 @@ describe("PyqMapSchema", () => {
     ]);
     expect(PyqMapSchema.parse({}).map).toEqual([]);
   });
+
+  it("reads a null or empty topic as none, not the first topic", () => {
+    expect(PyqMapSchema.parse({ map: [{ i: 0, t: null }, { i: 1, t: "" }, { i: null, t: 2 }] }).map).toEqual([
+      { i: 0, t: -1 },
+      { i: 1, t: -1 },
+    ]);
+  });
 });
 
 describe("pyq prompts", () => {

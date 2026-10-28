@@ -7,7 +7,7 @@ import { useState } from "react";
 import { db, deleteExam } from "@/lib/db";
 import { daysBetween, prettyDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
-import { DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
+import { byWhen, DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
 import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
 import { Button, Empty, Field, Input, Modal, PageHeader, Panel, Section, Select, cn, subjectStyle, tableHead } from "@/components/ui";
@@ -19,7 +19,7 @@ import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
 const COLS = "@xl:grid-cols-[4rem_minmax(0,1.35fr)_minmax(0,0.85fr)_minmax(0,1fr)_10.75rem]";
 
 export default function ExamsPage() {
-  const exams = useLiveQuery(() => db.exams.orderBy("date").toArray());
+  const exams = useLiveQuery(() => db.exams.toArray().then((es) => es.sort(byWhen)));
   const subjects = useLiveQuery(() => db.subjects.toArray());
   const [editing, setEditing] = useState<Exam | null>(null);
   const [adding, setAdding] = useState(false);

@@ -28,24 +28,38 @@ async function candidates(sourceIds: string[]): Promise<Candidate[]> {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL) return hit.list;
   const out: Candidate[] = [];
+  let complete = true; // a list missing a folder that failed to load isn't kept, so the next request tries again
   for (const source of sourceIds) {
     let top;
     try {
       top = await listFolder(source);
     } catch {
+      complete = false;
       continue; // an unavailable source just contributes nothing
     }
     for (const e of top) if (e.type === "file" && isSheet(e.name)) out.push({ ...e, path: [], source });
     // Subfolders are read 8 at a time; one unreadable folder is skipped.
     const folders = top.filter((e) => e.type === "folder");
     for (let i = 0; i < folders.length; i += 8) {
-      const batch = await Promise.all(folders.slice(i, i + 8).map((f) => listFolder(f.id).then((xs) => ({ f, xs }), () => ({ f, xs: [] }))));
+      const batch = await Promise.all(
+        folders.slice(i, i + 8).map((f) =>
+          listFolder(f.id).then(
+            (xs) => ({ f, xs }),
+            () => {
+              complete = false;
+              return { f, xs: [] };
+            },
+          ),
+        ),
+      );
       for (const { f, xs } of batch) for (const e of xs) if (e.type === "file" && isSheet(e.name)) out.push({ ...e, path: [f.name], source });
     }
   }
-  cache.delete(key);
-  cache.set(key, { at: Date.now(), list: out });
-  if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
+  if (complete) {
+    cache.delete(key);
+    cache.set(key, { at: Date.now(), list: out });
+    if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
+  }
   return out;
 }
 

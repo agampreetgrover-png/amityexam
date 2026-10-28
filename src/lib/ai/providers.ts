@@ -116,24 +116,31 @@ function gemini(apiKey: string): Provider {
       const { system, contents } = toGemini(messages);
       let stream: AsyncGenerator<{ text?: string }>;
       // The client's timeout stays armed while the stream is read and would cut a long answer off,
-      // so here it only covers waiting for the reply to start.
+      // so here it only covers waiting for the first words (not just the headers) to arrive.
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+      let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
       try {
-        stream = await ai.models.generateContentStream({
-          model: model(opts?.fast),
-          contents,
-          config: { ...config(system, opts?.kind === "chat" ? "chat" : "text"), httpOptions: { timeout: 0 }, abortSignal: ctrl.signal },
-        });
-      } catch (e) {
-        throw geminiError(e);
+        try {
+          stream = await ai.models.generateContentStream({
+            model: model(opts?.fast),
+            contents,
+            config: { ...config(system, opts?.kind === "chat" ? "chat" : "text"), httpOptions: { timeout: 0 }, abortSignal: ctrl.signal },
+          });
+        } catch (e) {
+          throw geminiError(e);
+        }
+        try {
+          for await (const chunk of stream) {
+            if (!chunk.text) continue;
+            clearTimeout(timer);
+            timer = undefined;
+            yield chunk.text;
+          }
+        } catch (e) {
+          throw geminiError(e);
+        }
       } finally {
         clearTimeout(timer);
-      }
-      try {
-        for await (const chunk of stream) if (chunk.text) yield chunk.text;
-      } catch (e) {
-        throw geminiError(e);
       }
     },
     async extract(file, prompt, opts) {
@@ -191,16 +198,14 @@ function openrouter(apiKey: string): Provider {
     list(process.env.OPENROUTER_VISION_MODEL, "nvidia/nemotron-3.5-super-vl:free,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free");
   const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-  async function call(body: Record<string, unknown>) {
-    // A stream's timeout only covers waiting for the reply to start; a long answer may take longer than that to arrive.
-    const ctrl = body.stream ? new AbortController() : undefined;
-    const timer = ctrl && setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  // `signal`: a stream brings its own, since its timeout lasts until the first words rather than the whole answer.
+  async function call(body: Record<string, unknown>, signal?: AbortSignal) {
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "X-Title": "Amity Exams" },
       body: JSON.stringify({ ...body, reasoning: { effort: "low", exclude: true } }),
-      signal: ctrl?.signal ?? AbortSignal.timeout(TIMEOUT_MS),
-    }).finally(() => clearTimeout(timer));
+      signal: signal ?? AbortSignal.timeout(TIMEOUT_MS),
+    });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       let msg = text;
@@ -263,10 +268,16 @@ function openrouter(apiKey: string): Provider {
       }
     },
     async *stream(messages, opts) {
+      // The timeout covers waiting for the first words, not just the headers: with every free model busy OpenRouter
+      // answers 200 and then only sends keep-alives, which would hold the answer (and the move to Gemini) up for good.
+      // Once text flows it's off, since a long answer may take longer than that to arrive.
+      const ctrl = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => ctrl.abort(new Error("no answer in time")), TIMEOUT_MS);
       let res: Response;
       try {
-        res = await call({ models: model(opts?.fast), messages, temperature: opts?.kind === "chat" ? 0.5 : 0.3, max_tokens: outCap(opts?.kind), stream: true });
+        res = await call({ models: model(opts?.fast), messages, temperature: opts?.kind === "chat" ? 0.5 : 0.3, max_tokens: outCap(opts?.kind), stream: true }, ctrl.signal);
       } catch (e) {
+        clearTimeout(timer);
         throw openrouterError(e);
       }
       const reader = res.body!.getReader();
@@ -293,12 +304,17 @@ function openrouter(apiKey: string): Provider {
             }
             if (chunk.error) throw new OpenRouterHttpError(chunk.error.message ?? "upstream error", Number(chunk.error.code) || 502);
             const t = chunk.choices?.[0]?.delta?.content;
-            if (t) yield t;
+            if (t) {
+              clearTimeout(timer);
+              timer = undefined;
+              yield t;
+            }
           }
         }
       } catch (e) {
         throw openrouterError(e);
       } finally {
+        clearTimeout(timer);
         // Also runs when the reader stops early (the student hit stop), so the upstream request ends with it.
         reader.cancel().catch(() => {});
       }
@@ -371,5 +387,6 @@ function summarise(errors: AiProviderError[]): AiProviderError {
   // A per-minute limit with a countdown is more actionable than an outage.
   const minute = errors.find((e) => e.kind === "minute");
   if (minute && errors.every((e) => e.kind === "minute" || e.kind === "day")) return minute;
-  return errors.find((e) => e.kind === "too-large") ?? errors[errors.length - 1];
+  // A rejected key won't fix itself overnight, so it beats the other provider's limit or outage.
+  return errors.find((e) => e.kind === "too-large") ?? errors.find((e) => e.kind === "auth") ?? errors[errors.length - 1];
 }

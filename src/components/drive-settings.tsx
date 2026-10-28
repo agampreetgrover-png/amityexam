@@ -5,7 +5,7 @@ import { Cloud, ExternalLink, Link2, Loader2, Plus, RefreshCw, X } from "lucide-
 import { useEffect, useState } from "react";
 import { db, getSettings } from "@/lib/db";
 import { runDriveSync, useDriveSync } from "@/lib/drive/client";
-import { DEFAULT_DRIVE_SOURCES, folderIdFromLink } from "@/lib/drive/sources";
+import { DEFAULT_DRIVE_SOURCES, MAX_DRIVE_SOURCES, MAX_SOURCE_LABEL, folderIdFromLink } from "@/lib/drive/sources";
 import type { Settings } from "@/lib/types";
 import { Button, Field, Input, Modal, Section, Select, cn } from "./ui";
 
@@ -41,6 +41,7 @@ export function DriveSettings() {
     const id = folderIdFromLink(link.trim());
     if (!id) return setLinkError("Paste a Google Drive folder link (drive.google.com/drive/folders/…).");
     if (sources.some((s) => s.id === id)) return setLinkError("That folder is already in the list.");
+    if (sources.length >= MAX_DRIVE_SOURCES) return setLinkError(`Up to ${MAX_DRIVE_SOURCES} folders can be synced. Remove one to add another.`);
     // Check it's public now (not at the next sync) and label it with its real name.
     setChecking(true);
     let name = "";
@@ -48,7 +49,7 @@ export function DriveSettings() {
       const r = await fetch(`/api/drive/folders?info=${encodeURIComponent(id)}`);
       const j = await r.json().catch(() => ({}));
       if (!r.ok) return setLinkError(j.error ?? "Couldn't open that folder.");
-      name = j.name ?? "";
+      name = String(j.name ?? "").slice(0, MAX_SOURCE_LABEL).trim(); // the sync turns away longer names
     } catch {
       return setLinkError("Couldn't reach Google Drive. Check your connection.");
     } finally {
@@ -56,7 +57,7 @@ export function DriveSettings() {
     }
     await save((cur) => {
       const list = cur.driveSources ?? DEFAULT_DRIVE_SOURCES;
-      if (list.some((s) => s.id === id)) return {};
+      if (list.some((s) => s.id === id) || list.length >= MAX_DRIVE_SOURCES) return {};
       // Fallback name: smallest unused number, so removing a folder and adding another can't produce two "Folder 3"s.
       const used = new Set(list.map((s) => s.label));
       let n = 1;

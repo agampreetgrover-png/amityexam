@@ -5,7 +5,7 @@ import { useSyncExternalStore } from "react";
 import { db, getSettings } from "@/lib/db";
 import type { Material } from "@/lib/types";
 import type { SyncEvent } from "./sync";
-import { DEFAULT_DRIVE_SOURCES } from "./sources";
+import { DEFAULT_DRIVE_SOURCES, MAX_DRIVE_SOURCES, MAX_SOURCE_LABEL } from "./sources";
 
 interface DriveSyncState {
   running: boolean;
@@ -72,8 +72,12 @@ async function sync(auto: boolean) {
   }
 
   // An empty list is the student's choice (they removed every folder); only unset means the defaults.
-  const sources = settings.driveSources ?? DEFAULT_DRIVE_SOURCES;
-  if (!sources.length) {
+  // Capped at what the sync route takes, labels included, so one folder too many can't fail every sync.
+  const sources = (settings.driveSources ?? DEFAULT_DRIVE_SOURCES)
+    .slice(0, MAX_DRIVE_SOURCES)
+    .map((s) => ({ ...s, label: s.label.slice(0, MAX_SOURCE_LABEL) }));
+  // Folders linked to a subject by hand are synced even with no source folders.
+  if (!sources.length && !subjects.some((s) => s.driveFolderIds?.length)) {
     if (!auto) set({ message: "No Drive folders to sync. Add one in Settings → Google Drive." });
     return;
   }

@@ -60,6 +60,7 @@ export async function ratePrep({ again = false, subjectId }: { again?: boolean; 
     set({ total });
     let rated = 0;
     let skipped = 0;
+    let failure: unknown;
     for (const { subject, topics: todo } of jobs) {
       for (let i = 0; i < todo.length; i += BATCH) {
         const batch = todo.slice(i, i + BATCH);
@@ -73,11 +74,14 @@ export async function ratePrep({ again = false, subjectId }: { again?: boolean; 
           rated += await save(batch, res.topics);
         } catch (e) {
           if (isLimit(e)) throw e;
+          failure = e;
           skipped += batch.length;
         }
         set({ done: state.done + batch.length });
       }
     }
+    // Nothing rated at all: show why, or the page just comes back with the same button and no word of it.
+    if (skipped && !rated) throw failure;
     set({
       done: total,
       message: !total

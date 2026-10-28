@@ -45,6 +45,8 @@ export default function ChatPage() {
   const syncUrl = (id: number | null) => window.history.replaceState(window.history.state, "", id ? `/chat?id=${id}` : "/chat");
 
   const open = (id: number) => {
+    // Already open (on a phone, tapping it in History to go back): remounting would cut off its answer.
+    if (id === selected) return setHistoryOpen(false);
     setSelected(id);
     setThreadKey((k) => k + 1);
     setHistoryOpen(false);

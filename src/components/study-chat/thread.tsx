@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { aiStream } from "@/lib/ai/client";
 import type { AiRequest } from "@/lib/ai/schemas";
 import { daysBetween } from "@/lib/dates";
+import { byWhen } from "@/lib/exams";
 import { db, deleteChat } from "@/lib/db";
 import { aiModeFields, examInMode, modeShort, pyqMatchesMode, topicsInScope, useExamMode } from "@/lib/mode";
 import {
@@ -61,6 +62,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   const [sent, setSent] = useState<number>();
   const ctrl = useRef<AbortController | null>(null);
   const sending = useRef(false);
+  const mounted = useRef(true);
   const bottom = useRef<HTMLDivElement>(null);
   // On phones and tablets Enter adds a line (the keyboard has no Shift); the Send button sends.
   const [touch, setTouch] = useState(false);
@@ -82,12 +84,18 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     }
   };
   // Leaving the chat stops its answer; whatever arrived is still saved (see send).
-  useEffect(() => () => ctrl.current?.abort(), []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      ctrl.current?.abort();
+    };
+  }, []);
 
   const base = useLiveQuery(async () => {
     const [subjects, exams, chat] = await Promise.all([
       db.subjects.orderBy("name").toArray(),
-      db.exams.where("date").aboveOrEqual(today).sortBy("date"),
+      db.exams.where("date").aboveOrEqual(today).toArray().then((es) => es.sort(byWhen)),
       id != null ? db.chats.get(id).then((c) => c ?? null) : undefined,
     ]);
     return { subjects, exams, chat };
@@ -141,7 +149,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     // moves to the subject it names; a saved one asks first, since the conversation so far is about this subject.
     const named = here || retryOf != null ? undefined : namedSubject(text, base.subjects, subject.id);
     if (named) {
-      setInput("");
+      if (raw == null) setInput("");
       if (id == null && !messages.length) {
         setPicked(named.id!);
         setPending({ text, subjectId: named.id! });
@@ -153,7 +161,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     }
     setOffSubject(null);
     sending.current = true;
-    setInput("");
+    if (raw == null) setInput(""); // a button's question (Ask again, a starter) leaves a half-typed draft alone
     setError(null);
     const past = messages.filter((m) => m.id !== retryOf);
     const lastUser = [...past].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -212,14 +220,20 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
       // if it was new) and put it back in the box to send again.
       try {
         if (reply.trim() && chat != null) {
-          await db.messages.add({ subjectId: subject.id!, chatId: chat, role: "assistant", content: reply, createdAt: Date.now(), sources });
-          await db.chats.update(chat, { updatedAt: Date.now() });
+          const saved = chat;
+          await db.transaction("rw", db.chats, db.messages, async () => {
+            // Deleted from History mid-answer: don't leave its answer behind with no chat.
+            if (!(await db.chats.get(saved))) return;
+            await db.messages.add({ subjectId: subject.id!, chatId: saved, role: "assistant", content: reply, createdAt: Date.now(), sources });
+            await db.chats.update(saved, { updatedAt: Date.now() });
+          });
         } else {
           if (questionId != null) await db.messages.delete(questionId);
           if (created && chat != null) {
             await deleteChat(chat);
             setId(null);
-            onDiscarded();
+            // Only if still showing: after a switch to another chat this would unselect that one.
+            if (mounted.current) onDiscarded();
           }
           setInput((cur) => cur || text);
         }

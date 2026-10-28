@@ -6,6 +6,10 @@ export interface DriveSource {
   label: string;
 }
 
+// What the sync and date-sheet routes accept: each source costs ~80 Drive requests per sync.
+export const MAX_DRIVE_SOURCES = 10;
+export const MAX_SOURCE_LABEL = 100;
+
 export const DEFAULT_DRIVE_SOURCES: DriveSource[] = [
   { id: "1RZ9HBZ0QLS7lYxt5jqUJBh8ZG7Fps_z2", label: "Amity subject library" },
   { id: "1x_19Nw6d3RqPEUjDgOj_Y5vtyWBcswCz", label: "My semester" },

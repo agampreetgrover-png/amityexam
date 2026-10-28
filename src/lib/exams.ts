@@ -1,4 +1,8 @@
-import type { ChecklistItem, ExamType } from "./types";
+import type { ChecklistItem, Exam, ExamType } from "./types";
+
+/** Soonest first: by day, then start time, so a 09:30 paper comes before a 14:00 practical the same day. */
+export const byWhen = (a: Pick<Exam, "date" | "time">, b: Pick<Exam, "date" | "time">) =>
+  a.date.localeCompare(b.date) || (a.time || "~").localeCompare(b.time || "~"); // no time: after the timed ones
 
 export const EXAM_TYPES: { value: ExamType; label: string }[] = [
   { value: "internal", label: "Internal / class test" },
