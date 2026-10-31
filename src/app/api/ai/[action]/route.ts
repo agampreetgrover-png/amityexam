@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { buildJsonPrompt, buildTextPrompt } from "@/lib/ai/prompts";
 import { errorResponse, NO_KEYS, readJsonBody } from "@/lib/ai/errors";
 import { stripFence } from "@/lib/ai/json";
-import { AiProviderError, getProviders, redact, runWithFallback, type ProviderName } from "@/lib/ai/providers";
+import { AiProviderError, getProviders, PROMPT_LIMITS, redact, runWithFallback, type ProviderName } from "@/lib/ai/providers";
 import {
   AiRequestSchema, DatesheetSchema, GradeSchema, JSON_ACTIONS, PrepSchema, PyqMapSchema, PyqPaperSchema, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
   type AiRequest, type JsonAction, type TextAction,
@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
       const a = action as JsonAction;
       // A malformed reply counts as a failure, so the next provider gets a chance.
       const { result, provider } = await runWithFallback(async (p) => {
-        const raw = await p.json(buildJsonPrompt(a, body, { maxChars: p.maxContextChars, chatHistory: p.chatHistory }), { kind: "json" });
+        const raw = await p.json(buildJsonPrompt(a, body, PROMPT_LIMITS), { kind: "json" });
         let data: unknown;
         try {
           data = JSON.parse(stripFence(raw));
@@ -57,7 +57,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ action:
     const chat = a === "chat";
     // Fallback is only possible before the first chunk; pull it here so errors surface early.
     const { result, provider } = await runWithFallback(async (p) => {
-      const it = p.stream(buildTextPrompt(a, body, { maxChars: p.maxContextChars, chatHistory: p.chatHistory }), {
+      const it = p.stream(buildTextPrompt(a, body, PROMPT_LIMITS), {
         fast: chat,
         kind: chat ? "chat" : "text",
       })[Symbol.asyncIterator]();

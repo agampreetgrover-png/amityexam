@@ -1,48 +1,69 @@
 @import "tailwindcss";
 
 /*
-  Ink and paper. An off-white desk with white sheets laid on it: panels are white with a hairline border and
-  the faintest shadow, so the page has depth without boxes inside boxes. Navy ink for text, one royal blue for
-  anything you can press or that measures progress, highlighter yellow only for "needs you within three days".
-  The rest of the colour belongs to the subjects: each subject's own colour tints its exam, its rows and its
-  header (see .subj). No glows, no decorative gradients, no ambient motion.
-
-  Dark is a school slate: a green-grey board rather than navy-black, sheets a step lighter, chalk-white ink, the
-  blue turned to a soft chalk blue so it reads without glowing, and the highlighter left at full strength like
-  yellow chalk. Each token holds both values; color-scheme picks one. With no choice saved it follows the system;
-  Settings (or the nav's sun/moon) pins one with data-theme on <html>.
+  Focus desk. Light: a slate-50 canvas with white cards set on it (a slate-200 hairline and shadow-sm). Dark:
+  obsidian, not tinted blue-black: a near-black canvas, a sidebar one step up, solid cards a step above that, and
+  hairline white borders at 7-8% instead of shadows or glows. One indigo for anything you can press or that is the
+  current focus (a lighter indigo for text on dark, the solid one for filled buttons). Status colours carry meaning
+  only: coral for an exam under a week away, amber under two weeks, emerald for progress and things done. Each
+  subject keeps its own colour for its rows, dots and strips (see .subj).
+  Each token holds both values; color-scheme picks one. With no choice saved it follows the system; Settings (or
+  the sidebar's sun/moon) pins one with data-theme on <html>.
 */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f8f9fb, #17211d);
-  --surface: light-dark(#ffffff, #1e2925);
-  --surface-2: light-dark(#f2f4f8, #26322e);
-  --surface-3: light-dark(#e7eaf1, #2f3d38);
-  --border: light-dark(#e3e6ee, #333f3a);
-  --line-strong: light-dark(#cdd3df, #4c5954);
-  --text: light-dark(#0e1630, #eaece6);
-  --muted: light-dark(#5a6377, #b2beb9);
-  /* Light value is the same grey-blue taken just dark enough to read as small text (4.5:1) on every paper surface. */
-  --faint: light-dark(#677084, #8a9591);
-  --accent: light-dark(#3549d4, #a5c8ed);
-  --accent-hover: light-dark(#2a3bb5, #bfdbf8);
-  --accent-ink: light-dark(#ffffff, #111b28);
-  --accent-soft: light-dark(#edf0fd, #2a3d4b);
-  --side: light-dark(#f2f4f8, #17211d);
-  --mark: light-dark(#ffd43b, #f5cb3a);
-  --mark-soft: light-dark(#fff5cc, #453d1d);
-  --mark-ink: #0e1630;
-  --good: light-dark(#157a48, #6cd092);
-  --warn: light-dark(#a85a07, #efb062);
-  --bad: light-dark(#c0322b, #f28881);
-  --selection: light-dark(#dce2ff, #385064);
+  --bg: light-dark(#f8fafc, #0b0d13);
+  --side: light-dark(#ffffff, #0d0f17);
+  --surface: light-dark(#ffffff, #131622);
+  /* Hover and second elevation; also the fill of quiet chips and tracks. */
+  --surface-2: light-dark(#f1f5f9, #181c2b);
+  --surface-3: light-dark(#e2e8f0, #1f2436);
+  --border: light-dark(#e2e8f0, rgb(255 255 255 / 0.08));
+  --line-strong: light-dark(#cbd5e1, rgb(255 255 255 / 0.14));
+  /* The edge of a control that has no other outline (fields, the switch thumb): 3:1 against the card it sits on. */
+  --line-control: light-dark(#808fa4, rgb(255 255 255 / 0.34));
+  --text: light-dark(#0f172a, #f1f5f9);
+  /* A hair darker than slate-500 in light, so small text keeps 4.5:1 on the slate-100 chips and indigo tints too. */
+  --muted: light-dark(#5b6b82, #94a3b8);
+  --faint: light-dark(#5b6b82, #94a3b8);
+  /* Indigo as text, rings and marks. On dark it is lifted to indigo-400 so links read at 6:1 on cards. */
+  --accent: light-dark(#4f46e5, #818cf8);
+  --accent-hover: light-dark(#4338ca, #a5b4fc);
+  /* Indigo as a filled button, with white text on it in both themes (6.3:1; indigo-500 would be 4.47). */
+  --accent-solid: #4f46e5;
+  --accent-solid-hover: #4338ca;
+  --accent-ink: #ffffff;
+  /* Selected rows and icon chips: an indigo tint in light, a neutral raised step in dark (an indigo wash reads muddy). */
+  --accent-soft: light-dark(#eef2ff, rgb(255 255 255 / 0.06));
+  /* The current page in the sidebar: an indigo tint in light, a neutral white pill in dark. */
+  --nav-active: light-dark(#eef2ff, rgb(255 255 255 / 0.08));
+  --nav-active-ink: light-dark(#4f46e5, #f1f5f9);
+  /* Progress-bar tracks: visible but quiet. */
+  --track: light-dark(#e2e8f0, rgb(255 255 255 / 0.06));
+  /* Urgency. Coral: under a week to go. Amber (mark): under two weeks. Fill, tint and text steps for each. */
+  --critical: light-dark(#be123c, #fb7185);
+  --critical-fill: #f43f5e;
+  /* Tints stay faint on dark (6-7%): stronger ones turn into maroon and olive boxes on the obsidian cards. */
+  --critical-soft: light-dark(#fff1f2, rgb(244 63 94 / 0.07));
+  /* Amber as a mark (a dot, the rule under a figure): a step deeper in light so it keeps 3:1 on white. */
+  --mark: light-dark(#cf8403, #f59e0b);
+  --mark-soft: light-dark(#fffbeb, rgb(245 158 11 / 0.06));
+  --mark-ink: light-dark(#b45309, #fbbf24);
+  /* Progress and things done: the fill colour, and a darker step for text on white. */
+  --mastery: light-dark(#0a8f65, #10b981);
+  --good: light-dark(#047857, #34d399);
+  --warn: light-dark(#b45309, #fbbf24);
+  --bad: light-dark(#b91c1c, #f87171);
+  --selection: light-dark(#e0e7ff, rgb(99 102 241 / 0.35));
   /* Behind dialogs and the search palette. */
-  --scrim: light-dark(rgb(14 22 48 / 0.38), rgb(6 12 10 / 0.66));
-  --float-shade: light-dark(rgb(14 22 48 / 0.2), rgb(0 0 0 / 0.55));
-  /* Under sheets lying on the desk: barely there in light, a touch deeper at night where borders do the work. */
-  --sheet-shade: light-dark(rgb(14 22 48 / 0.045), rgb(0 0 0 / 0.22));
-  /* The toast is inverted (ink background); its action link needs a blue that reads on that. */
-  --toast-action: light-dark(#b9c4ff, #3549d4);
+  --scrim: light-dark(rgb(15 23 42 / 0.4), rgb(0 0 0 / 0.6));
+  --float-shade: light-dark(rgb(15 23 42 / 0.18), rgb(0 0 0 / 0.5));
+  /* Under cards: shadow-sm at rest, shadow-md when a card that opens something is hovered. None on dark,
+     where the hairline border and the surface step do the work. */
+  --sheet-shade: light-dark(rgb(15 23 42 / 0.05), transparent);
+  --lift-shade: light-dark(rgb(15 23 42 / 0.08), transparent);
+  /* The toast is inverted (ink background); its action link needs an indigo that reads on that. */
+  --toast-action: light-dark(#a5b4fc, #4f46e5);
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -61,11 +82,22 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-line-strong: var(--line-strong);
+  --color-line-control: var(--line-control);
   --color-side: var(--side);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-solid: var(--accent-solid);
+  --color-accent-solid-hover: var(--accent-solid-hover);
+  --color-nav-active: var(--nav-active);
+  --color-nav-active-ink: var(--nav-active-ink);
+  --color-track: var(--track);
+  --color-critical: var(--critical);
+  --color-critical-fill: var(--critical-fill);
+  --color-critical-soft: var(--critical-soft);
   --color-mark: var(--mark);
   --color-mark-soft: var(--mark-soft);
+  --color-mark-ink: var(--mark-ink);
+  --color-mastery: var(--mastery);
   --color-good: var(--good);
   --color-warn: var(--warn);
   --color-bad: var(--bad);
@@ -73,8 +105,9 @@
   --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", Menlo, monospace;
-  /* A sheet lies on the desk; a control is raised a hair; only floating things (dialogs, menus, toasts) cast a real shadow. */
+  /* A card sits on the page; a control is raised a hair; only floating things (dialogs, menus, toasts) cast a real shadow. */
   --shadow-sheet: 0 1px 2px var(--sheet-shade);
+  --shadow-lift: 0 4px 6px -1px var(--lift-shade), 0 2px 4px -2px var(--sheet-shade);
   --shadow-control: 0 1px 1.5px var(--sheet-shade);
   --shadow-float: 0 16px 40px -12px var(--float-shade), 0 3px 8px color-mix(in oklab, var(--float-shade) 30%, transparent);
   /* One easing for everything that answers a tap: quick off the mark, soft landing. */
@@ -195,24 +228,25 @@ body {
   .thinking-dots > span { animation: none; opacity: 0.6; }
 }
 
-/* Highlighter stroke behind a short run of text. */
+/* Urgent (under ten days): a soft amber wash behind a short run of text. */
 .mark {
-  background: linear-gradient(transparent 12%, var(--mark) 12%, var(--mark) 88%, transparent 88%);
+  background: var(--mark-soft);
   color: var(--mark-ink);
-  padding: 0 0.15em;
-  border-radius: 0.15em;
+  padding: 0 0.3em;
+  border-radius: 0.3em;
   box-decoration-break: clone;
 }
 
-/* Countdown and score figures: Geist pulled tight, tabular so a changing number doesn't jiggle. */
+/* Countdown and score figures: Geist heavy and pulled tight, tabular so a changing number doesn't jiggle. */
 .numeral {
   font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.045em;
   line-height: 0.9;
   font-variant-numeric: lining-nums tabular-nums;
 }
-/* Inside a figure, "urgent" is a thick highlighter rule under the digits rather than a fill behind them. */
+/* Inside a figure, "urgent" is a thick rule under the digits rather than a fill behind them: amber, or coral
+   (.mark-critical) when the exam is under a week away. */
 .numeral .mark, .numeral.mark {
   background: none;
   color: inherit;
@@ -224,42 +258,23 @@ body {
   text-decoration-skip-ink: none;
 }
 /* The rule hangs below the figure's tight 0.9 line box; room for it keeps it off the caption underneath. */
+.numeral .mark-critical { text-decoration-color: var(--critical-fill); }
 .numeral:has(.mark), .numeral.mark { padding-bottom: 0.14em; }
 
-/* Titles: the same family, heavier and tighter, so headings carry the voice without a second typeface. */
+/* Titles: the same family, bold and tighter, so headings carry the voice without a second typeface. */
 .font-display {
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -0.028em;
 }
 
 /* Subject colour. A row or panel sets --subj to its subject's colour (see subjectStyle in components/ui)
    and these derive everything from it, so a subject looks the same on every page. Mixed toward ink and
-   paper rather than used raw, so text on a tint keeps its contrast whatever colour was picked, in either theme. */
-.subj-tint { background-color: color-mix(in oklab, var(--subj, var(--muted)) 8%, var(--surface)); }
-.subj-wash { background-color: color-mix(in oklab, var(--subj, var(--muted)) 4%, var(--surface)); }
-.subj-hover { transition: background-color 150ms var(--ease-snappy); }
-.subj-hover:hover { background-color: color-mix(in oklab, var(--subj, var(--muted)) 5%, var(--surface)); }
-/* On the dark slate a subject colour at full strength glows, so text and fills are mixed toward the chalk-white ink. */
+   card colours rather than used raw, so text on a tint keeps its contrast whatever colour was picked, in either theme. */
+/* On the dark graphite a subject colour at full strength glows, so text and fills are mixed toward the near-white ink. */
 .subj-ink { color: light-dark(color-mix(in oklab, var(--subj, var(--muted)) 72%, var(--text)), color-mix(in oklab, var(--subj, var(--muted)) 52%, var(--text))); }
 .subj-line { border-color: color-mix(in oklab, var(--subj, var(--muted)) 30%, var(--border)); }
 .subj-dot { background-color: light-dark(var(--subj, var(--line-strong)), color-mix(in oklab, var(--subj, var(--line-strong)) 75%, var(--text))); }
-.subj-fill { fill: light-dark(var(--subj, var(--accent)), color-mix(in oklab, var(--subj, var(--accent)) 75%, var(--text))); }
-/* A binder tab: a short rounded strip of the subject's colour at the row's leading edge. */
-.subj-tab { position: relative; }
-.subj-tab::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  height: min(28px, calc(100% - 20px));
-  width: 3px;
-  translate: 0 -50%;
-  border-radius: 0 3px 3px 0;
-  background: var(--subj, var(--line-strong));
-}
-/* Full-height strip, for the countdown sheet on Today. */
-.subj-edge { box-shadow: inset 3px 0 0 var(--subj, var(--muted)); }
-.subj-edge-thick { box-shadow: inset 4px 0 0 var(--subj, var(--muted)); }
+.subj-fill { fill: var(--subj, var(--accent)); }
 
 /* The syllabus strip: one cell per topic, filled by how far it has got. A status change recolours its cell in place.
    In the components layer so size utilities (the legend's swatches) can override it. */
@@ -272,7 +287,8 @@ body {
     background: var(--surface-3);
     transition: background-color 360ms var(--ease-snappy);
   }
-  .strip-cell[data-s="studied"] { background: color-mix(in oklab, var(--subj, var(--accent)) 40%, var(--surface)); }
+  /* Studied: a paler step of the subject colour. On dark it is mixed toward the ink, or it sinks into the empty cells. */
+  .strip-cell[data-s="studied"] { background: light-dark(color-mix(in oklab, var(--subj, var(--accent)) 40%, var(--surface)), color-mix(in oklab, var(--subj, var(--accent)) 45%, color-mix(in oklab, var(--text) 30%, var(--surface)))); }
   .strip-cell[data-s="revised"] { background: light-dark(var(--subj, var(--accent)), color-mix(in oklab, var(--subj, var(--accent)) 75%, var(--text))); }
 }
 
@@ -355,10 +371,13 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
 /* Rendered AI markdown */
 .prose-ai { max-width: 70ch; color: var(--text); font-size: 15px; }
+/* In the chat the answer column is already capped (max-w-3xl), so answers use its full width. */
+.prose-ai.prose-wide { max-width: none; }
 .prose-ai h1, .prose-ai h2, .prose-ai h3 { font-weight: 600; letter-spacing: -0.015em; margin: 1.4em 0 0.5em; line-height: 1.25; }
 .prose-ai h1 { font-size: 1.3rem; }
 .prose-ai h2 { font-size: 1.12rem; }
 .prose-ai h3 { font-size: 1rem; }
+.prose-ai h4 { font-weight: 600; margin: 1.2em 0 0.4em; }
 .prose-ai > :first-child { margin-top: 0; }
 .prose-ai > :last-child { margin-bottom: 0; }
 .prose-ai p { margin: 0.65em 0; line-height: 1.7; }
@@ -369,12 +388,40 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .prose-ai a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .prose-ai code { font-family: var(--font-mono); background: var(--surface-2); padding: 0.05em 0.3em; border-radius: 4px; font-size: 0.86em; }
 .prose-ai pre { background: var(--surface-2); border: 1px solid var(--border); padding: 0.9em 1em; border-radius: 8px; overflow-x: auto; }
-.prose-ai pre code { background: none; padding: 0; }
+.prose-ai pre code { background: none; padding: 0; line-height: 1.6; }
+/* A code block (markdown-view's CodeBlock): one box with the language and copy button on top; the pre inside scrolls. */
+.prose-ai .code-block { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; margin: 0.85em 0; min-width: 0; }
+.prose-ai .code-block > pre { background: none; border: 0; border-radius: 0 0 8px 8px; }
 .prose-ai strong { font-weight: 600; }
-.prose-ai blockquote { border-left: 2px solid var(--line-strong); padding-left: 0.9em; color: var(--muted); }
-.prose-ai table { border-collapse: collapse; margin: 0.75em 0; display: block; overflow-x: auto; font-size: 14px; }
-.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.45em 0.9em 0.45em 0; text-align: left; }
-.prose-ai th { font-weight: 600; }
+/* A quote is set as a callout: a note or a "remember" box in an answer, not greyed-out text. */
+.prose-ai blockquote { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 0.6em 0.95em; margin: 0.85em 0; }
+.prose-ai blockquote > :first-child { margin-top: 0; }
+.prose-ai blockquote > :last-child { margin-bottom: 0; }
+.prose-ai hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
+.prose-ai table { border-collapse: collapse; margin: 0.85em 0; display: block; overflow-x: auto; font-size: 14px; }
+.prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.5em 0.9em 0.5em 0; text-align: left; vertical-align: top; line-height: 1.55; }
+.prose-ai th { font-weight: 600; border-bottom-color: var(--line-strong); }
+/* Code in a table cell stays on one line; a wide table scrolls (above) rather than breaking a loop header in half. */
+.prose-ai td code { white-space: nowrap; }
+/* A wide equation scrolls on its own instead of widening a phone page. */
+.prose-ai .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.15em 0; }
+/* An inline formula paints only inside its own box. KaTeX's \mathllap, \smash and a negative \kern draw outside the
+   space they take, so AI-written TeX could otherwise cover the text beside it, such as a link's "(host)" label. */
+.prose-ai :not(.katex-display) > .katex { display: inline-block; max-width: 100%; overflow: clip; overflow-clip-margin: 2px; }
+
+/* Code colours (rehype-highlight's hljs-* spans), set here rather than from a highlight.js theme so they follow the
+   light and dark themes. Only the palette's own tokens and even mixes of them; each reads at 4.5:1 or better on
+   --surface-2, the code block's background, in both themes. */
+.prose-ai .hljs-keyword, .prose-ai .hljs-selector-tag, .prose-ai .hljs-doctag, .prose-ai .hljs-meta .hljs-keyword { color: var(--accent); }
+.prose-ai .hljs-string, .prose-ai .hljs-regexp, .prose-ai .hljs-char, .prose-ai .hljs-addition, .prose-ai .hljs-meta .hljs-string { color: var(--good); }
+.prose-ai .hljs-number, .prose-ai .hljs-symbol, .prose-ai .hljs-bullet { color: var(--warn); }
+.prose-ai .hljs-literal, .prose-ai .hljs-deletion { color: var(--critical); }
+.prose-ai .hljs-title, .prose-ai .hljs-section, .prose-ai .hljs-selector-id, .prose-ai .hljs-selector-class { color: color-mix(in oklab, var(--accent) 50%, var(--critical)); }
+.prose-ai .hljs-built_in, .prose-ai .hljs-type, .prose-ai .hljs-title.class_, .prose-ai .hljs-name { color: color-mix(in oklab, var(--accent) 50%, var(--good)); }
+.prose-ai .hljs-attr, .prose-ai .hljs-attribute, .prose-ai .hljs-property, .prose-ai .hljs-variable.language_, .prose-ai .hljs-template-variable { color: color-mix(in oklab, var(--warn) 50%, var(--critical)); }
+.prose-ai .hljs-comment, .prose-ai .hljs-quote, .prose-ai .hljs-meta { color: var(--muted); }
+.prose-ai .hljs-comment, .prose-ai .hljs-quote, .prose-ai .hljs-emphasis { font-style: italic; }
+.prose-ai .hljs-strong { font-weight: 600; }
 
 @media print {
   nav, .no-print { display: none !important; }

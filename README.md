@@ -12,11 +12,11 @@ npm run build && npm start   # http://127.0.0.1:3000
 
 The production build is the one to use day to day: it's faster and it's the only one that runs the service worker (offline mode and install). `npm run dev` is for working on the code. It resets any service worker left by a production build, so code changes show up.
 
-**Local only by default.** `dev` and `start` listen on `127.0.0.1`, so other people on the same Wi-Fi (college or hostel network) can't reach the app or use up your AI keys. To open it from your phone for a while, run `npx next start` (without `-H 127.0.0.1`), visit `http://<your-laptop-IP>:3000`, and stop it when you're done.
+**Local only by default.** `dev` and `start` listen on `127.0.0.1`, so other people on the same Wi-Fi (college or hostel network) can't reach the app or use up your AI keys. To open it from your phone for a while, run `npx next start` (without `-H 127.0.0.1`) with `ALLOWED_HOSTS=<your-laptop-IP>` set, visit `http://<your-laptop-IP>:3000`, and stop it when you're done. While it runs that way, anyone on the same Wi-Fi who knows the address can use your AI keys with a simple script, so only do it on a network you trust, or also set `APP_PASSWORD`.
 
 Your data lives in the browser's storage for that exact address, so keep opening the app at `http://127.0.0.1:3000`. `localhost:3000` or another port starts with an empty app.
 
-Deploying (for example to Vercel) is optional. If you do, set `APP_PASSWORD`: every device then asks for it once, and nobody else can open the app or use your AI keys. Without it, anyone with the URL can. To serve the app under your own domain without a password, list that domain in `ALLOWED_HOSTS`. The AI and Drive routes only answer to IP addresses and `localhost` otherwise, which stops other websites from reaching a copy running on your laptop. Requests from other websites are refused either way.
+Deploying (for example to Vercel) is optional. If you do, set `APP_PASSWORD`: every device then asks for it once, and nobody else can open the app or use your AI keys. Without it, anyone with the URL can. To serve the app under your own domain without a password, list that domain in `ALLOWED_HOSTS`. The AI and Drive routes only answer to this computer's own addresses (`localhost`, `127.0.0.1`) otherwise, which stops other websites from reaching a copy running on your laptop. Requests from other websites are refused either way.
 
 Drive sync parses PDFs, DOCX and PPTX in a worker loaded from `src/lib/drive/extract-worker.mjs`, so run the server from the project folder (`npm start`). Bundled serverless deploys don't include that file.
 
@@ -31,7 +31,7 @@ If OpenRouter hits a limit, times out or fails, the app moves to Gemini on its o
 
 ## Workflow
 
-1. **Exam mode**: pick **Mid-sem** or **Major (End-sem)** in Settings or from the mode pill. Syllabus, papers, progress and exams all follow the mode. Units tagged mid-sem are in both; the rest are major only.
+1. **Exam mode**: pick **Mid-sem** or **Major (End-sem)** in Settings or from the mode pill. Syllabus, papers and exams all follow the mode. Units tagged mid-sem are in both; the rest are major only.
 2. **Subjects**: add each subject, then **Syllabus → Import syllabus** (paste text, or upload the syllabus PDF or a photo of it). Mark topics as studied or revised as you go.
 3. **Exams**: add the date sheet by hand or with **Upload date sheet** (date, time, venue, seat, and which topics are examined). The home page counts down to the next exam.
 4. **Subject** tabs:
@@ -51,8 +51,7 @@ If OpenRouter hits a limit, times out or fails, the app moves to Gemini on its o
    - Every conversation is saved in **History**: grouped by date and searchable. You can rename, pin, copy or delete each one.
 6. **Important**: the topics asked most often in this exam's past papers, across all your subjects, with the questions under each.
 7. **Zero prep**: topics you can learn cold, without studying anything else first. AI rates each topic for groundwork needed, time and importance, and the quickest wins come first.
-8. **Progress**: syllabus coverage, quiz scores and weak topics.
-9. **Exam page**: exam details, a packing checklist, the cheat sheet and weak topics. Printable.
+8. **Exam page**: exam details, a packing checklist, the cheat sheet and weak topics. Printable.
 
 Press **Ctrl+K** (⌘K on Mac) anywhere to jump to a page, subject or exam, or switch mode.
 

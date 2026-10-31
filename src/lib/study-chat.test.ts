@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatTitle, matchingPyqs, namedSubject, noteExcerpts, prepSummary, starterQuestions, type PrepInput } from "./study-chat";
+import { chatTitle, matchingPyqs, namedSubject, noteExcerpts, prepSummary, starterTiles, type PrepInput } from "./study-chat";
 import type { PyqQuestion } from "./types";
 
 const q = (id: number, text: string, extra: Partial<PyqQuestion> = {}): PyqQuestion =>
@@ -63,12 +63,20 @@ describe("prep summary and starters", () => {
     expect(s).toContain("hard: ER model");
     expect(s).toContain("1 of 2 topics studied");
   });
-  it("suggests prep-tuned openers", () => {
-    expect(starterQuestions(prep)).toEqual([
-      "What are the most asked questions in DBMS?",
-      "Explain Normalization as a 10-mark answer",
-      "I find ER model hard. Teach it to me from the notes",
-      "Quiz me on ER model with 5 quick questions",
+  it("builds the starter tiles from the papers, the syllabus and the days left", () => {
+    expect(starterTiles(prep).map((s) => s.prompt)).toEqual([
+      "Top 5 most repeated 10-mark questions",
+      "Draft a 10-mark answer: Normalization",
+      "Quiz me on ER model (5 questions)",
+      "Prioritise my remaining topics with 6 days left",
+    ]);
+  });
+  it("still offers four starters with no papers, topics or exam date", () => {
+    expect(starterTiles({ ...prep, exam: undefined, topics: [], questions: [] }).map((s) => s.prompt)).toEqual([
+      "Top 5 most repeated 10-mark questions",
+      "Draft a 10-mark answer on the most asked topic",
+      "Quiz me on DBMS (5 questions)",
+      "Prioritise my remaining topics for the exam",
     ]);
   });
 });

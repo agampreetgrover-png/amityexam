@@ -129,7 +129,11 @@ export function pickFolders<F extends { name: string }>(folders: F[], subjects: 
   const bySubject = new Map<number, { f: F; score: number }[]>();
   for (const f of folders) {
     const s = bestSubject(f.name, subjects);
-    if (s) bySubject.set(s.id, [...(bySubject.get(s.id) ?? []), { f, score: subjectScore(f.name, s) }]);
+    if (!s) continue;
+    const entry = { f, score: subjectScore(f.name, s) };
+    const list = bySubject.get(s.id);
+    if (list) list.push(entry);
+    else bySubject.set(s.id, [entry]);
   }
   const picked = new Map<number, F[]>();
   const ambiguous = new Map<number, F[]>();

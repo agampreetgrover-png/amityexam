@@ -1,7 +1,8 @@
 export const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
-// Strips list markers like "B)", "(b)", "2." and trailing full stops.
-const bare = (s: string) => norm(s).replace(/^\(?[a-d1-4][).:]\s*/, "").replace(/[.\s]+$/, "");
+// Strips list markers like "B)", "(b)", "2." and trailing full stops. The lookbehind starts the trailing match only
+// at the start of a run: without it a long run of dots mid-answer is retried from every dot (quadratic).
+const bare = (s: string) => norm(s).replace(/^\(?[a-d1-4][).:]\s*/, "").replace(/(?<![.\s])[.\s]+$/, "");
 
 /**
  * Models often answer "B", "B) foo" or a paraphrase instead of the exact option text.

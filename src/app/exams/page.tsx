@@ -2,25 +2,51 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Briefcase, Check, FileSpreadsheet, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Briefcase, Check, Clock, FileSpreadsheet, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import { db, deleteExam } from "@/lib/db";
 import { daysBetween, prettyDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
-import { byWhen, DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel } from "@/lib/exams";
-import { examInMode, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
+import { byWhen, DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel, urgency, type Urgency } from "@/lib/exams";
+import { examInMode, examSyllabus, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
-import { Button, Empty, Field, Input, Modal, PageHeader, Panel, Section, Select, cn, subjectStyle, tableHead } from "@/components/ui";
+import { Badge, Button, Empty, Field, Input, Menu, Modal, PageHeader, Progress, Section, Select, buttonClass, cn, subjectStyle } from "@/components/ui";
 import { DatesheetImport, type ImportDraft } from "@/components/exams/datesheet-import";
 import { toast } from "@/components/toast";
 import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
 
-// Days, subject, date and time, venue, actions. Shared by the header row and every exam row so they line up.
-const COLS = "@xl:grid-cols-[4rem_minmax(0,1.35fr)_minmax(0,0.85fr)_minmax(0,1fr)_10.75rem]";
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+// The countdown block and the timeline dot, by how close the exam is: coral under a week, amber under two.
+const COUNTDOWN: Record<Urgency, string> = {
+  critical: "border-critical/25 bg-critical-soft text-critical",
+  soon: "border-mark/25 bg-mark-soft text-mark-ink",
+  later: "border-border bg-surface-2 text-text",
+  past: "border-border bg-surface-2 text-muted",
+};
+const DOT: Record<Urgency, string> = {
+  critical: "border-critical-fill bg-critical-fill",
+  soon: "border-mark bg-mark",
+  later: "border-line-strong bg-surface",
+  past: "border-border bg-surface-3",
+};
+
+/** Consecutive exams on the same day, in the order given. */
+function byDay(list: Exam[]) {
+  const days: { date: string; exams: Exam[] }[] = [];
+  for (const e of list) {
+    if (days.at(-1)?.date === e.date) days.at(-1)!.exams.push(e);
+    else days.push({ date: e.date, exams: [e] });
+  }
+  return days;
+}
 
 export default function ExamsPage() {
   const exams = useLiveQuery(() => db.exams.toArray().then((es) => es.sort(byWhen)));
   const subjects = useLiveQuery(() => db.subjects.toArray());
+  // Every subject's syllabus, for each card's "revised" count; small enough to hold whole.
+  const topics = useLiveQuery(() => db.topics.toArray());
+  const units = useLiveQuery(() => db.units.toArray());
   const [editing, setEditing] = useState<Exam | null>(null);
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -37,83 +63,121 @@ export default function ExamsPage() {
   const upcoming = shown.filter((e) => e.date >= t);
   const past = shown.filter((e) => e.date < t).reverse();
 
-  // One line of the date sheet: the countdown, then what, when and where, then the actions.
-  // The columns follow the table's own width (a container query), so with the sidebar open on a
-  // narrow window the rows stack instead of squeezing five columns into the space.
-  const row = (e: Exam, past = false) => {
+  // The ribbon always counts this mode's papers, whatever "Show all" shows below it.
+  const ahead = inMode.filter((e) => e.date >= t);
+  const first = ahead[0];
+  const firstIn = first ? daysBetween(t, first.date) : 0;
+  const gap = ahead.length > 1 ? Math.round(daysBetween(first.date, ahead.at(-1)!.date) / (ahead.length - 1)) : undefined;
+
+  const card = (e: Exam, isPast: boolean) => {
     const s = subject(e.subjectId);
     const days = daysBetween(t, e.date);
-    const soon = days >= 0 && days <= 3;
-    const where = [e.venue, e.seat && `Seat ${e.seat}`].filter(Boolean).join(", ");
+    const u = urgency(days);
+    const scope = topics && units ? examSyllabus(e, topics.filter((x) => x.subjectId === e.subjectId), units, mode) : [];
+    const revised = scope.filter((x) => x.status === "revised").length;
+    const name = s?.name ?? "this";
+    const Name = isPast ? "h4" : "h3"; // under the day's heading, which sits a level lower in "Past exams"
     return (
       <li
         key={e.id}
-        style={past ? undefined : subjectStyle(s?.color)}
-        className={cn(
-          "grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-4 gap-y-3 py-4 pl-6 pr-4 @xl:items-center @xl:gap-x-5",
-          COLS,
-          past ? "text-muted" : cn("subj-tab", soon ? "bg-mark-soft/60" : "subj-hover"),
-        )}
+        style={subjectStyle(s?.color)}
+        className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sheet @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center"
       >
-        <div className="row-span-2 @xl:row-span-1">
-          {days >= 0 ? (
-            <div className="numeral subj-ink text-[34px]">
-              <span className={soon ? "mark" : undefined}>{days}</span>
-            </div>
+        <div className={cn("flex h-[4.25rem] flex-col items-center justify-center rounded-lg border text-center", COUNTDOWN[u])}>
+          {days < 0 ? (
+            <Check size={22} strokeWidth={2.2} aria-hidden />
+          ) : days === 0 ? (
+            <span className="text-[15px] font-bold tracking-[-0.01em]">Today</span>
           ) : (
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-good/10 text-good"><Check size={17} strokeWidth={2.2} aria-hidden /></span>
+            <span className="numeral text-[28px]">{days}</span>
           )}
-          <div className="mt-1.5 text-[12px] font-medium text-muted">{days === 0 ? "It's today" : days > 0 ? (days === 1 ? "day left" : "days left") : "done"}</div>
+          {days !== 0 && <span className="mt-1 text-[11px] font-medium">{days < 0 ? "Done" : days === 1 ? "day left" : "days left"}</span>}
         </div>
-        {/* Stacked under the subject on narrow tables; its own three columns on wide ones. */}
-        <div className="min-w-0 space-y-1.5 @xl:contents @xl:space-y-0">
-          <div className="min-w-0">
-            <h2 className={cn("line-clamp-2 break-words text-[15px] font-semibold tracking-[-0.01em] @xl:truncate", past && "font-medium")}>{s?.name ?? "Unknown subject"}</h2>
-            <p className="mt-1 text-[13px] text-muted">
-              {examTypeLabel(e.type)}
-              {e.topicIds.length > 0 && `, ${e.topicIds.length} topic${e.topicIds.length === 1 ? "" : "s"} in scope`}
-            </p>
+
+        <div className="min-w-0 space-y-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span aria-hidden className="subj-dot size-2 shrink-0 rounded-full" />
+            <Name className={cn("min-w-0 break-words text-[15px] font-semibold tracking-[-0.01em]", isPast && "font-medium text-muted")}>{s?.name ?? "Unknown subject"}</Name>
+            {s?.code && <Badge>{s.code}</Badge>}
           </div>
-          <p className="text-sm tabular-nums @xl:leading-tight">
-            <span className={cn("font-medium", !past && "text-text")}>{prettyDay(e.date)}</span>
-            {e.time && <span className="text-muted"><span className="@xl:hidden">, </span><span className="@xl:mt-1 @xl:block @xl:text-[13px]">{e.time}</span></span>}
-          </p>
-          <p className={cn("min-w-0 text-sm text-muted", !where && "hidden @xl:block")}>
-            {where ? (
-              <span className="flex items-center gap-1.5">
-                <MapPin size={13} className="shrink-0 text-faint" aria-hidden /> <span className="truncate">{where}</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-muted">
+            <span>{examTypeLabel(e.type)}</span>
+            {e.time && (
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <Clock size={13} className="text-faint" aria-hidden />
+                {e.time}{e.durationMins ? `, ${e.durationMins} min` : ""}
               </span>
-            ) : (
-              <span aria-hidden className="text-faint">–</span>
             )}
-          </p>
+            {!isPast || e.venue ? <RoomField exam={e} /> : null}
+            {e.seat && <Badge>Seat {e.seat}</Badge>}
+          </div>
         </div>
-        <div className="col-start-2 flex items-center gap-0.5 @xl:col-start-auto @xl:justify-end">
-          <Link
-            href={`/exams/view?id=${e.id}`}
-            className="press mr-1.5 inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-border bg-surface px-2.5 text-[13px] font-medium text-text shadow-control hover:border-line-strong hover:bg-surface-2"
-          >
-            <Briefcase size={14} className="text-muted" /> Exam kit
-          </Link>
-          <Button variant="ghost" size="icon" aria-label={`Edit ${s?.name ?? "this"} exam`} title="Edit" onClick={() => setEditing(e)}><Pencil size={15} /></Button>
-          <Button variant="danger" size="icon" aria-label={`Delete ${s?.name ?? "this"} exam`} title="Delete" onClick={() => confirm("Delete this exam?") && deleteExam(e.id!)}><Trash2 size={15} /></Button>
+
+        <div className="col-span-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 @2xl:col-span-1 @2xl:justify-end">
+          {scope.length > 0 ? (
+            <Link
+              href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
+              title="Open the syllabus to tick topics off"
+              className="group -mx-1.5 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-surface-2"
+            >
+              <span className="block text-[12px] tabular-nums text-muted group-hover:text-text">
+                <strong className="font-semibold text-text">{revised}/{scope.length}</strong> topics revised
+              </span>
+              <Progress value={(revised / scope.length) * 100} className="mt-1.5 w-32" label={`${revised} of ${scope.length} topics revised`} />
+            </Link>
+          ) : (
+            <span className="text-[12px] text-faint">No syllabus yet</span>
+          )}
+          <div className="flex items-center gap-1">
+            <Link href={`/exams/view?id=${e.id}`} className={buttonClass("secondary", "sm")}>
+              <Briefcase size={14} className="text-muted" aria-hidden /> Exam kit
+            </Link>
+            <Menu
+              label={`Actions for the ${name} exam`}
+              items={[
+                { label: "Edit", icon: <Pencil size={14} aria-hidden />, onSelect: () => setEditing(e) },
+                { label: "Delete", icon: <Trash2 size={14} aria-hidden />, danger: true, onSelect: () => confirm("Delete this exam?") && deleteExam(e.id!) },
+              ]}
+            />
+          </div>
         </div>
       </li>
     );
   };
 
-  // One sheet per list; the header row only appears once there's room for the columns.
-  const table = (list: Exam[], past = false) => (
-    <Panel className="@container">
-      <div aria-hidden className={cn(tableHead, "hidden gap-x-5 py-2.5 pl-6 pr-4 @xl:grid", COLS)}>
-        <span>Days</span>
-        <span>Subject</span>
-        <span>Date and time</span>
-        <span>Venue</span>
-        <span />
-      </div>
-      <ul className="divide-y divide-border">{list.map((e) => row(e, past))}</ul>
-    </Panel>
+  // A vertical timeline: one dot per exam day on a hairline, that day's papers stacked beside it.
+  const timeline = (list: Exam[], isPast = false) => {
+    const days = byDay(list);
+    const Day = isPast ? "h3" : "h2"; // past days sit under the "Past exams" heading
+    return (
+      <ol className="@container">
+        {days.map((d, i) => {
+          const n = daysBetween(t, d.date);
+          const prev = !isPast && i > 0 ? daysBetween(days[i - 1].date, d.date) : 0;
+          return (
+            <li
+              key={d.date}
+              className="relative pb-7 pl-7 before:absolute before:-bottom-1 before:left-[5px] before:top-4 before:w-px before:bg-border last:pb-0 last:before:hidden sm:pl-9"
+            >
+              <span aria-hidden className={cn("absolute left-0 top-1 size-[11px] rounded-full border-2", DOT[urgency(n)])} />
+              <Day className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-5">
+                <time dateTime={d.date} className={cn("font-semibold tabular-nums", isPast ? "text-muted" : "text-text")}>{prettyDay(d.date)}</time>
+                {prev > 0 && <span className="tabular-nums text-faint">{plural(prev, "day")} after the previous paper</span>}
+              </Day>
+              <ul className="mt-3 space-y-2.5">{d.exams.map((e) => card(e, isPast))}</ul>
+            </li>
+          );
+        })}
+      </ol>
+    );
+  };
+
+  const tile = (label: string, value: string, sub?: string) => (
+    <div className="min-w-0 rounded-xl border border-border bg-surface px-2.5 py-2.5 shadow-sheet sm:px-4 sm:py-3.5">
+      <p className="truncate text-[11px] text-muted sm:text-[13px]">{label}</p>
+      <p className="mt-1 text-[16px] font-semibold tabular-nums tracking-[-0.02em] sm:text-[22px]">{value}</p>
+      {sub && <p className="mt-0.5 truncate text-[11px] text-muted sm:text-[12px]">{sub}</p>}
+    </div>
   );
 
   return (
@@ -133,8 +197,19 @@ export default function ExamsPage() {
           Every exam belongs to a subject. <Link className="font-medium text-accent underline underline-offset-2" href="/subjects">Add your subjects</Link>
         </Empty>
       )}
+      {first && (
+        // On phones a compact strip, the date's tile a little wider so "Wed, 12 Nov" stays on one line.
+        <section
+          aria-label="Summary"
+          className={cn("mb-8 grid gap-2 sm:gap-3", gap === undefined ? "grid-cols-2" : "grid-cols-[minmax(0,4fr)_minmax(0,5fr)_minmax(0,4fr)] sm:grid-cols-3")}
+        >
+          {tile("Papers", String(ahead.length), mode ? `${modeShort(mode)}, still to sit` : "Still to sit")}
+          {tile("First exam", prettyDay(first.date), `${subject(first.subjectId)?.name ?? "Exam"}, ${firstIn === 0 ? "today" : `in ${plural(firstIn, "day")}`}`)}
+          {gap !== undefined && tile("Average gap", plural(gap, "day"), "Between papers")}
+        </section>
+      )}
       {mode && (hidden > 0 || showAll) && (
-        <div className="-mt-4 mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted md:-mt-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm text-muted">
           <span>
             {showAll ? "Showing every exam" : `Showing ${modeShort(mode).toLowerCase()} exams, ${hidden} other${hidden === 1 ? "" : "s"} hidden`}
           </span>
@@ -152,10 +227,10 @@ export default function ExamsPage() {
           Add your {modeShort(mode).toLowerCase()} date sheet to start the countdown.
         </Empty>
       )}
-      {upcoming.length > 0 && table(upcoming)}
+      {upcoming.length > 0 && timeline(upcoming)}
       {past.length > 0 && (
         <Section title="Past exams" className="mt-10">
-          {table(past, true)}
+          {timeline(past, true)}
         </Section>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit exam" : "Add exam"}>
@@ -180,6 +255,74 @@ export default function ExamsPage() {
         <DatesheetImport draft={importDraft} onDraft={setImportDraft} onDone={() => setImporting(false)} />
       </Modal>
     </>
+  );
+}
+
+/**
+ * The exam's room as a badge, or an "Add room" chip when the date sheet didn't have one. Either opens a small
+ * field in place: Enter saves straight to the exam, Escape cancels, and clicking away keeps what was typed.
+ */
+function RoomField({ exam }: { exam: Exam }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const done = useRef(false); // set once Enter or Escape has dealt with it, so the blur that follows doesn't save again
+  // Closed from the keyboard, focus goes back to the chip instead of falling to the page; clicking away leaves it be.
+  const [refocus, setRefocus] = useState(false);
+  const save = async (keyboard = false) => {
+    if (done.current) return;
+    done.current = true;
+    setRefocus(keyboard);
+    setOpen(false);
+    const venue = value.trim() || undefined;
+    if (venue === exam.venue) return;
+    try {
+      await db.exams.update(exam.id!, { venue });
+    } catch {
+      toast("Couldn't save the room. Try again.");
+    }
+  };
+  if (open) {
+    return (
+      <Input
+        autoFocus
+        aria-label="Room"
+        placeholder="Room, e.g. E3-204"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void save()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            void save(true);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            done.current = true;
+            setRefocus(true);
+            setOpen(false);
+          }
+        }}
+        className="h-7 w-40 px-2 py-0 text-xs"
+      />
+    );
+  }
+  const start = () => {
+    done.current = false;
+    setValue(exam.venue ?? "");
+    setOpen(true);
+  };
+  return exam.venue ? (
+    <button type="button" autoFocus={refocus} onClick={start} title="Change room" aria-label={`Room ${exam.venue}, change`} className="rounded-md transition-colors duration-150 hover:opacity-80">
+      <Badge><MapPin aria-hidden /> {exam.venue}</Badge>
+    </button>
+  ) : (
+    <button
+      type="button"
+      autoFocus={refocus}
+      onClick={start}
+      className="inline-flex items-center gap-1 rounded-md border border-dashed border-line-strong px-2 py-0.5 text-xs font-medium text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
+    >
+      <Plus size={12} aria-hidden /> Add room
+    </button>
   );
 }
 
@@ -253,7 +396,7 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
       {/* A fieldset, not <Field>: Field is a <label>, and a label around many checkboxes toggles the first one on any click. */}
       <fieldset className="space-y-1.5">
         <legend className="mb-1.5 text-[13px] font-medium text-text/85">Syllabus for this exam</legend>
-        <div className="max-h-48 space-y-2.5 overflow-y-auto rounded-lg border border-border bg-surface-2/50 p-3">
+        <div className="max-h-48 space-y-2.5 overflow-y-auto rounded-xl border border-border bg-surface-2/50 p-3">
           {!hasSyllabus && (
             <p className="text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus for this subject yet. Type or paste it below.</p>
           )}

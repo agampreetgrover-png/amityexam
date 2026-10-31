@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Course } from "@/lib/drive/catalog";
 import { sameSubject } from "@/lib/drive/classify";
 import { SUBJECT_CATALOG, type CatalogSubject } from "@/lib/subject-catalog";
-import { Input, cn } from "./ui";
+import { Badge, Input, cn } from "./ui";
 
 const plain = (s: string) => s.toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9+]+/g, " ").trim(); // keeps "+" (C++)
 /** Compares subject names ignoring case and punctuation, with every name of one subject ("Design and Analysis of Algorithms") as one. */
@@ -170,7 +170,7 @@ export function SubjectPicker({ value, onChange, exclude = [], courses = [], aut
           role="listbox"
           aria-label="Subjects"
           // In flow rather than floating: the dialog body scrolls, which would clip an absolute dropdown.
-          className="mt-1.5 max-h-64 overflow-y-auto rounded-md border border-border bg-surface p-1"
+          className="mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-border bg-surface p-1"
         >
           {results.map((s, i) => (
             <li
@@ -185,12 +185,12 @@ export function SubjectPicker({ value, onChange, exclude = [], courses = [], aut
               }}
               onMouseEnter={() => setActive(i)}
               className={cn(
-                "flex cursor-pointer items-baseline justify-between gap-3 rounded px-3 py-2 text-sm transition-colors duration-150",
-                i === active ? "bg-accent-soft text-accent" : "text-text",
+                "flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-text transition-colors duration-150",
+                i === active && "bg-surface-2",
               )}
             >
               <span className="min-w-0 truncate font-medium">{s.name}</span>
-              <span className={cn("shrink-0 text-xs tabular-nums", i === active ? "text-accent/80" : "text-muted")}>{s.programme}</span>
+              {s.programme && <Badge tone={s.own ? "accent" : "neutral"} className="shrink-0">{s.programme}</Badge>}
             </li>
           ))}
         </ul>

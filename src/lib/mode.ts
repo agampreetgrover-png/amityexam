@@ -4,7 +4,7 @@ import type { Exam, ExamMode, ExamType, Material, Topic, Unit } from "./types";
 
 export const MODES: ExamMode[] = ["mid-term", "end-term"];
 
-const LABELS: Record<ExamMode, string> = { "mid-term": "Mid-sem", "end-term": "Major (End-sem)" };
+const LABELS: Record<ExamMode, string> = { "mid-term": "Mid-sem", "end-term": "Major (End-term)" };
 export const modeLabel = (m: ExamMode) => LABELS[m];
 /** Short form for tight spots (pills, titles). */
 export const modeShort = (m: ExamMode) => (m === "mid-term" ? "Mid-sem" : "Major");
@@ -27,7 +27,7 @@ export const examTypeMode = (type: ExamType): ExamMode | undefined =>
  * One syllabus per subject; the mid-sem covers part of it. A unit tagged "mid-term" is in the mid-sem,
  * and every unit (tagged or not) is in the major. Untagged units are major-only.
  */
-export const unitMode = (unit: Pick<Unit, "exam">): ExamMode => unit.exam ?? "end-term";
+const unitMode = (unit: Pick<Unit, "exam">): ExamMode => unit.exam ?? "end-term";
 
 /** Whether a unit is in the mode's syllabus: all units for the major, only mid-sem units for the mid-sem. No mode means everything. */
 export const unitInScope = (unit: Pick<Unit, "exam">, mode?: ExamMode) => !mode || mode === "end-term" || unitMode(unit) === "mid-term";

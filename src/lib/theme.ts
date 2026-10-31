@@ -3,15 +3,10 @@ import { THEME_KEY as KEY } from "./theme-script";
 
 /** "system" follows the device; light and dark pin it. Kept in localStorage so it can apply before first paint. */
 export type ThemeChoice = "system" | "light" | "dark";
-export const THEMES: { value: ThemeChoice; label: string }[] = [
-  { value: "system", label: "Match device" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
 
 const CHANGE = "themechange";
-// Browser bar colour per theme, the same as --surface (the top bar), and as themeColor in layout.tsx.
-const BAR = { light: "#ffffff", dark: "#1e2925" };
+// Browser bar colour per theme, the same as --side (the sidebar), and as themeColor in layout.tsx.
+const BAR = { light: "#ffffff", dark: "#0d0f17" };
 
 const read = (): ThemeChoice => {
   try {

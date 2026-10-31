@@ -60,7 +60,7 @@ export function Toaster() {
       className={cn(
         "pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 flex flex-col items-center gap-2 px-4 md:bottom-6",
         // A chat composer on the page (marked data-composer) sits where the toast would; lift the toast above it.
-        "[body:has([data-composer])_&]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))] md:[body:has([data-composer])_&]:bottom-32",
+        "[body:has([data-composer])_&]:bottom-[calc(12rem+env(safe-area-inset-bottom))] md:[body:has([data-composer])_&]:bottom-44",
       )}
     >
       {list.map((t) => (

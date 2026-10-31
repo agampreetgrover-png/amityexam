@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Check, Moon, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, MapPin, Moon, Plus, Printer, Trash2 } from "lucide-react";
 import { Suspense, useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
-import { examTypeLabel } from "@/lib/exams";
+import { examTypeLabel, urgency, urgentMark } from "@/lib/exams";
 import { examSyllabus, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
 import { Markdown } from "@/components/markdown";
 import { toast } from "@/components/toast";
-import { Button, Card, CoverageBar, Empty, Input, List, Select, Tick, cn, subjectStyle } from "@/components/ui";
+import { Badge, Button, Card, CoverageBar, Empty, Input, List, Select, Tick, cn, subjectStyle } from "@/components/ui";
 
 export default function ExamKitPage() {
   // The id is a query param, not a path segment, so this one prerendered (and precached) page serves every exam,
@@ -82,24 +82,28 @@ function ExamKit({ id }: { id: number }) {
         <ArrowLeft size={14} className="transition-transform duration-200 ease-snappy group-hover:-translate-x-0.5" /> Exams
       </Link>
 
-      {/* The countdown leads, like the days column of a printed date sheet, marked in amber once it's three days or less. */}
+      {/* The countdown leads, like the days column of a printed date sheet, ruled coral under a week to go and amber under two. */}
       <header className="mb-10 flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
         <div className="flex min-w-0 items-stretch gap-5 md:gap-6">
           <div className="shrink-0">
             {days < 0 ? (
               <Check size={56} strokeWidth={1.75} className="text-good" aria-hidden />
             ) : (
-              <div className="numeral subj-ink text-[72px] md:text-[88px]" style={subjectStyle(subject?.color)}>
-                <span className={days <= 3 ? "mark" : undefined}>{days}</span>
+              <div className={cn("numeral text-[72px] md:text-[88px]", urgency(days) === "critical" ? "text-critical" : urgency(days) === "soon" ? "text-mark-ink" : "text-text")}>
+                <span className={urgentMark(days)}>{days}</span>
               </div>
             )}
             <p className="mt-2 text-[13px] text-muted">{days === 0 ? "It's today" : days < 0 ? "Finished" : days === 1 ? "day left" : "days left"}</p>
           </div>
           <div style={subjectStyle(subject?.color)} className="flex min-w-0 flex-col justify-center border-l-[3px] border-[var(--subj,var(--border))] pl-5 md:pl-6">
             <h1 className="break-words font-display text-[28px] leading-[1.1] md:text-[34px]">{subject?.name ?? "Exam"}</h1>
-            <p className="mt-1 flex items-center gap-2 text-[15px] text-muted">
-              {examTypeLabel(exam.type)}, {prettyDay(exam.date)}
+            <p className="mt-1.5 text-[15px] tabular-nums text-muted">
+              {prettyDay(exam.date)}{exam.time && `, ${exam.time}`}
             </p>
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {subject?.code && <Badge>{subject.code}</Badge>}
+              <Badge tone="accent">{examTypeLabel(exam.type)}</Badge>
+            </div>
           </div>
         </div>
         <Button variant="secondary" className="no-print" onClick={() => window.print()}><Printer size={16} /> Print kit</Button>
@@ -118,11 +122,10 @@ function ExamKit({ id }: { id: number }) {
             {(exam.venue || exam.seat) && (
               <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
                 <dt className="text-[13px] leading-6 text-muted">Venue</dt>
-                {/* The seat stays on one line: "A-117" split at its hyphen reads as two seats. */}
-                <dd className="break-words">
-                  {exam.venue}
-                  {exam.venue && exam.seat && ", "}
-                  {exam.seat && <span className="whitespace-nowrap">Seat {exam.seat}</span>}
+                {/* Badges never wrap inside, so "A-117" can't split at its hyphen and read as two seats. */}
+                <dd className="flex min-w-0 flex-wrap items-center gap-1.5 leading-6">
+                  {exam.venue && <Badge className="max-w-full whitespace-normal break-words"><MapPin aria-hidden /> {exam.venue}</Badge>}
+                  {exam.seat && <Badge>Seat {exam.seat}</Badge>}
                 </dd>
               </div>
             )}
@@ -130,8 +133,8 @@ function ExamKit({ id }: { id: number }) {
               <dt className="text-[13px] leading-6 text-muted">Syllabus</dt>
               <dd>
                 {scope.length > 0 && (
-                  <div style={subjectStyle(subject?.color)} className="mb-1.5 flex items-center gap-3">
-                    <CoverageBar topics={scope} className="h-2 max-w-48" />
+                  <div style={subjectStyle("var(--mastery)")} className="mb-1.5 flex items-center gap-3">
+                    <CoverageBar topics={scope} className="max-w-48" />
                     <span className="shrink-0 text-[13px] text-muted"><strong className="font-semibold tabular-nums text-text">{coverage(scope)}%</strong> covered</span>
                   </div>
                 )}
@@ -157,7 +160,7 @@ function ExamKit({ id }: { id: number }) {
           </Card>
         )}
 
-        <Card title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
+        <Card title="Weak topics" action={weak.length > 0 && <Badge tone="warn">{weak.length} weak</Badge>}>
           {weak.length ? (
             <List className="border-b-0">
               {weak.map((t) => (
@@ -169,7 +172,7 @@ function ExamKit({ id }: { id: number }) {
           ) : <p className="text-sm text-muted">No weak topics flagged.</p>}
         </Card>
 
-        <Card title="Checklist" action={<span className={cn("text-sm tabular-nums", checklist.length && packed === checklist.length ? "font-semibold text-good" : "text-muted")}>{packed} of {checklist.length} packed</span>}>
+        <Card title="Checklist" action={<Badge tone={checklist.length && packed === checklist.length ? "good" : "neutral"}>{packed} of {checklist.length} packed</Badge>}>
           <List className="border-t-0">
             {checklist.map((item, i) => (
               <li key={i} className="group flex items-center gap-3 py-2.5 text-[15px]">

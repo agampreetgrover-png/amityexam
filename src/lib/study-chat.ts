@@ -112,7 +112,7 @@ export interface PrepInput {
 }
 
 /** Most-asked topics in this exam's papers, busiest first. */
-export function hotTopics(topics: PrepInput["topics"], questions: PrepInput["questions"], n = 6) {
+function hotTopics(topics: PrepInput["topics"], questions: PrepInput["questions"], n = 6) {
   const count = new Map<number, number>();
   for (const q of questions) if (typeof q.topicId === "number") count.set(q.topicId, (count.get(q.topicId) ?? 0) + 1);
   return topics
@@ -122,7 +122,7 @@ export function hotTopics(topics: PrepInput["topics"], questions: PrepInput["que
     .slice(0, n);
 }
 
-export const weakTopics = (topics: PrepInput["topics"], n = 6) => topics.filter((t) => t.weak || t.confidence <= 2).slice(0, n);
+const weakTopics = (topics: PrepInput["topics"], n = 6) => topics.filter((t) => t.weak || t.confidence <= 2).slice(0, n);
 
 /** A few lines on the coming exam, sent with every question so answers are pitched at it. */
 export function prepSummary(p: PrepInput): string {
@@ -144,19 +144,28 @@ export function prepSummary(p: PrepInput): string {
   return lines.join("\n");
 }
 
-/** Prep-tuned openers for an empty chat. */
-export function starterQuestions(p: PrepInput): string[] {
-  const hot = hotTopics(p.topics, p.questions, 3).map((h) => h.topic.title);
-  const weak = weakTopics(p.topics, 2).map((t) => t.title);
-  const out = [`What are the most asked questions in ${p.subjectName}?`];
-  if (hot[0]) out.push(`Explain ${hot[0]} as a 10-mark answer`);
-  if (weak[0]) out.push(`I find ${weak[0]} hard. Teach it to me from the notes`);
-  if (hot[1] ?? hot[0]) out.push(`Quiz me on ${hot[1] ?? hot[0]} with 5 quick questions`);
-  if (p.exam) {
-    const days = daysBetween(p.today, p.exam.date);
-    if (days >= 0) out.push(days <= 1 ? "What should I revise in the last few hours?" : `With ${days} days left, which topics should I do first?`);
-  }
-  return out.slice(0, 4);
+export type StarterKind = "predict" | "model" | "drill" | "plan";
+
+/**
+ * The four openers of an empty chat: what's asked most, a model answer on the busiest topic, a quick quiz, and
+ * what to do first with the days left. Topics come from this exam's papers; before any paper is matched to the
+ * syllabus, a topic the student finds hard or hasn't started stands in.
+ */
+export function starterTiles(p: PrepInput): { kind: StarterKind; prompt: string }[] {
+  const hot = hotTopics(p.topics, p.questions, 2).map((h) => h.topic.title);
+  const weak = weakTopics(p.topics, 1).map((t) => t.title);
+  const main = hot[0] ?? weak[0] ?? (p.topics.find((t) => t.status === "not-started") ?? p.topics[0])?.title;
+  const drill = hot[1] ?? weak[0] ?? main;
+  const days = p.exam ? daysBetween(p.today, p.exam.date) : -1;
+  return [
+    { kind: "predict", prompt: "Top 5 most repeated 10-mark questions" },
+    { kind: "model", prompt: main ? `Draft a 10-mark answer: ${main}` : "Draft a 10-mark answer on the most asked topic" },
+    { kind: "drill", prompt: `Quiz me on ${drill ?? p.subjectName} (5 questions)` },
+    {
+      kind: "plan",
+      prompt: days < 0 ? "Prioritise my remaining topics for the exam" : days <= 1 ? "What should I revise in the last few hours?" : `Prioritise my remaining topics with ${days} days left`,
+    },
+  ];
 }
 
 /** Sources shown under an answer: the note files used, then the past papers by year. */

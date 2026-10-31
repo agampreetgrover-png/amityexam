@@ -18,8 +18,13 @@ type Difficulty = "easy" | "medium" | "hard";
 interface Graded { score: number; feedback?: string }
 
 const scoreColor = (s: number) => (s >= 80 ? "text-good" : s >= 60 ? "text-warn" : "text-bad");
-const attemptMeta = (a: QuizAttempt) =>
-  `${a.questions.length} question${a.questions.length === 1 ? "" : "s"}, ${new Date(a.createdAt).toLocaleDateString()}`;
+const percent = (graded: Graded[]) => Math.round((graded.reduce((a, r) => a + r.score, 0) / graded.length) * 100);
+const AttemptMeta = ({ a }: { a: QuizAttempt }) => (
+  <>
+    <Badge>{a.questions.length} question{a.questions.length === 1 ? "" : "s"}</Badge>
+    <span>{new Date(a.createdAt).toLocaleDateString()}</span>
+  </>
+);
 
 export function QuizTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
@@ -101,10 +106,10 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         if (res.results.length !== shortIdx.length) throw new AiError("The AI marked the wrong number of answers. Submit again to re-mark.");
         shortIdx.forEach((qi, k) => {
           const r = res.results[k];
-          if (r) results[qi] = { score: r.score, feedback: r.feedback };
+          results[qi] = { score: r.score, feedback: r.feedback };
         });
       }
-      const score = Math.round((results.reduce((a, r) => a + r.score, 0) / questions.length) * 100);
+      const score = percent(results);
       await db.quizzes.add({ subjectId, topicIds: quizTopicIds, questions, responses, score, createdAt: Date.now() });
       await refreshWeak(quizTopicIds);
       setGraded(results);
@@ -124,21 +129,12 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 
   // ---- Results view
   if (questions && graded) {
-    const score = Math.round((graded.reduce((a, r) => a + r.score, 0) / questions.length) * 100);
+    const score = percent(graded);
     return (
       <div className="space-y-8">
-        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold">Quiz score</h2>
-            {/* Fades in once, as the answer to pressing Submit. */}
-            <p className={cn("numeral count-in mt-4 text-[64px]", scoreColor(score))}>{score}%</p>
-            <p className="mt-3 text-[15px] text-muted">
-              {score >= 80 ? "Strong. Move on to the next topic." : score >= 60 ? "Decent. Revise the ones you missed." : "Weak area. It's been flagged for extra study."}
-            </p>
-            <Progress value={score} className="mt-4 max-w-sm" />
-          </div>
-          <Button onClick={reset}>New quiz</Button>
-        </header>
+        <ScoreHeader title="Quiz score" score={score} fresh action={<Button onClick={reset}>New quiz</Button>}>
+          {score >= 80 ? "Strong. Move on to the next topic." : score >= 60 ? "Decent. Revise the ones you missed." : "Weak area. It's been flagged for extra study."}
+        </ScoreHeader>
         <Section title="Answers">
           <List>
             {questions.map((q, i) => {
@@ -154,7 +150,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   givenTone={!ok && responses[i] && (g.score > 0 ? "text-warn" : "text-bad")}
                 >
                   {!ok && (
-                    <p className="break-words rounded-md border border-good/25 bg-good/5 px-3 py-2">
+                    <p className="break-words rounded-xl border border-good/25 bg-good/5 px-3 py-2">
                       <span className="text-muted">Correct answer:</span> {q.answer}
                     </p>
                   )}
@@ -196,7 +192,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   className={cn(
                     "flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 text-[15px] leading-relaxed transition-colors duration-150",
                     responses[page] === o
-                      ? "border-accent bg-accent-soft font-medium text-text"
+                      ? "border-accent bg-accent/5 font-medium text-text"
                       : "border-border bg-surface text-text hover:border-line-strong hover:bg-surface-2",
                   )}
                 >
@@ -270,7 +266,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                         )}
                       >
                         {t.title}
-                        {t.weak && <span className="text-xs font-medium text-bad">weak</span>}
+                        {t.weak && <Badge tone="warn" className="px-1.5 py-0">Weak</Badge>}
                       </button>
                     ))}
                   </div>
@@ -311,7 +307,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   onClick={() => setReviewing(a)}
                   disabled={!a.questions.length}
                   aria-label={`Review the ${a.score}% quiz from ${new Date(a.createdAt).toLocaleDateString()}`}
-                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2/60 disabled:pointer-events-none sm:px-5"
+                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 disabled:pointer-events-none sm:px-5"
                 >
                   <span className={cn("numeral w-16 shrink-0 text-[28px]", scoreColor(a.score))}>{a.score}%</span>
                   {/* Phones: the count and date go under the topics, so the topics get the row's width. */}
@@ -319,9 +315,9 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                     <span className="block truncate">
                       {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
                     </span>
-                    <span className="mt-0.5 block text-[13px] tabular-nums text-muted sm:hidden">{attemptMeta(a)}</span>
+                    <span className="mt-1 flex items-center gap-2 text-[13px] tabular-nums text-muted sm:hidden"><AttemptMeta a={a} /></span>
                   </span>
-                  <span className="hidden shrink-0 text-[13px] tabular-nums text-muted sm:block">{attemptMeta(a)}</span>
+                  <span className="hidden shrink-0 items-center gap-2 text-[13px] tabular-nums text-muted sm:flex"><AttemptMeta a={a} /></span>
                   {a.questions.length > 0 && <ChevronRight size={16} className="shrink-0 text-faint transition-transform duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-muted" aria-hidden />}
                 </button>
               </li>
@@ -340,12 +336,7 @@ function AttemptReview({ attempt, topics, onBack }: { attempt: QuizAttempt; topi
     <div className="space-y-8">
       <div className="space-y-4">
         <Button variant="ghost" size="sm" onClick={onBack} className="-ml-2.5"><ArrowLeft size={14} /> Back to quizzes</Button>
-        <header className="border-b border-border pb-6">
-          <h2 className="text-[15px] font-semibold">Quiz from {new Date(attempt.createdAt).toLocaleDateString()}</h2>
-          <p className={cn("numeral mt-4 text-[64px]", scoreColor(attempt.score))}>{attempt.score}%</p>
-          {names && <p className="mt-3 text-[15px] text-muted">{names}</p>}
-          <Progress value={attempt.score} className="mt-4 max-w-sm" />
-        </header>
+        <ScoreHeader title={`Quiz from ${new Date(attempt.createdAt).toLocaleDateString()}`} score={attempt.score}>{names}</ScoreHeader>
       </div>
       <Section title="Answers">
         <List>
@@ -366,6 +357,22 @@ function AttemptReview({ attempt, topics, onBack }: { attempt: QuizAttempt; topi
         </List>
       </Section>
     </div>
+  );
+}
+
+/** A quiz's score, big, with a line under it and its bar; `action` sits to the right. */
+function ScoreHeader({ title, score, fresh, action, children }: { title: string; score: number; fresh?: boolean; action?: ReactNode; children?: ReactNode }) {
+  return (
+    <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-6">
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        {/* A fresh score fades in once, as the answer to pressing Submit. */}
+        <p className={cn("numeral mt-4 text-[64px]", fresh && "count-in", scoreColor(score))}>{score}%</p>
+        {children && <p className="mt-3 text-[15px] text-muted">{children}</p>}
+        <Progress value={score} className="mt-4 max-w-sm" />
+      </div>
+      {action}
+    </header>
   );
 }
 

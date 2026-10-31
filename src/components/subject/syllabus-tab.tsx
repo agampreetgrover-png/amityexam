@@ -8,6 +8,7 @@ import { aiJson } from "@/lib/ai/client";
 import type { SyllabusResult } from "@/lib/ai/schemas";
 import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
+import { toast } from "../toast";
 import { Badge, Button, Card, Empty, Input, Modal, Panel, Textarea, cn } from "../ui";
 import { unitInScope } from "@/lib/mode";
 import { newTopic, parseSyllabus, parseTopics } from "@/lib/syllabus-text";
@@ -29,6 +30,8 @@ async function deleteTopics(ids: number[], unitId?: number) {
     if (unitId != null) await db.units.delete(unitId);
   });
 }
+
+const SAVE_FAILED = "Couldn't save that. Try again.";
 
 /** Next free order number. Counting units would reuse a number after a delete and make the order unstable. */
 const nextOrder = (units: Unit[]) => units.reduce((max, u) => Math.max(max, u.order + 1), 0);
@@ -52,6 +55,8 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
     try {
       await db.units.add({ subjectId: subject.id!, title, order: nextOrder(units), exam: mode });
       setNewUnit("");
+    } catch {
+      toast(SAVE_FAILED);
     } finally {
       setAdding(false);
     }
@@ -105,7 +110,6 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
 
 function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(unit.title);
   const [newT, setNewT] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -115,6 +119,8 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
     try {
       await db.topics.bulkAdd(titles.map((t) => newTopic(unit.subjectId, unit.id!, t)));
       setNewT("");
+    } catch {
+      toast(SAVE_FAILED);
     } finally {
       setAdding(false);
     }
@@ -122,13 +128,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
 
   const remove = async () => {
     if (!confirm(`Delete "${unit.title}" and its ${topics.length} topic${topics.length === 1 ? "" : "s"}?`)) return;
-    await deleteTopics(topics.map((t) => t.id!), unit.id);
-  };
-
-  // Re-seed the draft each time so a rename made elsewhere isn't overwritten by a stale value.
-  const toggleEdit = () => {
-    setTitle(unit.title);
-    setEditing(!editing);
+    await deleteTopics(topics.map((t) => t.id!), unit.id).catch(() => toast(SAVE_FAILED));
   };
 
   const done = topics.filter((t) => t.status === "revised").length;
@@ -139,28 +139,19 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border py-3 pl-5 pr-3">
         <h2 className="min-w-0 flex-1 basis-56 text-[15px] font-semibold tracking-[-0.01em]">
           {editing ? (
-            <form
-              className="flex gap-2"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                if (title.trim()) await db.units.update(unit.id, { title: title.trim() });
-                setEditing(false);
-              }}
-            >
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-9 font-semibold" autoFocus aria-label="Unit name" />
-              <Button type="submit" className="h-9" aria-label="Save"><Check size={15} /></Button>
-            </form>
+            <InlineRename heading name={unit.title} label="Unit name" onSave={(title) => db.units.update(unit.id, { title })} onDone={() => setEditing(false)} />
           ) : (
-            <span className="flex flex-wrap items-baseline gap-x-3">
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <span className="min-w-0 break-words">{unit.title}</span>
-              <span className="text-[13px] font-normal tabular-nums text-muted">
-                {topics.length} topic{topics.length === 1 ? "" : "s"}{topics.length > 0 && `, ${done} revised`}
+              <span className="flex gap-1.5 tracking-normal">
+                <Badge>{topics.length} topic{topics.length === 1 ? "" : "s"}</Badge>
+                {done > 0 && <Badge tone="good">{done} revised</Badge>}
               </span>
             </span>
           )}
         </h2>
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label="Rename unit" title="Rename unit"><Pencil size={14} /></Button>
+          <Button variant="ghost" size="icon" onClick={() => setEditing(!editing)} aria-label="Rename unit" title="Rename unit"><Pencil size={14} /></Button>
           <Button variant="danger" size="icon" onClick={remove} aria-label="Delete unit" title="Delete unit"><Trash2 size={14} /></Button>
         </div>
       </div>
@@ -197,13 +188,49 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   );
 }
 
+/**
+ * A unit's or topic's name, edited in place. It mounts fresh each time, so the draft starts from the current
+ * name and a rename made elsewhere isn't overwritten by a stale value. A failed save keeps it open to try again.
+ */
+function InlineRename({ name, label, heading, onSave, onDone }: {
+  name: string;
+  label: string;
+  /** A unit's heading: a taller, bold field. */
+  heading?: boolean;
+  onSave: (title: string) => Promise<unknown>;
+  onDone: () => void;
+}) {
+  const [title, setTitle] = useState(name);
+  return (
+    <form
+      className="flex gap-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (title.trim()) {
+          try {
+            await onSave(title.trim());
+          } catch {
+            toast(SAVE_FAILED);
+            return;
+          }
+        }
+        onDone();
+      }}
+    >
+      <Input value={title} onChange={(e) => setTitle(e.target.value)} className={heading ? "h-9 font-semibold" : "h-8"} autoFocus aria-label={label} />
+      <Button size={heading ? "md" : "icon"} type="submit" aria-label="Save name"><Check size={heading ? 15 : 14} /></Button>
+    </form>
+  );
+}
+
+// The same tints as Badge's neutral, accent and good tones, so a status reads like the app's other labels.
 const STATUS_TONE: Record<TopicStatus, { pill: string; dot: string }> = {
-  "not-started": { pill: "border-border bg-surface text-muted", dot: "bg-line-strong" },
-  studied: { pill: "border-accent/20 bg-accent-soft text-accent", dot: "bg-accent" },
-  revised: { pill: "border-good/25 bg-good/10 text-good", dot: "bg-good" },
+  "not-started": { pill: "border-border bg-surface-2 text-muted", dot: "bg-line-strong" },
+  studied: { pill: "border-accent/20 bg-accent/10 text-accent", dot: "bg-accent" },
+  revised: { pill: "border-good/20 bg-good/10 text-good", dot: "bg-good" },
 };
 
-/** A topic's status as a small pill: grey until studied, blue when studied, green when revised. */
+/** A topic's status as a small pill: grey until studied, indigo when studied, green when revised. */
 function StatusSelect({ status, name, onChange }: { status: TopicStatus; name: string; onChange: (s: TopicStatus) => void }) {
   const tone = STATUS_TONE[status];
   return (
@@ -228,47 +255,34 @@ function StatusSelect({ status, name, onChange }: { status: TopicStatus; name: s
 
 // Rename and delete wait in the wings on a mouse, showing on hover or keyboard focus; on touch they're always there.
 const rowActions = "flex transition-opacity duration-150 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100";
+// On a mouse they float over the title's end, left of the pill, so they hold no space and every pill meets the
+// unit's right edge, in line with its header icons and Add button. Not while renaming: they'd cover the Save button.
+const rowActionsOverlay = "[@media(hover:hover)]:absolute [@media(hover:hover)]:right-full [@media(hover:hover)]:mr-2 [@media(hover:hover)]:rounded-lg [@media(hover:hover)]:bg-surface-2";
 
 function TopicRow({ topic }: { topic: Topic }) {
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(topic.title);
   const id = topic.id!;
 
   const remove = async () => {
-    if (confirm(`Delete topic "${topic.title}"?`)) await deleteTopics([id]);
-  };
-
-  const toggleEdit = () => {
-    setTitle(topic.title);
-    setEditing(!editing);
+    if (confirm(`Delete topic "${topic.title}"?`)) await deleteTopics([id]).catch(() => toast(SAVE_FAILED));
   };
 
   return (
-    <li className="group flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 pl-5 pr-3 transition-colors duration-150 hover:bg-surface-2/50">
-      <div className="min-w-0 flex-1 basis-48">
+    <li className="group flex items-center gap-x-3 py-2.5 pl-5 pr-3 transition-colors duration-150 hover:bg-surface-2 sm:gap-x-4">
+      {/* The title wraps rather than pushing the pill onto a line of its own on a phone. */}
+      <div className="min-w-0 flex-1 break-words">
         {editing ? (
-          <form
-            className="flex gap-2"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (title.trim()) await db.topics.update(id, { title: title.trim() });
-              setEditing(false);
-            }}
-          >
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" autoFocus aria-label={`New name for ${topic.title}`} />
-            <Button size="icon" type="submit" aria-label="Save name"><Check size={14} /></Button>
-          </form>
+          <InlineRename name={topic.title} label={`New name for ${topic.title}`} onSave={(title) => db.topics.update(id, { title })} onDone={() => setEditing(false)} />
         ) : (
           <span className={cn("text-[15px] leading-snug transition-colors duration-200", topic.status === "revised" && "text-text/75")}>
-            {topic.title} {topic.weak && <Badge className="ml-1 bg-bad/10 text-bad">weak</Badge>}
+            {topic.title} {topic.weak && <Badge tone="warn" className="ml-1">Weak</Badge>}
           </span>
         )}
       </div>
-      {/* On a phone this wraps under the title; the actions keep to the right edge so they don't shift with the pill's width. */}
-      <div className="flex items-center gap-2 max-sm:w-full">
-        <StatusSelect status={topic.status} name={topic.title} onChange={(status) => db.topics.update(id, { status })} />
-        <span className={cn(rowActions, "ml-auto")}>
-          <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label={`Rename ${topic.title}`} title="Rename"><Pencil size={13} /></Button>
+      <div className="relative flex shrink-0 items-center gap-2">
+        <StatusSelect status={topic.status} name={topic.title} onChange={(status) => db.topics.update(id, { status }).catch(() => toast(SAVE_FAILED))} />
+        <span className={cn(rowActions, !editing && rowActionsOverlay)}>
+          <Button variant="ghost" size="icon" onClick={() => setEditing(!editing)} aria-label={`Rename ${topic.title}`} title="Rename"><Pencil size={13} /></Button>
           <Button variant="danger" size="icon" onClick={remove} aria-label={`Delete ${topic.title}`} title="Delete"><Trash2 size={13} /></Button>
         </span>
       </div>

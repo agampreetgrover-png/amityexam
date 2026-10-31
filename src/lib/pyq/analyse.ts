@@ -3,7 +3,7 @@
 // Splits past papers into questions with AI, then matches each question to a syllabus topic.
 import { useSyncExternalStore } from "react";
 import { AiError, aiJson } from "../ai/client";
-import type { AiRequest } from "../ai/schemas";
+import type { PyqPaperResult } from "../ai/schemas";
 import { db } from "../db";
 import { pyqMode, topicsInScope } from "../mode";
 import type { ExamMode, Material, PyqQuestion, Topic } from "../types";
@@ -34,34 +34,23 @@ export function usePyqAnalysis(): PyqAnalysisState {
 
 // ---- AI calls -------------------------------------------------------------------------------
 
-interface PaperResult {
-  year: number | null;
-  exam: ExamMode | null;
-  questions: { number: string; section: string | null; text: string; marks: number | null }[];
-}
-
-// "pyq" and "pyqmap" are JSON actions on /api/ai; their shapes are checked here before use.
-const callJson = (action: "pyq" | "pyqmap", body: AiRequest): Promise<unknown> => aiJson(action, body);
-
 const MAX_PAPER_CHARS = 60_000; // a paper is a few pages; anything longer is mostly OCR noise
 const MAP_BATCH = 40;
 // What the AI route accepts in `topics` (see AiRequestSchema); anything over is refused outright.
 const MAP_TOPICS = 150;
 const MAX_TOPIC_CHARS = 300;
 
-function cleanPaper(raw: unknown): PaperResult {
-  const r = (raw ?? {}) as Partial<PaperResult>;
-  const year = typeof r.year === "number" && r.year >= 1990 && r.year <= 2100 ? Math.round(r.year) : null;
-  const exam = r.exam === "mid-term" || r.exam === "end-term" ? r.exam : null;
-  const questions = (Array.isArray(r.questions) ? r.questions : [])
-    .filter((q) => q && typeof q.text === "string" && q.text.trim())
-    .map((q, i) => ({
-      number: typeof q.number === "string" && q.number.trim() ? q.number.trim().slice(0, 20) : `Q${i + 1}`,
-      section: typeof q.section === "string" && q.section.trim() ? q.section.trim().slice(0, 40) : null,
-      text: q.text.trim().slice(0, 4000),
-      marks: typeof q.marks === "number" && q.marks > 0 && q.marks <= 100 ? q.marks : null,
-    }));
-  return { year, exam, questions };
+// The API route has already checked the reply against PyqPaperSchema; this only caps lengths and fills in gaps.
+function cleanPaper(r: PyqPaperResult): PyqPaperResult {
+  return {
+    ...r,
+    questions: r.questions.map((q, i) => ({
+      number: q.number.slice(0, 20) || `Q${i + 1}`,
+      section: q.section?.slice(0, 40) ?? null,
+      text: q.text.slice(0, 4000),
+      marks: q.marks || null, // 0 marks: the model didn't know
+    })),
+  };
 }
 
 /** Daily/minute limits (or no AI key at all) end the whole run; other failures only skip one paper. */
@@ -113,10 +102,10 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
   for (const paper of pending) {
     if (offline()) return { analysed, stopped: true };
     set({ message: `Reading questions from ${paper.fileName}…` });
-    let result: PaperResult;
+    let result: PyqPaperResult;
     try {
       result = cleanPaper(
-        await callJson("pyq", { subject: names.get(paper.subjectId), context: paper.text.slice(0, MAX_PAPER_CHARS), text: paper.fileName }),
+        await aiJson("pyq", { subject: names.get(paper.subjectId), context: paper.text.slice(0, MAX_PAPER_CHARS), text: paper.fileName }),
       );
     } catch (e) {
       if (isLimit(e)) {
@@ -141,7 +130,7 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
   return { analysed, stopped: false };
 }
 
-async function savePaper(paper: Material, result: PaperResult) {
+async function savePaper(paper: Material, result: PyqPaperResult) {
   const year = result.year ?? paperYear(paper);
   await db.transaction("rw", db.materials, db.pyqQuestions, async () => {
     const current = await db.materials.get(paper.id);
@@ -228,13 +217,13 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
       const misses = new Map<number, Set<number>>(); // question's index in batch → slices that found no topic
       const slices = Math.ceil(titles.length / MAP_TOPICS);
       for (let k = 0; k < titles.length; k += MAP_TOPICS) {
-        let raw: unknown;
+        let entries: { i: number; t: number }[];
         try {
-          raw = await callJson("pyqmap", {
+          ({ map: entries } = await aiJson("pyqmap", {
             subject: subject.name,
             topics: titles.slice(k, k + MAP_TOPICS),
             text: JSON.stringify(batch.map((q, j) => ({ i: j, q: q.text.slice(0, 500) }))),
-          });
+          }));
         } catch (e) {
           if (isLimit(e)) {
             set({ message: "AI limit reached. The remaining questions will be matched later." });
@@ -243,10 +232,9 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
           error = e instanceof Error && e.message ? e.message : "the AI request failed";
           continue;
         }
-        const entries = Array.isArray((raw as { map?: unknown })?.map) ? (raw as { map: { i?: unknown; t?: unknown }[] }).map : [];
         for (const m of entries) {
-          if (typeof m.i !== "number" || !batch[m.i] || hit.has(m.i)) continue;
-          if (typeof m.t === "number" && m.t >= 0 && k + m.t < Math.min(k + MAP_TOPICS, scoped.length)) hit.set(m.i, k + m.t);
+          if (!batch[m.i] || hit.has(m.i)) continue;
+          if (m.t >= 0 && k + m.t < Math.min(k + MAP_TOPICS, scoped.length)) hit.set(m.i, k + m.t);
           else misses.set(m.i, (misses.get(m.i) ?? new Set()).add(k));
         }
       }
@@ -320,11 +308,7 @@ export const analyseAll = async ({ max = 12 } = {}): Promise<void> => {
     allQueued = true; // picked up when the current run ends
     return;
   }
-  await analyseAllNow(max);
-};
-
-const analyseAllNow = (max: number) =>
-  exclusive(async () => {
+  await exclusive(async () => {
     const a = await analysePapersStep(undefined, max);
     let mapped = 0;
     let mapError: string | undefined;
@@ -342,6 +326,7 @@ const analyseAllNow = (max: number) =>
     }
     finalMessage(a.analysed, mapped, stopped, mapError);
   });
+};
 
 /** Forget every topic match for a subject and match again (after the syllabus changed). */
 export const remapSubject = (subjectId: number) =>

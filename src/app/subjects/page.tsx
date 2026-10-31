@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BookOpen, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { db, deleteSubject } from "@/lib/db";
+import { db, deleteSubject, getSettings } from "@/lib/db";
+import { modeShort, topicsInScope } from "@/lib/mode";
+import { hotThreshold, papersForMode, questionsOf } from "@/lib/pyq/group";
 import { coverage, SUBJECT_COLORS } from "@/lib/stats";
-import type { Subject, Topic } from "@/lib/types";
-import { Badge, Button, CoverageBar, Empty, Field, Input, Modal, PageHeader, Panel, cn, subjectStyle, tableHead } from "@/components/ui";
+import type { ExamMode, PyqQuestion, Subject, Topic } from "@/lib/types";
+import { Badge, Button, CoverageBar, Empty, Field, Input, Menu, Modal, PageHeader, subjectStyle, type BadgeTone } from "@/components/ui";
 import { SubjectPicker, subjectKey } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
@@ -15,7 +17,21 @@ import { useCourseCatalog } from "@/lib/drive/use-catalog";
 
 export default function SubjectsPage() {
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
-  const topics = useLiveQuery(() => db.topics.toArray());
+  // Everything the cards count, in one query, so they draw once at their real values instead of sweeping up from zero.
+  const data = useLiveQuery(async () => {
+    const [units, topics, papers, questions, settings] = await Promise.all([
+      db.units.toArray(),
+      db.topics.toArray(),
+      db.materials.where({ kind: "pyq" }).toArray(),
+      db.pyqQuestions.toArray(),
+      getSettings(),
+    ]);
+    const mode = settings.examMode;
+    // Only this exam's questions, found by their paper as the PYQs tab does. Papers keep just what that needs, not their text.
+    const scoped = mode ? questionsOf(questions, papersForMode(papers.map(({ id, fileName, pyqExam }) => ({ id, fileName, pyqExam })), mode)) : [];
+    // Subjects with any syllabus at all, so one with no mid-sem units isn't called empty.
+    return { topics: topicsInScope(topics, units, mode), questions: scoped, mode, imported: new Set(topics.map((t) => t.subjectId)) };
+  });
   const [editing, setEditing] = useState<Subject | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -31,21 +47,20 @@ export default function SubjectsPage() {
           Add the subjects for this semester, then import each syllabus with AI.
         </Empty>
       )}
-      {/* Drawn once topics are in too, so the coverage bars don't sweep up from zero on every visit. */}
-      {!!subjects?.length && topics && (
-        <Panel>
-          {/* Column headings line up with the row layout below; on phones each row labels its own coverage. */}
-          <div aria-hidden className={cn(tableHead, "hidden gap-6 py-2.5 pl-6 pr-4 sm:grid", COLS)}>
-            <span>Subject</span>
-            <span>Syllabus covered</span>
-            <span />
-          </div>
-          <ul className="divide-y divide-border">
-            {subjects.map((s) => (
-              <SubjectRow key={s.id} subject={s} topics={topics.filter((t) => t.subjectId === s.id)} onEdit={() => setEditing(s)} />
-            ))}
-          </ul>
-        </Panel>
+      {!!subjects?.length && data && (
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {subjects.map((s) => (
+            <SubjectCard
+              key={s.id}
+              subject={s}
+              topics={data.topics.filter((t) => t.subjectId === s.id)}
+              questions={data.questions.filter((q) => q.subjectId === s.id)}
+              mode={data.mode}
+              imported={data.imported.has(s.id!)}
+              onEdit={() => setEditing(s)}
+            />
+          ))}
+        </ul>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit subject" : "Add subject"}>
         <SubjectForm
@@ -59,52 +74,132 @@ export default function SubjectsPage() {
   );
 }
 
-// Subject, coverage, actions. Shared by the heading row and every subject row so they line up.
-const COLS = "sm:grid-cols-[minmax(0,1fr)_13.5rem_6.5rem]";
+/** Where a subject's syllabus stands, from its topics in this exam's scope. */
+function status(ts: Topic[], cov: number, imported: boolean, mode?: ExamMode): { label: string; tone: BadgeTone } {
+  if (!ts.length) return { label: imported && mode ? `No ${modeShort(mode).toLowerCase()} topics` : "No syllabus yet", tone: "neutral" };
+  if (ts.every((t) => t.status === "revised")) return { label: "Revised", tone: "good" };
+  return cov === 0 ? { label: "Not started", tone: "neutral" } : { label: "In progress", tone: "accent" };
+}
 
-/** One subject in the table. The whole row opens the subject; edit and delete sit above the link. */
-function SubjectRow({ subject: s, topics: ts, onEdit }: { subject: Subject; topics: Topic[]; onEdit: () => void }) {
+/** "3h 20m", "45m". */
+const duration = (mins: number) => (mins >= 60 ? `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ""}` : `${mins}m`);
+
+const QUICK_LINKS = [
+  { tab: "syllabus", label: "Syllabus" },
+  { tab: "pyqs", label: "PYQs" },
+  { tab: "quiz", label: "Practice" },
+];
+
+/**
+ * One subject as a card. Only the title links to the subject, since the card also holds a menu; the footer
+ * jumps straight to its syllabus, past papers or a quiz.
+ */
+function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit }: {
+  subject: Subject;
+  topics: Topic[];
+  questions: PyqQuestion[];
+  mode?: ExamMode;
+  imported: boolean;
+  onEdit: () => void;
+}) {
   const cov = coverage(ts);
+  const st = status(ts, cov, imported, mode);
   const weak = ts.filter((t) => t.weak).length;
+  const revised = ts.filter((t) => t.status === "revised").length;
+  // Most asked: topics in the top quarter by questions asked, the same cut the PYQs tab marks as frequently asked.
+  const ids = new Set(ts.map((t) => t.id));
+  const asked = new Map<number, number>();
+  for (const q of questions) if (typeof q.topicId === "number" && ids.has(q.topicId)) asked.set(q.topicId, (asked.get(q.topicId) ?? 0) + 1);
+  const cut = hotThreshold([...asked.values()]);
+  const hot = [...asked.values()].filter((n) => n >= cut).length;
+  // Time left only from topics the AI has timed (Zero prep); "+" when some topics still to revise have no estimate.
+  const left = ts.filter((t) => t.status !== "revised");
+  const timed = left.filter((t) => t.prep);
+  const mins = timed.reduce((a, t) => a + t.prep!.mins, 0);
+  const href = `/subjects/view?id=${s.id}`;
+
   return (
     <li
       style={subjectStyle(s.color)}
-      className={cn("subj-tab subj-hover group relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 py-4 pl-6 pr-4 sm:gap-x-6", COLS)}
+      className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift"
     >
-      <Link href={`/subjects/view?id=${s.id}`} className="min-w-0 rounded-md after:absolute after:inset-0">
-        <span className="flex items-center gap-2">
-          {/* Phones: the name may take two lines, and the weak count moves down to the line below. */}
-          <span className="line-clamp-2 break-words text-[15px] font-semibold tracking-[-0.01em] transition-colors duration-150 group-hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))] sm:truncate">
-            {s.name}
-          </span>
-          {weak > 0 && <Badge className="hidden shrink-0 bg-bad/10 text-bad sm:inline-flex">{weak} weak</Badge>}
-        </span>
-        <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
-          {weak > 0 && <Badge className="bg-bad/10 text-bad sm:hidden">{weak} weak</Badge>}
-          {s.code && <span className="font-medium text-text/70">{s.code}</span>}
-          <span>{ts.length} topic{ts.length === 1 ? "" : "s"}</span>
-          {s.credits ? <span>{s.credits} credits</span> : null}
-        </span>
-      </Link>
-      {/* Phones: coverage drops under the name, across the row. Wider: it gets its own column. */}
-      <div className="col-span-2 row-start-2 flex items-center gap-3 sm:col-span-1 sm:row-start-auto">
-        <span className="w-10 shrink-0 text-sm font-semibold tabular-nums">{cov}%</span>
-        <CoverageBar topics={ts} className="flex-1" />
-        <span className="text-[13px] text-muted sm:hidden">covered</span>
+      <div className="flex flex-1 flex-col p-5">
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {s.code && <Badge>{s.code}</Badge>}
+            {s.credits ? <Badge>{s.credits} credit{s.credits === 1 ? "" : "s"}</Badge> : null}
+            {/* "In progress" would be on nearly every card, so only the states worth noticing get a badge. */}
+            {st.label !== "In progress" && <Badge tone={st.tone}>{st.label}</Badge>}
+          </div>
+          <Menu
+            label={`Actions for ${s.name}`}
+            className="-mr-1.5 -mt-0.5"
+            items={[
+              { label: "Edit", icon: <Pencil size={15} />, onSelect: onEdit },
+              {
+                label: "Delete",
+                icon: <Trash2 size={15} />,
+                danger: true,
+                onSelect: () => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!),
+              },
+            ]}
+          />
+        </div>
+
+        <h2 className="mt-4 text-[16px] font-semibold leading-snug tracking-[-0.01em]">
+          <Link href={href} className="inline-flex max-w-full items-start gap-2.5 rounded-md transition-colors duration-150 hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))]">
+            <span aria-hidden className="subj-dot mt-[0.45em] size-2 shrink-0 rounded-full" />
+            <span className="line-clamp-2 break-words">{s.name}</span>
+          </Link>
+        </h2>
+
+        <dl className="mt-4 grid grid-cols-2 gap-2">
+          <div className="min-w-0 rounded-lg bg-surface-2 px-3 py-2.5">
+            <dt className="text-xs text-muted">{mode ? `${modeShort(mode)} topics` : "Topics"}</dt>
+            <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+              <span className="text-lg font-semibold tabular-nums">{ts.length}</span>
+              {weak > 0 && <span className="text-xs font-medium tabular-nums text-mark-ink">{weak} weak</span>}
+            </dd>
+          </div>
+          <div className="min-w-0 rounded-lg bg-surface-2 px-3 py-2.5">
+            <dt className="text-xs text-muted">Past-paper questions</dt>
+            <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
+              <span className="text-lg font-semibold tabular-nums">{questions.length}</span>
+              {hot > 0 && <span className="text-xs font-medium tabular-nums text-accent">{hot} most asked</span>}
+            </dd>
+          </div>
+        </dl>
+
+        {/* Pushed to the card's foot, so the bars line up across a row whatever the title's length. Emerald, as
+            progress is everywhere: revised topics in full, studied ones paler at half their share. */}
+        <div className="mt-auto pt-5">
+          <div className="flex items-center gap-3" style={subjectStyle("var(--mastery)")}>
+            <CoverageBar topics={ts} className="flex-1" />
+            <span className="text-sm font-semibold tabular-nums">{cov}%<span className="sr-only"> of the syllabus covered</span></span>
+          </div>
+          <p className="mt-2 flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-[13px] text-muted">
+            <span className="tabular-nums">{revised} of {ts.length} revised</span>
+            {timed.length > 0 && (
+              <span className="tabular-nums" title="AI estimate for the topics still to revise">
+                {duration(mins)}{timed.length < left.length ? "+" : ""} left
+              </span>
+            )}
+          </p>
+        </div>
       </div>
-      <div className="relative z-10 -my-1 flex shrink-0 items-center justify-end gap-0.5">
-        <Button variant="ghost" size="icon" aria-label={`Edit ${s.name}`} title="Edit" onClick={onEdit}><Pencil size={15} /></Button>
-        <Button
-          variant="danger"
-          size="icon"
-          aria-label={`Delete ${s.name}`}
-          title="Delete"
-          onClick={() => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!)}
-        >
-          <Trash2 size={15} />
-        </Button>
-        <ChevronRight size={16} aria-hidden className="ml-1 hidden text-faint transition-transform duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-muted sm:block" />
-      </div>
+
+      <nav aria-label={`${s.name} sections`} className="grid grid-cols-3 divide-x divide-border border-t border-border">
+        {QUICK_LINKS.map((l) => (
+          <Link
+            key={l.tab}
+            href={`${href}&tab=${l.tab}`}
+            className="group flex min-w-0 items-center justify-between gap-1 px-4 py-2.5 text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:-outline-offset-2"
+          >
+            {l.label}
+            <ChevronRight size={14} aria-hidden className="text-faint transition-colors duration-150 group-hover:text-muted" />
+          </Link>
+        ))}
+      </nav>
     </li>
   );
 }

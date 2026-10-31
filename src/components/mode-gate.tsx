@@ -46,7 +46,7 @@ function Welcome() {
     <main className="flex min-h-dvh flex-col justify-center bg-bg px-4 py-12 md:py-16">
       <div className="mx-auto w-full max-w-3xl">
         <span className="flex items-center gap-2.5 text-[15px] font-semibold tracking-[-0.02em]">
-          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-accent-ink" aria-hidden>
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-solid text-accent-ink" aria-hidden>
             <GraduationCap size={16} />
           </span>
           Amity Exams
@@ -64,10 +64,10 @@ function Welcome() {
               onClick={() => pick(c.mode)}
               disabled={saving != null}
               className={cn(
-                "press group flex flex-col rounded-xl border border-border bg-surface p-5 text-left shadow-sheet hover:border-accent/60 hover:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_10%,transparent)] md:p-6",
+                "press group flex flex-col rounded-2xl border border-border bg-surface p-5 text-left shadow-sheet hover:border-line-strong hover:bg-surface-2 hover:shadow-lift md:p-6",
                 "disabled:pointer-events-none",
                 // The chosen panel stays marked while the mode is stored; the other one steps back.
-                saving === c.mode && "border-accent bg-accent-soft",
+                saving === c.mode && "border-accent",
                 saving != null && saving !== c.mode && "opacity-50",
               )}
             >

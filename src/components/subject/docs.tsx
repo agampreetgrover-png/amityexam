@@ -72,7 +72,7 @@ export function DraftCard({ gen, busyTitle, onSave }: { gen: ReturnType<typeof u
         </Button>
       )}
     >
-      {canSave && <p className="mb-4 rounded-md border border-border bg-surface-2 px-3.5 py-2.5 text-[13px] text-muted">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
+      {canSave && <p className="mb-4 rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-[13px] text-muted">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
       <div aria-busy={gen.busy}><Markdown>{gen.text || "…"}</Markdown></div>
     </Card>
   );
@@ -87,21 +87,22 @@ const KIND_LABEL: Record<GeneratedDoc["kind"], string> = { summary: "Notes", che
 /** List of saved generated docs; clicking one opens it in the viewer. */
 export function DocList({ docs, selected, onSelect }: { docs: GeneratedDoc[]; selected?: number; onSelect: (d: GeneratedDoc) => void }) {
   return (
-    <ul className="no-print divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface shadow-sheet">
+    <ul className="no-print divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface shadow-sheet">
       {docs.map((d) => (
         <li key={d.id}>
           <button
             onClick={() => onSelect(d)}
             aria-current={selected === d.id ? "true" : undefined}
             className={cn(
-              "flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] transition-colors duration-150 hover:bg-surface-2/60 sm:px-5",
-              selected === d.id && "bg-accent-soft font-medium text-accent hover:bg-accent-soft",
+              "flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] transition-colors duration-150 hover:bg-surface-2 sm:px-5",
+              // The open doc: a quiet fill like the nav's active item, with its icon in the accent.
+              selected === d.id && "bg-nav-active font-medium text-nav-active-ink hover:bg-nav-active",
             )}
           >
             <FileText size={16} className={cn("shrink-0", selected === d.id ? "text-accent" : "text-faint")} aria-hidden />
             <span className="min-w-0 flex-1 truncate">{d.title}</span>
-            <Badge className="hidden sm:inline-flex">{KIND_LABEL[d.kind]}</Badge>
-            <span className="shrink-0 text-xs font-normal text-muted">{new Date(d.createdAt).toLocaleDateString()}</span>
+            <Badge tone={d.kind === "predict" ? "accent" : "neutral"} className="hidden sm:inline-flex">{KIND_LABEL[d.kind]}</Badge>
+            <span className="shrink-0 text-xs font-normal tabular-nums text-muted">{new Date(d.createdAt).toLocaleDateString()}</span>
           </button>
         </li>
       ))}

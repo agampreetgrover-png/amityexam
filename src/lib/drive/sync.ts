@@ -13,7 +13,7 @@ interface SyncRequest {
   maxOcr?: number; // scanned files read with AI per run (each costs one AI request)
 }
 
-export interface SyncedFile {
+interface SyncedFile {
   driveId: string;
   name: string;
   path: string[];
@@ -52,7 +52,11 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   const maxFiles = req.maxFiles ?? 60;
   // subjectId → candidate files
   const found = new Map<number, CrawledFile[]>();
-  const add = (sid: number, files: CrawledFile[]) => found.set(sid, [...(found.get(sid) ?? []), ...files]);
+  const add = (sid: number, files: CrawledFile[]) => {
+    const list = found.get(sid);
+    if (list) list.push(...files);
+    else found.set(sid, [...files]);
+  };
   // Every folder is listed at most once this run, and the run lists a bounded number of folders (see CrawlRun).
   const run = newCrawlRun();
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight, BarChart3, BookOpen, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
+import { ArrowLeftRight, BookOpen, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/db";
@@ -12,13 +12,15 @@ import { examInMode, modeShort, otherMode, setExamMode, useExamMode } from "@/li
 import { useToday } from "@/lib/use-today";
 import { OPEN_EVENT } from "./command-palette-loader";
 import { toast } from "./toast";
-import { cn, subjectStyle } from "./ui";
+import { Badge, cn, daysTone, subjectStyle, type BadgeTone } from "./ui";
 
 interface Command {
   id: string;
   group: "Go to" | "Subjects" | "Exams" | "Actions";
   label: string;
   hint?: string;
+  /** The hint's badge tone: an exam's is coral or amber as it gets close. */
+  hintTone?: BadgeTone;
   icon: ReactNode;
   /** Extra words to match, e.g. a course code. */
   keywords?: string;
@@ -85,7 +87,6 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       { id: "p-important", group: "Go to", label: "Important", icon: <Flame size={16} />, keywords: "topics most asked pyq", run: go("/important") },
       { id: "p-zero-prep", group: "Go to", label: "Zero prep", icon: <Sprout size={16} />, keywords: "last minute cram", run: go("/zero-prep") },
       { id: "p-exams", group: "Go to", label: "Exams", icon: <GraduationCap size={16} />, keywords: "date sheet", run: go("/exams") },
-      { id: "p-progress", group: "Go to", label: "Progress", icon: <BarChart3 size={16} />, keywords: "stats charts", run: go("/progress") },
       { id: "p-settings", group: "Go to", label: "Settings", icon: <Settings size={16} />, keywords: "backup reminders", run: go("/settings") },
     ];
     for (const s of data?.subjects ?? []) {
@@ -108,7 +109,8 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         id: `e-${e.id}`,
         group: "Exams",
         label: `${subjectName.get(e.subjectId) ?? "Exam"} ${examTypeLabel(e.type).toLowerCase()}`,
-        hint: d === 0 ? "today" : `${prettyDay(e.date)}, in ${d}d`,
+        hint: d === 0 ? "Today" : `${prettyDay(e.date)}, in ${d}d`,
+        hintTone: daysTone(d),
         keywords: "kit exam day",
         subject: subjectRef.get(e.subjectId),
         icon: <GraduationCap size={16} />,
@@ -157,7 +159,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       onClose={() => setOpen(false)}
       onClick={(e) => e.target === dialog.current && setOpen(false)}
       aria-label="Search"
-      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-xl border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[var(--scrim)]"
+      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[var(--scrim)]"
     >
       <div className="flex items-center gap-3 border-b border-border px-4 sm:px-5">
         <Search size={18} className="shrink-0 text-muted" aria-hidden />
@@ -201,13 +203,13 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
                 onClick={() => run(c)}
                 className={cn(
                   "relative flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors duration-100",
-                  // The active row: a soft blue fill, inset from the palette's edges.
-                  i === active && "bg-accent-soft",
+                  // The active row: a quiet fill, inset from the palette's edges, with its icon in the accent.
+                  i === active && "bg-surface-2",
                 )}
               >
                 <span className={cn("flex w-5 shrink-0 justify-center", i === active ? "text-accent" : "text-muted")}>{c.icon}</span>
                 <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
-                {c.hint && <span className="shrink-0 text-[13px] tabular-nums text-muted">{c.hint}</span>}
+                {c.hint && <Badge tone={c.hintTone} className="shrink-0">{c.hint}</Badge>}
                 {i === active && <CornerDownLeft size={14} className="shrink-0 text-muted" aria-hidden />}
               </div>
             </li>

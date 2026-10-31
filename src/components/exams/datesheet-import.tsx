@@ -13,7 +13,7 @@ import { DEFAULT_CHECKLIST, EXAM_TYPES } from "@/lib/exams";
 import type { ExamType } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { OfflineHint, useOnline } from "../subject/shared";
-import { Button, Empty, Input, Segmented, Select } from "../ui";
+import { Badge, Button, Empty, Input, Segmented, Select } from "../ui";
 
 type Source = "upload" | "drive";
 type DriveSheet = { id: string; name: string; path: string[] };
@@ -103,7 +103,7 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
       {source === "upload" ? (
         <label
           // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
-          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
+          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
         >
           <Upload size={18} className="text-muted" aria-hidden />
           <span><span className="font-medium text-text">Choose a date sheet</span> (.xlsx, .xls, .csv, PDF or photo)</span>
@@ -163,11 +163,11 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
   }, []);
 
   if (sheets === null) return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Looking in your Drive folders…</p>;
-  if (sheets === "error") return <p className="rounded-md border border-bad/25 bg-bad/5 px-4 py-3 text-sm text-bad">Couldn&apos;t reach your Drive folders. Check your connection, or upload the file instead.</p>;
+  if (sheets === "error") return <AiErrorBox error="Couldn't reach your Drive folders. Check your connection, or upload the file instead." />;
   if (!sheets.length) return <p className="rounded-lg border border-dashed border-line-strong px-4 py-5 text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
   return (
     // No overflow clipping here: it would cut off the focus ring around each row's button.
-    <ul className="divide-y divide-border rounded-lg border border-border">
+    <ul className="divide-y divide-border rounded-xl border border-border">
       {sheets.map((s) => (
         <li key={s.id}>
           <button
@@ -261,12 +261,12 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
         Found {mine.length} exam{mine.length === 1 ? "" : "s"} for your subjects in <span className="font-medium text-text">{fileName}</span>. Check the dates, then save.
       </p>
       {!mine.length && (
-        <p className="rounded-md border border-warn/25 bg-warn/5 px-4 py-3 text-sm">
+        <p className="rounded-xl border border-mark/25 bg-mark-soft px-4 py-3 text-sm text-text">
           None of your subjects were found. Make sure each subject has its course code (e.g. CSE201), or check this is your programme&apos;s date sheet.
         </p>
       )}
-      {/* A hairline table: ticked rows carry a navy rule down their left edge. The padding keeps focus rings clear of the clipped corners. */}
-      {visible.length > 0 && <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+      {/* A hairline table: ticked rows carry an indigo rule down their left edge. The padding keeps focus rings clear of the clipped corners. */}
+      {visible.length > 0 && <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
         {visible.map((r) => {
           const name = subjects.find((s) => s.id === r.subjectId)?.name ?? "unmatched exam";
           return (
@@ -310,10 +310,15 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
                 <Input type="time" aria-label={`Start time for ${name}`} value={r.time} onChange={(e) => patch(r.key, { time: e.target.value })} />
               </div>
             </div>
-            {r.duplicate && <p className="mt-2 pl-7 text-xs text-muted">Already in your exams on {prettyDay(r.date)}.</p>}
+            {r.duplicate && (
+              <p className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs text-muted">
+                <Badge>Already saved</Badge> In your exams on {prettyDay(r.date)}.
+              </p>
+            )}
             {r.clash && (
               <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs">
-                <span className="flex items-center gap-1 text-warn"><AlertTriangle size={13} className="shrink-0" /> You already have this exam on {prettyDay(r.clash.date)}.</span>
+                <Badge tone="warn"><AlertTriangle aria-hidden /> Clash</Badge>
+                <span className="text-muted">You already have this exam on {prettyDay(r.clash.date)}.</span>
                 <Select aria-label="What to do" className="h-8 w-auto py-0 text-xs" value={r.action} onChange={(e) => patch(r.key, { action: e.target.value as ImportRow["action"] })}>
                   <option value="update">Update it to this date</option>
                   <option value="add">Add as a new exam</option>

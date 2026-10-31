@@ -5,6 +5,7 @@ import { useState } from "react";
 import { db } from "@/lib/db";
 import { newTopic, parseTopics } from "@/lib/syllabus-text";
 import type { ExamMode } from "@/lib/types";
+import { AiErrorBox } from "./ai-error";
 import { Button, Input, Textarea } from "./ui";
 
 /**
@@ -69,7 +70,7 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
 
   return (
     // A div, not a nested <form>: this sits inside the exam form, and Enter in the unit name must not save the exam.
-    <div className="space-y-2.5 rounded-md border border-border bg-surface-2 p-3">
+    <div className="space-y-2.5 rounded-xl border border-border bg-surface-2 p-3">
       <Input
         value={unit}
         onChange={(e) => setUnit(e.target.value)}
@@ -85,7 +86,7 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
         aria-label="Topics, one per line"
         className="min-h-28 bg-surface"
       />
-      {error && <p className="rounded-md border border-bad/25 bg-bad/5 px-3 py-2 text-[13px] text-bad" role="alert">{error}</p>}
+      <AiErrorBox error={error} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs tabular-nums text-muted">
           {titles.length

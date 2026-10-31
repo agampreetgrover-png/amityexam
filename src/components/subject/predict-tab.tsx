@@ -33,7 +33,7 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
     setReady("");
     // Label each paper so the model can count repeats across years.
     const context = pyqs.map((p) => `=== ${p.fileName} ===\n${p.text}`).join("\n\n").slice(0, MAX_CONTEXT);
-    const title = `Prediction: ${subject.name}${mode ? `, ${modeShort(mode).toLowerCase()}` : ""} (${pyqs.length} paper${pyqs.length === 1 ? "" : "s"})`;
+    const title = `Prediction: ${subject.name}, ${modeShort(mode).toLowerCase()} (${pyqs.length} paper${pyqs.length === 1 ? "" : "s"})`;
     setPendingTitle(title);
     const content = await gen.run("predict", { subject: subject.name, topics: topicTitles(topics), context: context || undefined, ...aiModeFields(mode, units) });
     if (!content?.trim()) return;

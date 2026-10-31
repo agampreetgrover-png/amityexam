@@ -13,15 +13,19 @@ type CallOpts = { fast?: boolean; kind?: "json" | "text" | "chat" };
 const OUT_CAP = { json: 16_384, text: 8_192, chat: 4_096, extract: 16_384 } as const;
 const outCap = (kind?: CallOpts["kind"]) => OUT_CAP[kind ?? "text"];
 
+// The same for both providers: the free OpenRouter models take 256K+ tokens, so they get as much material as Gemini.
+export const PROMPT_LIMITS = {
+  /** How much pasted material a prompt may include. */
+  maxChars: 200_000,
+  /** How many past chat messages to send. */
+  chatHistory: 10,
+};
+
 interface Provider {
   name: ProviderName;
-  /** How much pasted material a prompt may include for this provider. */
-  maxContextChars: number;
-  /** How many past chat messages to send. */
-  chatHistory: number;
   json(messages: Msg[], opts?: CallOpts): Promise<string>;
   stream(messages: Msg[], opts?: CallOpts): AsyncIterable<string>;
-  extract?(file: { mimeType: string; data: string }, prompt: string, opts?: { fast?: boolean }): Promise<string>;
+  extract(file: { mimeType: string; data: string }, prompt: string, opts?: { fast?: boolean }): Promise<string>;
 }
 
 type ErrorKind = "minute" | "day" | "auth" | "too-large" | "config" | "unavailable" | "bad-output" | "other";
@@ -46,7 +50,7 @@ const TIMEOUT_MS = 90_000;
 
 /** Strip API keys from text before it is logged. */
 export function redact(s: string): string {
-  let out = s.replace(/AIza[\w-]{20,}|gsk_\w{20,}|AQ\.[\w-]{20,}|sk-or-[\w-]{20,}/g, "[redacted]");
+  let out = s.replace(/AIza[\w-]{20,}|AQ\.[\w-]{20,}|sk-or-[\w-]{20,}/g, "[redacted]");
   for (const k of [process.env.GEMINI_API_KEY, process.env.OPENROUTER_API_KEY]) if (k) out = out.split(k).join("[redacted]");
   return out;
 }
@@ -100,8 +104,6 @@ function gemini(apiKey: string): Provider {
 
   return {
     name: "gemini",
-    maxContextChars: 200_000,
-    chatHistory: 10,
     async json(messages, opts) {
       const { system, contents } = toGemini(messages);
       try {
@@ -228,8 +230,6 @@ function openrouter(apiKey: string): Provider {
 
   return {
     name: "openrouter",
-    maxContextChars: 200_000, // the free models take 256K+ tokens; same material as Gemini gets
-    chatHistory: 10,
     async json(messages, opts) {
       try {
         return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3, max_tokens: OUT_CAP.json })) ?? "";
@@ -367,17 +367,14 @@ export async function runWithFallback<T>(
  * so when one is limited the other stands in before moving on.
  */
 export function extractWithFallback(file: { mimeType: string; data: string }, prompt: string, fast = false) {
-  return runWithFallback(
-    async (p) => {
-      try {
-        return await p.extract!(file, prompt, { fast });
-      } catch (e) {
-        if (p.name !== "gemini" || !(e instanceof AiProviderError) || (e.kind !== "day" && e.kind !== "minute")) throw e;
-        return await p.extract!(file, prompt, { fast: !fast });
-      }
-    },
-    getProviders().filter((p) => p.extract),
-  );
+  return runWithFallback(async (p) => {
+    try {
+      return await p.extract(file, prompt, { fast });
+    } catch (e) {
+      if (p.name !== "gemini" || !(e instanceof AiProviderError) || (e.kind !== "day" && e.kind !== "minute")) throw e;
+      return await p.extract(file, prompt, { fast: !fast });
+    }
+  });
 }
 
 /** Pick the most useful error to show when every provider failed. */

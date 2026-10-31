@@ -27,4 +27,13 @@ describe("matchOption", () => {
     expect(matchOption("Hash map", opts)).toBeNull();
     expect(matchOption("E", opts)).toBeNull();
   });
+
+  it("stays fast on a long run of dots inside an answer", () => {
+    // Model output is untrusted; the trailing-dot strip used to be retried from every dot (quadratic).
+    const start = performance.now();
+    matchOption(`x${".".repeat(50_000)}z`, opts);
+    matchOption(`x${". ".repeat(50_000)}z`, opts);
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(matchOption("Stack...", opts)).toBe("Stack");
+  });
 });

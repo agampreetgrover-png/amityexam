@@ -12,7 +12,7 @@ export default function Offline() {
       {/* A primary Button's classes, copied: this is a server page and can't call buttonClass from the client-only ui.tsx. */}
       <Link
         href="/"
-        className="press mt-5 inline-flex h-9 select-none items-center justify-center gap-1.5 rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.14),var(--shadow-control)] hover:bg-accent-hover"
+        className="press mt-5 inline-flex h-9 select-none items-center justify-center gap-1.5 rounded-lg bg-accent-solid px-3.5 text-sm font-medium text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.14),var(--shadow-control)] hover:bg-accent-solid-hover"
       >
         Go to Today
       </Link>

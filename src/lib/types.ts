@@ -82,7 +82,7 @@ export interface Material {
   paperYear?: number; // exam year read from the paper itself
 }
 
-export interface DriveRef {
+interface DriveRef {
   driveId: string;
   url: string;
   path: string[]; // folder names in Drive, e.g. ["CSE201 - Database Management Systems", "PYQs"]
@@ -114,7 +114,7 @@ export interface DriveFile {
   at: number;
 }
 
-export interface DriveSourceSetting {
+interface DriveSourceSetting {
   id: string; // folder id
   label: string;
 }

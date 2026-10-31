@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, FileQuestion, Loader2, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ChevronDown, ExternalLink, FileQuestion, Flame, Loader2, RefreshCw, Search, Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, pyqMode, topicsInScope, unitInScope } from "@/lib/mode";
 import { analyseSubject, remapSubject, retryPapers, setPaperExam, usePaperFailures, usePyqAnalysis } from "@/lib/pyq/analyse";
@@ -10,8 +10,9 @@ import {
   groupByTopic, groupByYear, needsMapping, paperYear, papersForMode, questionsOf, searchQuestions, unknownExamPapers, type TopicStat,
 } from "@/lib/pyq/group";
 import type { Material, PyqQuestion, Topic, Unit } from "@/lib/types";
+import { QuestionLine } from "../pyq-question-line";
 import { Badge, Button, Card, Empty, Input, List, Panel, Section, Segmented, cn } from "../ui";
-import { OfflineHint, useOnline, type TabProps } from "./shared";
+import { isDriveUrl, OfflineHint, useOnline, type TabProps } from "./shared";
 
 type View = "year" | "topic";
 
@@ -155,7 +156,7 @@ function UnknownExamPapers({ papers }: { papers: Material[] }) {
     <Card
       title={
         <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-2 text-left">
-          Exam type unknown <span className="text-[13px] font-normal text-muted">({papers.length})</span>
+          Exam type unknown <Badge tone="warn">{papers.length}</Badge>
           <ChevronDown size={16} className={cn("text-muted transition-transform duration-150", open && "rotate-180")} />
         </button>
       }
@@ -168,16 +169,12 @@ function UnknownExamPapers({ papers }: { papers: Material[] }) {
             <li key={p.id} className="flex flex-wrap items-center gap-2 py-3">
               <div className="min-w-0 flex-1 basis-48">
                 <p className="break-words text-[15px] font-medium">{p.fileName}</p>
-                <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] tabular-nums text-muted">
-                  <span>{paperYear(p) ?? "Year unknown"}</span>
-                  {!p.analysedAt && <span>not analysed yet</span>}
+                <p className="mt-1 flex flex-wrap gap-1.5">
+                  <Badge>{paperYear(p) ?? "Year unknown"}</Badge>
+                  {!p.analysedAt && <Badge>Not analysed yet</Badge>}
                 </p>
               </div>
-              {p.source && (
-                <a href={p.source.url} target="_blank" rel="noopener noreferrer" aria-label="Open in Google Drive" className={driveLink}>
-                  <ExternalLink size={14} />
-                </a>
-              )}
+              {p.source && <DriveLink url={p.source.url} />}
               <Button size="sm" variant="secondary" disabled={busy === p.id} onClick={() => mark(p.id!, "end-term")}>Mark as Major</Button>
               <Button size="sm" variant="secondary" disabled={busy === p.id} onClick={() => mark(p.id!, "mid-term")}>Mark as Mid-sem</Button>
             </li>
@@ -188,12 +185,21 @@ function UnknownExamPapers({ papers }: { papers: Material[] }) {
   );
 }
 
-const driveLink =
-  "press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-text";
+const DriveLink = ({ url }: { url: string }) => isDriveUrl(url) && (
+  <a
+    href={url}
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="Open in Google Drive"
+    className="press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-text"
+  >
+    <ExternalLink size={14} />
+  </a>
+);
 
 const examBadge = (p: Pick<Material, "pyqExam" | "fileName">) => {
   const e = pyqMode(p);
-  return e ? <Badge className="bg-accent-soft text-accent">{modeShort(e)}</Badge> : <Badge>Exam type unknown</Badge>;
+  return e ? <Badge tone="accent">{modeShort(e)}</Badge> : <Badge tone="warn">Exam type unknown</Badge>;
 };
 
 function YearView({ papers, questions, topicById, searching }: {
@@ -222,30 +228,20 @@ function YearView({ papers, questions, topicById, searching }: {
                     <div className="min-w-0 flex-1 basis-48">
                       <h3 className="break-words text-[15px] font-semibold">{paper.fileName}</h3>
                       {paper.analysedAt && qs.length > 0 && (
-                        <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] tabular-nums text-muted">
-                          <span>{qs.length} question{qs.length === 1 ? "" : "s"}</span>
-                          {marksOf(qs) ? <span>{marksOf(qs)} marks</span> : null}
+                        <p className="mt-1.5 flex flex-wrap gap-1.5">
+                          <Badge>{qs.length} question{qs.length === 1 ? "" : "s"}</Badge>
+                          {marksOf(qs) ? <Badge>{marksOf(qs)} marks</Badge> : null}
                         </p>
                       )}
                     </div>
                     <div className="-my-0.5 flex shrink-0 items-center gap-1.5">
                       {examBadge(paper)}
-                      {paper.source && (
-                        <a
-                          href={paper.source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-label="Open in Google Drive"
-                          className={driveLink}
-                        >
-                          <ExternalLink size={14} />
-                        </a>
-                      )}
+                      {paper.source && <DriveLink url={paper.source.url} />}
                     </div>
                   </div>
                   {!paper.analysedAt && failures.has(paper.id!) ? (
                     <div className="p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-bad/25 bg-bad/5 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-bad/25 bg-bad/5 px-4 py-3">
                         <p className="min-w-0 text-sm text-bad">
                           Couldn&apos;t read this paper. <span className="text-muted">{failures.get(paper.id!)}</span>
                         </p>
@@ -261,7 +257,7 @@ function YearView({ papers, questions, topicById, searching }: {
                   ) : (
                     <ul className="divide-y divide-border [&>li]:px-4 sm:[&>li]:px-5">
                       {qs.map((q) => (
-                        <QuestionRow key={q.id} q={q} topic={q.topicId ? topicById.get(q.topicId) : undefined} />
+                        <QuestionLine key={q.id} q={q} showYear={false} topic={q.topicId ? topicById.get(q.topicId) : undefined} />
                       ))}
                     </ul>
                   )}
@@ -276,28 +272,6 @@ function YearView({ papers, questions, topicById, searching }: {
 }
 
 const marksOf = (qs: PyqQuestion[]) => qs.reduce((a, q) => a + (q.marks ?? 0), 0);
-
-/** One table-like row: number (or year) column, the question, marks right-aligned. */
-function QuestionRow({ q, topic, showYear, paperName }: { q: PyqQuestion; topic?: Topic; showYear?: boolean; paperName?: string }) {
-  return (
-    <li className="flex gap-3 py-3">
-      <span className="w-11 shrink-0 pt-0.5 text-[13px] font-medium tabular-nums text-muted">{showYear ? (q.year ?? "—") : q.number}</span>
-      <div className="min-w-0 flex-1">
-        <p className="whitespace-pre-line break-words text-[15px] leading-relaxed">{q.text}</p>
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] tabular-nums text-muted empty:hidden">
-          {/* Phones: marks join this line, so the question gets the full width. */}
-          {q.marks ? <span className="font-medium text-text/80 sm:hidden">{q.marks} marks</span> : null}
-          {showYear && <span>{q.number}</span>}
-          {q.section && <span>{q.section}</span>}
-          {topic && <Badge className="bg-accent-soft text-accent">{topic.title}</Badge>}
-          {q.topicId === null && !showYear && <Badge>Not in syllabus</Badge>}
-          {paperName && <span className="min-w-0 truncate">{paperName}</span>}
-        </p>
-      </div>
-      {q.marks ? <span className="hidden shrink-0 whitespace-nowrap pt-0.5 text-right text-[13px] tabular-nums text-muted sm:block">{q.marks} marks</span> : null}
-    </li>
-  );
-}
 
 function TopicView({ questions, units, topics, papers, searching, onRemap, remapDisabled }: {
   questions: PyqQuestion[];
@@ -338,10 +312,10 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
       ))}
 
       {g.unmatched.length > 0 && (
-        <Section title={<span>Not matched yet <span className="ml-1 text-[13px] font-normal tabular-nums text-muted">{g.unmatched.length}</span></span>}>
+        <Section title={<span className="flex items-center gap-2">Not matched yet <Badge>{g.unmatched.length}</Badge></span>}>
           <p className="mb-3 max-w-prose text-sm leading-relaxed text-muted">These are matched to topics automatically. If this exam&apos;s syllabus isn&apos;t added yet, add it in the Syllabus tab.</p>
           <Panel as="ul" className="divide-y divide-border [&>li]:px-4 sm:[&>li]:px-5">
-            {(showAllUnmatched ? g.unmatched : g.unmatched.slice(0, 50)).map((q) => <QuestionRow key={q.id} q={q} showYear paperName={paperName.get(q.materialId)} />)}
+            {(showAllUnmatched ? g.unmatched : g.unmatched.slice(0, 50)).map((q) => <QuestionLine key={q.id} q={q} paperName={paperName.get(q.materialId)} />)}
           </Panel>
           {g.unmatched.length > 50 && (
             <div className="mt-3 flex items-center justify-between gap-2 text-[13px] tabular-nums text-muted">
@@ -355,9 +329,9 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
       )}
 
       {g.notInSyllabus.length > 0 && (
-        <Section title={<span>Not in this year&apos;s syllabus <span className="ml-1 text-[13px] font-normal tabular-nums text-muted">{g.notInSyllabus.length}</span></span>}>
+        <Section title={<span className="flex items-center gap-2">Not in this year&apos;s syllabus <Badge>{g.notInSyllabus.length}</Badge></span>}>
           <Panel as="ul" className="divide-y divide-border [&>li]:px-4 sm:[&>li]:px-5">
-            {g.notInSyllabus.map((q) => <QuestionRow key={q.id} q={q} showYear paperName={paperName.get(q.materialId)} />)}
+            {g.notInSyllabus.map((q) => <QuestionLine key={q.id} q={q} paperName={paperName.get(q.materialId)} />)}
           </Panel>
         </Section>
       )}
@@ -372,9 +346,6 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
   );
 }
 
-/** Small navy tag for topics asked most often. */
-const HotLabel = () => <Badge className="bg-accent-soft text-accent">Most asked</Badge>;
-
 function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number, string> }) {
   const [open, setOpen] = useState(false);
   const { topic, count, years, marks, hot, questions } = stat;
@@ -384,26 +355,24 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2/60 sm:px-5"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2 sm:px-5"
       >
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
             <span className="min-w-0 break-words">{topic.title}</span>
-            {hot && <HotLabel />}
+            {hot && <Badge tone="warn"><Flame aria-hidden />Most asked</Badge>}
           </p>
-          <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] tabular-nums text-muted empty:hidden">
-            {years && <span>{years[0] === years[1] ? years[0] : `${years[0]}–${years[1]}`}</span>}
-            {marks ? <span>{marks} marks</span> : null}
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums text-muted empty:hidden">
+            {years && <Badge>{years[0] === years[1] ? years[0] : `${years[0]}–${years[1]}`}</Badge>}
+            {marks ? <Badge>{marks} marks</Badge> : null}
           </p>
         </div>
-        <span className="shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted">
-          asked <span className={cn("font-semibold", hot ? "text-accent" : "text-text")}>{count}×</span>
-        </span>
+        <Badge tone={hot ? "accent" : "neutral"} className="shrink-0">Asked {count}×</Badge>
         <ChevronDown size={16} className={cn("shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
       </button>
       {open && (
         <ul className="tab-in mx-4 mb-3 divide-y divide-border border-l-2 border-accent/30 pl-4 sm:mx-5">
-          {questions.map((q) => <QuestionRow key={q.id} q={q} showYear paperName={paperName.get(q.materialId)} />)}
+          {questions.map((q) => <QuestionLine key={q.id} q={q} paperName={paperName.get(q.materialId)} />)}
         </ul>
       )}
     </li>

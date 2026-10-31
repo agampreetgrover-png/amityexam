@@ -129,7 +129,7 @@ export type QuizResult = z.infer<typeof QuizSchema>;
 export type GradeResult = z.infer<typeof GradeSchema>;
 
 export const JSON_ACTIONS = ["syllabus", "quiz", "grade", "pyq", "pyqmap", "prep", "datesheet"] as const;
-export const TEXT_ACTIONS = ["summary", "cheatsheet", "predict", "chat", "explain", "study"] as const;
+export const TEXT_ACTIONS = ["summary", "cheatsheet", "predict", "chat", "study"] as const;
 export type JsonAction = (typeof JSON_ACTIONS)[number];
 export type TextAction = (typeof TEXT_ACTIONS)[number];
 

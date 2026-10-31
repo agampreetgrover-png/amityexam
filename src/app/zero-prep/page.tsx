@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronDown, ChevronRight, RotateCw, Sprout } from "lucide-react";
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { ChevronDown, ChevronRight, Flame, RotateCw, Sprout } from "lucide-react";
+import { useId, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { db, getSettings } from "@/lib/db";
 import { modeShort, topicsInScope } from "@/lib/mode";
 import { filterPrep, formatMins, prepRows, sortPrep, type AskedFilter, type ImportanceFilter, type PrepFilter, type PrepRow, type PrepSort } from "@/lib/prep";
 import { ratePrep, usePrepRun } from "@/lib/prep-run";
-import type { PrepLevel, Subject } from "@/lib/types";
+import type { PrepLevel, Subject, TopicPrep } from "@/lib/types";
 import { AiErrorBox } from "@/components/ai-error";
 import { QuestionLine } from "@/components/pyq-question-line";
+import { toast } from "@/components/toast";
 import { Badge, Button, Empty, PageHeader, Panel, Progress, Segmented, Select, Tick, cn, subjectStyle, tableHead } from "@/components/ui";
 
 const link = "font-medium text-accent underline underline-offset-2";
@@ -43,7 +44,11 @@ export default function ZeroPrepPage() {
     if (!data?.mode) return null;
     const topics = topicsInScope(data.topics, data.units, data.mode);
     const questions = data.questions.filter((q) => q.exam === data.mode);
-    return { topics, rows: prepRows(topics, data.subjects, questions), unrated: topics.filter((t) => !t.prep).length };
+    // Past-paper questions matched to a syllabus topic: the pool the coverage figure is a share of. Kept as the
+    // matched topic's subject, which is what rows are filtered by, so the share can't pass 100%.
+    const subjectOf = new Map(topics.map((t) => [t.id, t.subjectId]));
+    const matched = questions.flatMap((q) => (typeof q.topicId === "number" && subjectOf.has(q.topicId) ? [subjectOf.get(q.topicId)!] : []));
+    return { topics, matched, rows: prepRows(topics, data.subjects, questions), unrated: topics.filter((t) => !t.prep).length };
   }, [data]);
 
   // A chosen subject that has since lost its rated topics (deleted, other exam mode) falls back to all.
@@ -96,6 +101,13 @@ export default function ZeroPrepPage() {
     setSubjectId("all");
   };
 
+  const total = rows.reduce((a, r) => a + r.prep.mins, 0);
+  const todo = rows.filter((r) => r.topic.status === "not-started");
+  const left = todo.reduce((a, r) => a + r.prep.mins, 0);
+  const asks = rows.reduce((a, r) => a + r.count, 0);
+  const pool = subject === "all" ? scope.matched.length : scope.matched.filter((s) => s === subject).length;
+  const doneCount = rows.length - todo.length;
+
   return (
     <>
       {header}
@@ -116,17 +128,6 @@ export default function ZeroPrepPage() {
               { value: "light", label: <><PrepGlyph level={1} />Light prep too</> },
             ]}
           />
-          <Select value={asked} onChange={(e) => setAsked(e.target.value as AskedFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="How often asked">
-            <option value="any">Asked or not</option>
-            <option value="asked">Asked in PYQs</option>
-            <option value="often">Asked 2+ times</option>
-            <option value="hot">Most asked</option>
-          </Select>
-          <Select value={importance} onChange={(e) => setImportance(e.target.value as ImportanceFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="Importance">
-            <option value="any">Any importance</option>
-            <option value="medium">Core and regular</option>
-            <option value="high">Core only</option>
-          </Select>
           {subjectsRated.length > 1 && (
             <Select
               value={subject}
@@ -138,6 +139,17 @@ export default function ZeroPrepPage() {
               {subjectsRated.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           )}
+          <Select value={importance} onChange={(e) => setImportance(e.target.value as ImportanceFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="Weight">
+            <option value="any">Any weight</option>
+            <option value="medium">Core and regular</option>
+            <option value="high">Core only</option>
+          </Select>
+          <Select value={asked} onChange={(e) => setAsked(e.target.value as AskedFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="How often asked">
+            <option value="any">Asked or not</option>
+            <option value="asked">Asked in PYQs</option>
+            <option value="often">Asked 2+ times</option>
+            <option value="hot">Most asked</option>
+          </Select>
           <Segmented
             size="sm"
             label="Sort by"
@@ -145,9 +157,9 @@ export default function ZeroPrepPage() {
             value={sort}
             onChange={setSort}
             options={[
-              { value: "wins", label: "Best value", title: "Most asked and most important for the time it takes" },
-              { value: "asked", label: "Most asked" },
               { value: "quick", label: "Quickest" },
+              { value: "asked", label: "Most asked" },
+              { value: "wins", label: "Best value", title: "Most asked and most important for the time it takes" },
             ]}
           />
         </div>
@@ -175,14 +187,32 @@ export default function ZeroPrepPage() {
           </Empty>
         ) : (
           <>
-            <TimeStrip rows={rows} />
+            <Panel as="section">
+              {/* Phones: the two time figures side by side, coverage full width under them. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3">
+                <Stat label="Study time" value={<Mins mins={total} />} sub={rows.length === 1 ? "To learn this topic" : `To learn all ${rows.length} topics`} />
+                <Stat label="Still to learn" className="border-l border-border" value={<Mins mins={left} />} sub={`${doneCount} of ${rows.length} done`}>
+                  <Progress className="mt-3" value={(doneCount / rows.length) * 100} label="Topics done" />
+                </Stat>
+                <Stat
+                  label="Past-paper coverage"
+                  className="col-span-2 border-t border-border sm:col-span-1 sm:border-l sm:border-t-0"
+                  value={pool ? <>{Math.round((asks / pool) * 100)}<Unit>%</Unit></> : <span className="text-faint">—</span>}
+                  sub={pool ? `${asks} of ${pool} ${seasonName} question${pool === 1 ? "" : "s"} asked on these topics` : `No ${seasonName} past-paper questions matched yet`}
+                />
+              </div>
+              <div className="border-t border-border px-4 py-4 sm:px-5">
+                <TimeStrip rows={rows} />
+              </div>
+            </Panel>
+
             <Panel>
               <div className={cn(tableHead, "hidden items-center gap-3 px-4 py-2.5 sm:flex sm:px-5")}>
                 <span aria-hidden className="w-[22px] shrink-0" />
                 <span className="flex-1">Topic</span>
                 <span className="w-24 shrink-0">Time</span>
-                <span className="w-20 shrink-0">Weight</span>
-                <span className="w-16 shrink-0 text-right">Asked</span>
+                <span className="w-24 shrink-0">Weight</span>
+                <span className="w-24 shrink-0 text-right">Asked</span>
                 <span aria-hidden className="w-5 shrink-0" />
               </div>
               <ul className="divide-y divide-border">
@@ -209,6 +239,28 @@ export default function ZeroPrepPage() {
   );
 }
 
+/** One figure in the banner over the list: a caption, the figure, and a line saying what it counts. */
+function Stat({ label, value, sub, className, children }: { label: string; value: ReactNode; sub: string; className?: string; children?: ReactNode }) {
+  return (
+    <div className={cn("min-w-0 px-4 py-4 sm:px-5", className)}>
+      <p className="text-[13px] font-medium text-muted">{label}</p>
+      <p className="numeral mt-3 text-[26px] text-text sm:text-[30px]">{value}</p>
+      <p className="mt-2 text-[13px] tabular-nums text-muted">{sub}</p>
+      {children}
+    </div>
+  );
+}
+
+/** A unit beside a banner figure, set small so the digits lead. */
+function Unit({ children }: { children: ReactNode }) {
+  return <span className="text-[15px] font-medium tracking-normal text-muted">{children}</span>;
+}
+
+/** "13 h 50 min" with the units set small. */
+function Mins({ mins }: { mins: number }) {
+  return <>{formatMins(mins).split(/(\d+)/).map((part, i) => (!part ? null : /\d/.test(part) ? part : <Unit key={i}>{part}</Unit>))}</>;
+}
+
 /**
  * How much has to come before a topic, drawn as a staircase: a flat line for zero prep, then one step,
  * then two. Green for zero prep, which is what this page is looking for.
@@ -226,7 +278,7 @@ function PrepGlyph({ level, className }: { level: PrepLevel; className?: string 
  * The list as one stretch of study time: a cell per topic, as wide as the minutes it takes, gathered into one
  * run per subject. Subject colours aren't far enough apart to tell subjects by colour alone (some pairs merge
  * for colour-blind readers), so the runs keep a fixed order by name, sit apart, and the legend names them.
- * Done topics fade back, so what's left reads at a glance. Every value is also in the list below.
+ * Done topics drop to a neutral fill outlined in the subject colour, so what's left reads at a glance in either theme. Every value is also in the list below.
  */
 function TimeStrip({ rows }: { rows: PrepRow[] }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -242,9 +294,6 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
     return [...bySubject.values()].sort((a, b) => a.subject.name.localeCompare(b.subject.name));
   }, [rows]);
   const total = rows.reduce((a, r) => a + r.prep.mins, 0);
-  const todo = rows.filter((r) => r.topic.status === "not-started");
-  const left = todo.reduce((a, r) => a + r.prep.mins, 0);
-  const asks = rows.reduce((a, r) => a + r.count, 0);
 
   const point = (row: PrepRow) => (e: PointerEvent<HTMLElement>) => {
     const box = wrap.current?.getBoundingClientRect();
@@ -254,15 +303,7 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
   const width = wrap.current?.clientWidth ?? 0;
 
   return (
-    <section aria-label="Study time" className="space-y-2">
-      <p className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[15px] text-muted">
-        <span>
-          <span className="numeral text-[26px] text-text [font-variant-numeric:lining-nums_proportional-nums]">{formatMins(total)}</span> to learn{" "}
-          {rows.length === 1 ? "this topic" : `all ${rows.length}`}
-        </span>
-        {asks > 0 && <span><span className="font-semibold text-text">{asks}</span> past-paper question{asks === 1 ? "" : "s"} between them</span>}
-        {todo.length < rows.length && <span><span className="font-semibold text-text">{formatMins(left)}</span> left</span>}
-      </p>
+    <section aria-label="Study time" className="space-y-2.5">
       <div ref={wrap} className="relative" onPointerLeave={() => setHover(null)}>
         <div role="img" aria-label={`${rows.length} topics, ${formatMins(total)} in total`} className="flex w-full gap-1.5">
           {runs.map((run) => (
@@ -272,10 +313,10 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
                 <span key={r.topic.id} onPointerEnter={point(r)} className="flex h-6 min-w-px items-center" style={{ flexGrow: r.prep.mins, flexBasis: 0 }}>
                   <span
                     className={cn(
-                      "subj-dot h-3 w-full rounded-[1px] transition-opacity duration-300",
+                      "h-3 w-full rounded-[1px] transition-colors duration-300",
                       i === 0 && "rounded-l-[4px]",
                       i === run.rows.length - 1 && "rounded-r-[4px]",
-                      r.topic.status !== "not-started" && "opacity-25",
+                      r.topic.status === "not-started" ? "subj-dot" : "bg-surface-3 shadow-[inset_0_0_0_1px_var(--subj)]",
                       hover?.row === r && "outline outline-[1.5px] outline-offset-1 outline-text",
                     )}
                   />
@@ -291,7 +332,7 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
             // Kept inside the strip so it never runs off the page edge.
             style={{ left: Math.min(Math.max(hover.x, 112), Math.max(112, width - 112)) }}
           >
-            <p className="text-[15px] font-semibold text-text">{formatMins(hover.row.prep.mins)}</p>
+            <p className="text-[15px] font-semibold tabular-nums text-text">{formatMins(hover.row.prep.mins)}</p>
             <p className="text-[13px] leading-snug text-text">{hover.row.topic.title}</p>
             <p className="mt-1 flex items-center gap-1.5 text-[12px] text-muted" style={subjectStyle(hover.row.subject.color)}>
               <span className="subj-dot h-0.5 w-3 rounded-full" />
@@ -316,66 +357,100 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
   );
 }
 
+/** A topic's weight as a badge: core stands out, minor recedes. */
+function Weight({ importance, className }: { importance: TopicPrep["importance"]; className?: string }) {
+  return (
+    <Badge className={cn(importance === 3 && "border-line-strong text-text", importance === 1 && "text-faint", className)}>
+      {IMPORTANCE[importance]}
+    </Badge>
+  );
+}
+
 function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
   const [open, setOpen] = useState(false);
+  const id = useId();
   const { topic, subject, prep, count, hot, questions } = row;
   const done = topic.status !== "not-started";
   return (
     <li style={subjectStyle(subject.color)}>
-      <div className="flex items-center gap-3 px-4 sm:px-5">
+      <div className="flex items-center gap-3 px-4 transition-colors duration-150 hover:bg-surface-2/50 sm:px-5">
         <Tick
           done={done}
           label={done ? `Mark ${topic.title} not started` : `Mark ${topic.title} studied`}
-          onClick={() => db.topics.update(topic.id, { status: done ? "not-started" : "studied" })}
+          onClick={() => db.topics.update(topic.id, { status: done ? "not-started" : "studied" }).catch(() => toast("Couldn't save that. Try again."))}
         />
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
+          aria-controls={open ? id : undefined}
           className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left"
         >
-          <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
-              <span className={cn("min-w-0 break-words transition-colors duration-200", done && "text-muted")}>{topic.title}</span>
-              {hot && <Badge className="bg-accent-soft text-accent">Most asked</Badge>}
-            </p>
-            {/* Phones fold the Time and Weight columns in here, first, so the facts the list is sorted by lead. */}
-            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted">
+          <span className="block min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
+              <span className={cn("min-w-0 break-words transition-colors duration-150", done && "text-muted")}>{topic.title}</span>
+              {hot && <Badge tone="warn"><Flame aria-hidden />Most asked</Badge>}
+            </span>
+            {/* Phones fold the Time, Weight and Asked columns in here, first, so the facts the list is sorted by lead. */}
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] tabular-nums text-muted">
               <span className="font-medium text-text sm:hidden">{formatMins(prep.mins)}</span>
-              <span className={cn("sm:hidden", prep.importance === 3 && "font-medium text-text")}>{IMPORTANCE[prep.importance]}</span>
-              {/* Alone, the staircase reads as a stray dash on a phone; it shows there only beside what to learn first. */}
-              <span className={cn("inline-flex min-w-0 items-center gap-1.5", !prep.needs && "max-sm:hidden")} title={PREP_WORD[prep.level]}>
-                <PrepGlyph level={prep.level} />
-                <span className="sr-only">{PREP_WORD[prep.level]}</span>
-                {prep.needs && <span>First: {prep.needs}</span>}
-              </span>
+              <Weight importance={prep.importance} className="sm:hidden" />
+              {count > 0 && <Badge tone="accent" className="sm:hidden">{count}× asked</Badge>}
               {showSubject && (
-                // Its own line on phones, cut to one line: a long subject name otherwise wraps three times.
-                <span className="flex w-full min-w-0 items-center gap-1.5 sm:inline-flex sm:w-auto">
-                  <span aria-hidden className="subj-dot h-2.5 w-2.5 flex-none rounded-full" />
-                  <span className="truncate">{subject.name}</span>
+                // A long subject name is cut to one line rather than wrapping three times on a phone.
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={subject.name}>
+                  <span aria-hidden className="subj-dot h-2 w-2 flex-none rounded-full" />
+                  {subject.code ? (
+                    <>
+                      <Badge>{subject.code}</Badge>
+                      <span className="sr-only">{subject.name}</span>
+                    </>
+                  ) : (
+                    <span className="truncate">{subject.name}</span>
+                  )}
                 </span>
               )}
-            </p>
-          </div>
-          <span className="hidden w-24 shrink-0 text-[13px] tabular-nums text-muted sm:block">{formatMins(prep.mins)}</span>
-          <span className={cn("hidden w-20 shrink-0 text-[13px] sm:block", prep.importance === 3 ? "font-medium text-text" : "text-muted")}>
-            {IMPORTANCE[prep.importance]}
+              {/* Alone, the staircase reads as a stray dash; it shows only beside what to learn first. */}
+              {prep.needs ? (
+                <span className="inline-flex min-w-0 items-center gap-1.5" title={PREP_WORD[prep.level]}>
+                  <PrepGlyph level={prep.level} />
+                  <span className="sr-only">{PREP_WORD[prep.level]}</span>
+                  <span>First: {prep.needs}</span>
+                </span>
+              ) : (
+                <span className="sr-only">{PREP_WORD[prep.level]}</span>
+              )}
+            </span>
           </span>
-          {/* Fixed width only where it lines up with the columns beside it; on phones it just fits "2×". */}
-          <span className="shrink-0 whitespace-nowrap text-right text-[13px] tabular-nums text-muted sm:w-16">
-            {count ? <span className={cn("font-semibold", hot ? "text-accent" : "text-text")}>{count}×</span> : "—"}
+          <span className="hidden w-24 shrink-0 text-[13px] font-medium tabular-nums text-text sm:block">{formatMins(prep.mins)}</span>
+          <span className="hidden w-24 shrink-0 sm:block"><Weight importance={prep.importance} /></span>
+          <span className="hidden w-24 shrink-0 text-right text-[13px] sm:block">
+            {count ? (
+              <Badge tone="accent">{count}× asked</Badge>
+            ) : (
+              <span className="text-faint"><span aria-hidden>—</span><span className="sr-only">Not asked</span></span>
+            )}
           </span>
-          <ChevronDown size={16} className={cn("w-5 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
+          <ChevronDown size={16} aria-hidden className={cn("w-5 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
         </button>
       </div>
       {open && (
-        <div className="tab-in mx-4 mb-3 space-y-2 border-l-2 border-accent/30 pl-4 sm:ml-[3.75rem] sm:mr-5">
-          {prep.why && <p className="max-w-prose text-[14px] leading-relaxed text-muted">{prep.why}</p>}
+        <div id={id} className="tab-in space-y-4 border-t border-border bg-surface-2/40 px-4 py-4 sm:pl-[3.375rem] sm:pr-5">
+          {prep.why && (
+            <div className="space-y-1">
+              <p className="text-[12px] font-medium text-muted">Note</p>
+              <p className="max-w-prose text-[14px] leading-relaxed text-text/85">{prep.why}</p>
+            </div>
+          )}
           {questions.length > 0 ? (
-            <ul className="divide-y divide-border">
-              {questions.map((q) => <QuestionLine key={q.id} q={q} />)}
-            </ul>
+            <div>
+              <p className="text-[12px] font-medium tabular-nums text-muted">
+                {questions.length} past-paper question{questions.length === 1 ? "" : "s"}
+              </p>
+              <ul className="divide-y divide-border">
+                {questions.map((q) => <QuestionLine key={q.id} q={q} />)}
+              </ul>
+            </div>
           ) : (
             <p className="text-[13px] text-muted">Not asked in your past papers yet.</p>
           )}
@@ -394,7 +469,7 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
 
 function RunStatus({ run }: { run: ReturnType<typeof usePrepRun> }) {
   return (
-    <div role="status" className="space-y-2 rounded-xl border border-border bg-surface px-5 py-4 shadow-sheet">
+    <div role="status" className="space-y-2 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sheet">
       <p className="flex justify-between gap-3 text-[13px] tabular-nums text-muted">
         <span>{run.message}</span>
         {run.total > 0 && <span>{run.done} of {run.total}</span>}

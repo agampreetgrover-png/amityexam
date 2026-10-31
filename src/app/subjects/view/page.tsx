@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, topicsInScope, unitInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
-import { Empty, SyllabusStrip, TabScroller, Tabs, subjectStyle, tabPanelProps } from "@/components/ui";
+import { Badge, Empty, SyllabusStrip, TabScroller, Tabs, subjectStyle, tabPanelProps } from "@/components/ui";
 import { SyllabusTab } from "@/components/subject/syllabus-tab";
 import { MaterialsTab } from "@/components/subject/materials-tab";
 import { PyqsTab } from "@/components/subject/pyqs-tab";
@@ -108,10 +108,10 @@ function Subject({ subjectId }: { subjectId: number }) {
         <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
           <div className="min-w-0 flex-1 basis-80">
             <h1 className="subj-ink break-words font-display text-[28px] leading-[1.1] md:text-[34px]">{subject.name}</h1>
-            <p className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[14px] text-muted">
-              {subject.code && <span className="subj-line rounded-md border bg-surface px-1.5 py-px text-[13px] font-medium text-text/80">{subject.code}</span>}
-              {subject.credits ? <span>{subject.credits} credits</span> : null}
-              <span>{topics.length} {modeShort(mode).toLowerCase()} topic{topics.length === 1 ? "" : "s"}</span>
+            <p className="mt-3 flex flex-wrap items-center gap-1.5">
+              {subject.code && <Badge className="subj-line bg-surface text-text/80">{subject.code}</Badge>}
+              {subject.credits ? <Badge>{subject.credits} credit{subject.credits === 1 ? "" : "s"}</Badge> : null}
+              <Badge>{topics.length} {modeShort(mode).toLowerCase()} topic{topics.length === 1 ? "" : "s"}</Badge>
             </p>
           </div>
           <div className="flex items-end gap-2.5">
@@ -132,7 +132,7 @@ function Subject({ subjectId }: { subjectId: number }) {
             </ul>
           </div>
         ) : (
-          <div className="mt-6 h-2.5 rounded-full bg-surface-3" aria-hidden />
+          <div className="mt-6 h-2.5 rounded-full bg-track" aria-hidden />
         )}
       </header>
 

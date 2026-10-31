@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookOpen, Check, Copy, FileText, History, MessagesSquare, PanelLeftOpen, Pencil, ScrollText, Send, Square, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowUp, BookOpen, Check, Copy, FileText, History, MessagesSquare, PanelLeftOpen, Paperclip, Pencil, RotateCcw, Square, Target, Trash2, X, Zap } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { aiStream } from "@/lib/ai/client";
 import type { AiRequest } from "@/lib/ai/schemas";
 import { daysBetween } from "@/lib/dates";
@@ -11,7 +11,7 @@ import { byWhen } from "@/lib/exams";
 import { db, deleteChat } from "@/lib/db";
 import { aiModeFields, examInMode, modeShort, pyqMatchesMode, topicsInScope, useExamMode } from "@/lib/mode";
 import {
-  chatTitle, matchingPyqs, namedSubject, noteExcerpts, prepSummary, rawPaperExcerpts, sourcesOf, starterQuestions, type PrepInput,
+  chatTitle, matchingPyqs, namedSubject, noteExcerpts, prepSummary, rawPaperExcerpts, sourcesOf, starterTiles, type PrepInput,
 } from "@/lib/study-chat";
 import type { ChatSource, Subject } from "@/lib/types";
 import { useToday } from "@/lib/use-today";
@@ -20,17 +20,21 @@ import { Markdown } from "../markdown";
 import { Thinking } from "../thinking";
 import { isAbort, MAX_TEXT, OfflineHint, topicTitles, useOnline } from "../subject/shared";
 import { toast } from "../toast";
-import { Button, Empty, Input, Segmented, Select, Textarea, cn, subjectStyle } from "../ui";
+import { Badge, Button, Empty, Input, Menu, Segmented, Select, Textarea, buttonClass, cn, daysTone, subjectStyle } from "../ui";
+import { Starters } from "./starters";
 
 type Style = NonNullable<AiRequest["answerStyle"]>;
+// The prompt still knows "auto" and "revise"; a choice of two is all the header offers. An old saved one of those
+// falls back to the first.
 const STYLES: { value: Style; label: string; title: string }[] = [
-  { value: "auto", label: "Auto", title: "Fits the answer to the question" },
-  { value: "simple", label: "Simple", title: "Plain words, an analogy and an example" },
-  { value: "exam", label: "Exam answer", title: "A model answer sized to the marks" },
-  { value: "revise", label: "Quick revise", title: "Must-know points only" },
+  { value: "simple", label: "Concept / doubt", title: "Plain words, an analogy and an example" },
+  { value: "exam", label: "Exam 10-mark", title: "A model answer sized to the marks" },
 ];
 const STYLE_KEY = "amityexams:chatStyle";
 const MAX_HISTORY_CHARS = 20_000;
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const subjectLabel = (s: Subject) => (s.code ? `${s.name} (${s.code})` : s.name);
 
 /**
  * One study-chat conversation. `chatId` null starts a new one: it's saved, and named after its first question,
@@ -50,9 +54,10 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   const [id, setId] = useState(chatId);
   const [picked, setPicked] = useState<number | null>(null);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState<{ text: string; sources: ChatSource[] } | null>(null);
+  // `hide`: the question and answer being regenerated, kept out of sight until the new answer replaces them.
+  const [streaming, setStreaming] = useState<{ text: string; sources: ChatSource[]; hide?: number[] } | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [style, setStyleState] = useState<Style>("auto");
+  const [style, setStyleState] = useState<Style>("simple");
   const [renaming, setRenaming] = useState<string | null>(null);
   // A question that names another subject: asked there once that subject's notes have loaded (`pending`), or,
   // in a saved chat, held until the student says where to ask it (`offSubject`).
@@ -73,7 +78,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
       const s = localStorage.getItem(STYLE_KEY);
       if (STYLES.some((x) => x.value === s)) setStyleState(s as Style);
     } catch {
-      // storage unavailable; Auto it is
+      // storage unavailable; Concept / doubt it is
     }
   }, []);
   const setStyle = (s: Style) => {
@@ -141,14 +146,16 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
 
   // `retryOf`: a question left without an answer (the page was closed mid-answer). It's asked again as new and
   // the old copy is deleted, so neither the history sent nor the thread has it twice.
+  // `redo`: the last question and its answer, asked again (Regenerate). They're hidden while the new answer comes
+  // and deleted once it's saved; if none arrives they come back as they were.
   // `here`: ask in this chat's subject even if the question names another one.
-  const send = async (raw?: string, { retryOf, here }: { retryOf?: number; here?: boolean } = {}) => {
+  const send = async (raw?: string, { retryOf, redo, here }: { retryOf?: number; redo?: number[]; here?: boolean } = {}) => {
     const text = (raw ?? input).trim();
     // A ref, not state: two quick Enters both see the old `streaming` value before React re-renders.
     if (!text || sending.current || !online || !subject || !scope || !material || !messages || !base) return;
     // "how do I start ADA" asked with Networks picked would be answered from the Networks notes. A new chat just
     // moves to the subject it names; a saved one asks first, since the conversation so far is about this subject.
-    const named = here || retryOf != null ? undefined : namedSubject(text, base.subjects, subject.id);
+    const named = here || retryOf != null || redo ? undefined : namedSubject(text, base.subjects, subject.id);
     if (named) {
       if (raw == null) setInput("");
       if (id == null && !messages.length) {
@@ -164,7 +171,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     sending.current = true;
     if (raw == null) setInput(""); // a button's question (Ask again, a starter) leaves a half-typed draft alone
     setError(null);
-    const past = messages.filter((m) => m.id !== retryOf);
+    const past = messages.filter((m) => m.id !== retryOf && !redo?.includes(m.id!));
     const lastUser = [...past].reverse().find((m) => m.role === "user")?.content ?? "";
     const query = `${text} ${lastUser}`; // a follow-up ("give an example") still finds the earlier topic
     const notes = noteExcerpts(scope.notes, query, 40_000);
@@ -173,7 +180,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     const sources = sourcesOf(notes.files, pyq.picked);
     const history = past.slice(-10).map(({ role, content }) => ({ role, content: content.slice(0, MAX_HISTORY_CHARS) }));
     ctrl.current = new AbortController();
-    setStreaming({ text: "", sources });
+    setStreaming({ text: "", sources, hide: redo });
     let reply = "";
     let chat = id;
     let created = false;
@@ -210,7 +217,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
         },
         (full) => {
           reply = full;
-          setStreaming({ text: full, sources });
+          setStreaming({ text: full, sources, hide: redo });
         },
         ctrl.current.signal,
       );
@@ -226,6 +233,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
             // Deleted from History mid-answer: don't leave its answer behind with no chat.
             if (!(await db.chats.get(saved))) return;
             await db.messages.add({ subjectId: subject.id!, chatId: saved, role: "assistant", content: reply, createdAt: Date.now(), sources });
+            if (redo) await db.messages.bulkDelete(redo);
             await db.chats.update(saved, { updatedAt: Date.now() });
           });
         } else {
@@ -236,7 +244,8 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
             // Only if still showing: after a switch to another chat this would unselect that one.
             if (mounted.current) onDiscarded();
           }
-          setInput((cur) => cur || text);
+          // A regenerated question is still in the thread, so the box stays as it was.
+          if (!redo) setInput((cur) => cur || text);
         }
       } finally {
         setStreaming(null);
@@ -281,7 +290,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   if (!base) return null;
   if (!base.subjects.length) {
     return (
-      <div className="w-full">
+      <div className="w-full md:p-8">
         <Empty icon={<BookOpen />} title="Add a subject first">
           <p className="text-sm text-muted">
             The chat answers from each subject&apos;s notes and past papers. <Link href="/subjects" className="font-medium text-accent underline underline-offset-2">Add your subjects</Link>, and sync or upload their files.
@@ -292,7 +301,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   }
   if (base.chat === null) {
     return (
-      <div className="w-full">
+      <div className="w-full md:p-8">
         <Empty icon={<MessagesSquare />} title="This chat isn't here any more">
           <p className="text-sm text-muted">It may have been deleted.</p>
           <Button size="sm" className="mt-3" onClick={onGone}>Start a new chat</Button>
@@ -305,102 +314,115 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   // A question with no answer after it: the page was closed or reloaded mid-answer, so send's cleanup never ran.
   const last = messages?.at(-1);
   const stranded = !busy && last?.role === "user" && last.id !== sent ? last : null;
+  // Regenerate asks the last question again; only the newest answer offers it.
+  const asked = messages?.at(-2);
+  const redo = !busy && online && scope && last?.role === "assistant" && asked?.role === "user" ? [asked.id!, last.id!] : null;
+  const shown = streaming?.hide ? messages?.filter((m) => !streaming.hide!.includes(m.id!)) : messages;
   const days = scope?.exam ? daysBetween(today, scope.exam.date) : null;
-  const starters = scope ? starterQuestions(scope.prep) : [];
+
+  // What answers are grounded in, counted, so the student knows when to sync or upload more.
+  const notesCount = scope?.notes.length ? plural(scope.notes.length, "note file") : "";
+  const papersCount = scope?.questions.length
+    ? plural(scope.questions.length, "past-paper question")
+    : scope?.rawPapers.length ? plural(scope.rawPapers.length, "past paper") : "";
+  const indexed = [notesCount, papersCount].filter(Boolean).join(" & ");
+  const season = mode && scope?.ownSeason ? `Past-paper questions from ${modeShort(mode)} papers` : undefined;
 
   return (
-    <div className="flex min-h-0 w-full flex-col" style={subjectStyle(subject?.color)}>
-      {/* Header: which subject, the chat's name, and how answers are shaped. On desktop it's the bar across the top of
-          the sheet, level with the history's (h-16). */}
-      <div className="md:flex md:min-h-16 md:flex-col md:justify-center md:border-b md:border-border md:px-6 md:py-1.5">
-        <div className="mb-2 flex flex-wrap items-center gap-2 md:mb-0">
-          {/* Phones: opens the history list. Wider screens: only while the panel is folded away, to unfold it. */}
-          <Button variant="secondary" size="sm" className={cn(!historyHidden && "md:hidden")} onClick={onShowHistory} aria-label="Show history" title="Show history">
-            <History size={15} className="md:hidden" />
-            <PanelLeftOpen size={16} className="hidden md:block" />
-          </Button>
-          {base.chat ? (
-            renaming !== null ? (
-              <form className="flex min-w-0 grow basis-56 items-center gap-1 sm:basis-0" onSubmit={(e) => { e.preventDefault(); rename(); }}>
+    <div className="flex h-full min-h-0 w-full flex-col" style={subjectStyle(subject?.color)}>
+      {/* The workspace's bar: which subject answers come from, how near that exam is, what's indexed, and how
+          answers are shaped. */}
+      <header className="shrink-0 border-b border-border py-2.5 md:px-6">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className={cn("flex min-w-0 max-w-full items-center gap-1.5", renaming !== null && "flex-1")}>
+            {/* Phones: opens the history list. Wider screens: only while the panel is folded away, to unfold it. */}
+            <Button variant="ghost" size="icon" className={cn("-ml-1.5 shrink-0", !historyHidden && "md:hidden")} onClick={onShowHistory} aria-label="Show history" title="Show history (Ctrl+B)" aria-keyshortcuts="Control+B Meta+B">
+              <History size={16} className="md:hidden" />
+              <PanelLeftOpen size={17} className="hidden md:block" />
+            </Button>
+            {base.chat && renaming !== null ? (
+              <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={(e) => { e.preventDefault(); rename(); }}>
                 <Input autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setRenaming(null)} aria-label="Chat name" className="h-8 min-w-0 flex-1 text-[14px]" />
-                <Button type="submit" variant="ghost" size="sm" aria-label="Save name"><Check size={15} /></Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setRenaming(null)} aria-label="Cancel"><X size={15} /></Button>
+                <Button type="submit" variant="ghost" size="icon" aria-label="Save name"><Check size={15} /></Button>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setRenaming(null)} aria-label="Cancel"><X size={15} /></Button>
               </form>
-            ) : (
-              // A real basis on phones, so the style menu drops to a line of its own instead of crushing the chat's name.
-              <div className="flex min-w-0 grow basis-56 items-center gap-2 sm:basis-0">
+            ) : base.chat ? (
+              // A saved chat keeps its subject.
+              <span className="inline-flex h-8 min-w-0 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-3 text-[13px] font-medium" title="This chat's subject">
                 <span aria-hidden className="subj-dot h-2 w-2 shrink-0 rounded-full" />
-                <span className="min-w-0 truncate text-[14.5px] font-semibold">{base.chat.title}</span>
-                <Button variant="ghost" size="sm" onClick={() => setRenaming(base.chat!.title)} aria-label="Rename chat" disabled={busy}><Pencil size={14} /></Button>
-                <Button variant="ghost" size="sm" onClick={remove} aria-label="Delete chat" disabled={busy}><Trash2 size={14} /></Button>
-              </div>
-            )
-          ) : (
-            <Select value={subjectId ?? ""} onChange={(e) => setPicked(Number(e.target.value))} aria-label="Subject" className="h-9 w-auto min-w-0 max-w-[16rem] flex-1 sm:flex-none" disabled={busy}>
-              {base.subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </Select>
-          )}
-          {/* Four buttons need a row of their own on a phone, and crowd out the chat's name beside the history on a laptop,
-              so a menu stands in for them there. */}
-          <Select value={style} onChange={(e) => setStyle(e.target.value as Style)} aria-label="Answer style" className="ml-auto h-9 w-auto shrink-0 sm:hidden md:inline-block md:h-8 xl:hidden">
-            {STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </Select>
-          <Segmented size="sm" label="Answer style" value={style} onChange={setStyle} options={STYLES} className="hidden sm:ml-auto sm:inline-flex md:hidden xl:inline-flex" />
-        </div>
-
-        {/* What answers are grounded in, so the student knows when to sync or upload more. A saved chat names its
-            subject first; a new one shows it in the picker above. */}
-        {scope && (
-          // One line on desktop, so the bar stays level with the history's. The countdown comes straight after the
-          // subject and never shrinks; the subject name and the counts give way instead.
-          <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted md:mb-0 md:flex-nowrap md:whitespace-nowrap">
-            {base.chat && <span className="min-w-0 max-w-full truncate text-text/80">{subject?.name}</span>}
-            {days != null && <span className="subj-ink shrink-0 font-medium">{days === 0 ? "Exam today" : days === 1 ? "Exam tomorrow" : `Exam in ${days} days`}</span>}
-            <span className="inline-flex min-w-0 items-center gap-1"><FileText size={13} aria-hidden className="shrink-0" /><span className="truncate">{scope.notes.length ? `${scope.notes.length} notes file${scope.notes.length === 1 ? "" : "s"}` : "No notes yet"}</span></span>
-            <span className="inline-flex min-w-0 items-center gap-1">
-              <ScrollText size={13} aria-hidden className="shrink-0" />
-              <span className="truncate">
-                {scope.questions.length
-                  ? `${scope.questions.length} past-paper question${scope.questions.length === 1 ? "" : "s"}${mode && scope.ownSeason ? ` (${modeShort(mode)})` : ""}`
-                  : scope.rawPapers.length ? `${scope.rawPapers.length} past paper${scope.rawPapers.length === 1 ? "" : "s"} being read` : "No past papers yet"}
+                <span className="min-w-0 truncate">{subject && subjectLabel(subject)}</span>
               </span>
-            </span>
-          </p>
-        )}
-      </div>
-
-      {/* Phones: a sheet of its own. Desktop: the open page of the one sheet, with the conversation set in a reading
-          column (about 70 characters a line) rather than stretched across the window. */}
-      <div className="min-h-[50dvh] flex-1 rounded-xl border border-border bg-surface p-4 shadow-sheet sm:p-5 md:min-h-0 md:overflow-y-auto md:rounded-none md:border-0 md:bg-transparent md:px-8 md:py-8 md:shadow-none">
-        <div className="mx-auto flex min-h-full max-w-[46rem] flex-col gap-5 md:gap-8">
-          {!messages ? null : messages.length === 0 && !busy ? (
-            // flex-1 in a min-h-full column: centred while it fits, scrollable (not clipped at the top) on a short screen.
-            <div className="flex flex-1 flex-col items-start justify-center gap-1.5 px-1">
-              <span className="mb-2 grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent" aria-hidden><MessagesSquare size={18} /></span>
-              <p className="text-[15px] font-semibold">Ask about {subject?.name}</p>
-              <p className="max-w-prose text-sm text-muted">
-                Answers are taught from your teacher&apos;s notes, checked against past papers (with the year and marks when a question has come
-                before), and pitched at your {mode ? modeShort(mode).toLowerCase() : ""} exam.
-              </p>
-              {starters.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {starters.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      disabled={!online}
-                      onClick={() => send(s)}
-                      className="press rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-[13px] text-text shadow-control hover:border-line-strong disabled:opacity-45"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+            ) : (
+              // A new one picks it here; the dot shows the chosen subject's colour.
+              <div className="relative flex min-w-0 max-w-full items-center">
+                <span aria-hidden className="subj-dot pointer-events-none absolute left-3 z-10 h-2 w-2 rounded-full" />
+                <Select
+                  value={subjectId ?? ""}
+                  onChange={(e) => setPicked(Number(e.target.value))}
+                  aria-label="Subject"
+                  disabled={busy}
+                  className="h-8 w-auto min-w-0 max-w-full rounded-full border-border pl-7 text-[13px] font-medium shadow-none hover:border-line-strong sm:max-w-[22rem]"
+                >
+                  {base.subjects.map((s) => <option key={s.id} value={s.id}>{subjectLabel(s)}</option>)}
+                </Select>
+              </div>
+            )}
+          </div>
+          {renaming === null && (
+            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
+              {days != null && (
+                <Badge tone={daysTone(days)}>
+                  <Zap aria-hidden />
+                  {days === 0 ? "Exam today" : days === 1 ? "Exam tomorrow" : `Exam in ${days} days`}
+                </Badge>
+              )}
+              {scope && (
+                <Badge className="min-w-0 max-w-full">
+                  <BookOpen aria-hidden />
+                  <span className="min-w-0 truncate" title={season}>{indexed ? `${indexed} indexed` : "No notes or past papers yet"}</span>
+                </Badge>
               )}
             </div>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <Segmented size="sm" label="Answer style" value={style} onChange={setStyle} options={STYLES} />
+            {base.chat && !busy && renaming === null && (
+              <Menu
+                label="Chat actions"
+                className="h-8 w-8"
+                items={[
+                  { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(base.chat!.title) },
+                  { label: "Delete", icon: <Trash2 size={14} />, onSelect: remove, danger: true },
+                ]}
+              />
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* The conversation, in a reading column. Phones scroll the page; from tablets up this scrolls on its own
+          between the bar and the composer. Below md the page pads the sides itself, so only wider screens pad here. */}
+      <div className="flex-1 md:min-h-0 md:overflow-y-auto md:px-8">
+        <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-6 py-6 md:gap-8 md:py-8">
+          {!shown ? null : shown.length === 0 && !busy ? (
+            subject && scope && (
+              <Starters
+                subjectName={subject.name}
+                grounding={
+                  indexed
+                    ? `Answers come from your ${[notesCount, papersCount].filter(Boolean).join(" and ")} for this subject${mode ? `, pitched at your ${modeShort(mode).toLowerCase()} exam` : ""}.`
+                    : "There are no notes or past papers for this subject yet, so answers use general knowledge. Add some with the paperclip below."
+                }
+                tiles={starterTiles(scope.prep)}
+                disabled={!online}
+                onPick={(prompt) => send(prompt)}
+              />
+            )
           ) : (
             <>
-              {messages.map((m) => <Bubble key={m.id} role={m.role} content={m.content} />)}
+              {shown.map((m) => (
+                <Bubble key={m.id} role={m.role} content={m.content} sources={m.sources} onRegenerate={redo && m.id === last?.id ? () => send(asked!.content, { redo }) : undefined} />
+              ))}
               {stranded && (
                 <div className="flex items-center justify-end gap-2 text-[13px] text-muted">
                   No answer arrived.
@@ -412,15 +434,15 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           )}
           {/* On phones the page scrolls, so keep the newest line clear of the composer pinned over it (the page's own
               scroll-padding already clears the bottom bar). */}
-          <div ref={bottom} className="scroll-mb-28 md:scroll-mb-0" />
+          <div ref={bottom} className="scroll-mb-36 md:scroll-mb-0" />
         </div>
       </div>
 
       {/* On phones the composer sticks above the bottom bar, so it's reachable without scrolling past the header. */}
       {/* The strip below it, down to the bottom bar, is painted too, so the conversation doesn't show through the gap. */}
-      {/* Desktop: the foot of the sheet, ruled off, in the same reading column as the conversation. */}
-      <div data-composer className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 border-t border-border bg-bg pb-1 pt-2 after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-bg md:static md:mt-0 md:bg-transparent md:px-8 md:pb-5 md:pt-4 md:after:hidden">
-        <div className="mx-auto max-w-[46rem] space-y-2">
+      {/* From tablets up: docked at the foot of the workspace, in the same reading column as the conversation. */}
+      <div data-composer className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 shrink-0 bg-bg pb-2 pt-1 after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-bg md:static md:bg-transparent md:px-8 md:pb-5 md:after:hidden">
+        <div className="mx-auto max-w-3xl space-y-2">
           {/* For screen readers: once when words start arriving, once when the answer is done. Here, not in the
               conversation, because this stays mounted; while it waits, Thinking's own status speaks. Only an answer
               saved after the question this thread sent counts, so opening a saved chat, or a stop before any words,
@@ -431,7 +453,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           <OfflineHint online={online} />
           <AiErrorBox error={error} />
           {offSubject && (
-            <div role="alert" className="rounded-xl border border-border bg-surface px-4 py-3 text-[14px] shadow-sheet">
+            <div role="alert" className="rounded-2xl border border-border bg-surface px-4 py-3 text-[14px] shadow-sheet">
               <p>
                 That sounds like <span className="font-semibold">{offSubject.subject.name}</span>. This chat answers from your{" "}
                 {subject?.name} notes.
@@ -443,36 +465,30 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
               </div>
             </div>
           )}
-          <form
-            className="flex items-end gap-2 rounded-xl border border-border bg-surface p-1.5 shadow-sheet transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_16%,transparent)]"
-            onSubmit={(e) => { e.preventDefault(); send(); }}
-          >
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                // isComposing: Enter that confirms an IME word (Hindi, Chinese…) must not send.
-                if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-              placeholder={touch ? "Ask a doubt or a past-paper question" : "Ask a doubt or a past-paper question. Shift+Enter for a new line."}
-              aria-label="Your question"
-              className="field-sizing-content max-h-40 min-h-11 flex-1 resize-none border-transparent bg-transparent px-2.5 text-[15px] shadow-none hover:border-transparent focus:border-transparent focus:bg-transparent focus:shadow-none focus-visible:outline-none"
-              rows={2}
-            />
-            {busy ? (
-              // A filled square with its word, shaped like Send: an outlined one read as an empty checkbox.
-              <Button type="button" variant="secondary" className="h-11 min-w-11 shrink-0 px-0 sm:px-4" onClick={() => ctrl.current?.abort()} aria-label="Stop">
-                <Square size={11} className="fill-current" /><span className="hidden sm:inline">Stop</span>
-              </Button>
-            ) : (
-              <Button type="submit" className="h-11 min-w-11 shrink-0 px-0 sm:px-4" disabled={!input.trim() || !online || !scope} aria-label="Send">
-                <Send size={16} /><span className="hidden sm:inline">Send</span>
-              </Button>
-            )}
-          </form>
+          <Dock
+            value={input}
+            onChange={setInput}
+            onSend={() => send()}
+            onStop={() => ctrl.current?.abort()}
+            busy={busy}
+            canSend={!!input.trim() && online && !!scope}
+            touch={touch}
+            placeholder="Ask a doubt, paste code, or request a past-paper solution…"
+            leading={
+              subject && (
+                <>
+                  {/* Files are added on the subject's Materials tab; the chat reads whatever is there. */}
+                  <Link href={`/subjects/view?id=${subject.id}&tab=materials`} aria-label="Add notes or papers" title="Add notes or papers" className={buttonClass("ghost", "icon", "rounded-full")}>
+                    <Paperclip size={16} />
+                  </Link>
+                  <span className="inline-flex h-7 min-w-0 items-center gap-1.5 rounded-full border border-border bg-surface-2 px-2.5 text-xs font-medium text-muted" title={`Answers come from ${subject.name}`}>
+                    <span aria-hidden className="subj-dot h-1.5 w-1.5 shrink-0 rounded-full" />
+                    <span className="min-w-0 truncate">{subject.code || subject.name}</span>
+                  </span>
+                </>
+              )
+            }
+          />
         </div>
       </div>
     </div>
@@ -480,15 +496,81 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
 }
 
 /**
- * Until the first words arrive: what's happening and, once it's a while, for how long. Free models can sit
- * for half a minute before they start, and a bare "…" looked like the chat had stopped.
+ * The box a question is typed in, docked at the foot of a conversation (here and on a subject's Ask tab). The text
+ * grows to about five lines, then scrolls; under it sit `leading` (the chat's paperclip and subject), a keyboard
+ * hint and Send, which fills in once there's something to send.
  */
-function Bubble({ role, content, live }: { role: "user" | "assistant"; content: string; live?: boolean }) {
+export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, placeholder, leading }: {
+  value: string;
+  onChange: (v: string) => void;
+  onSend: () => void;
+  onStop: () => void;
+  busy: boolean;
+  canSend: boolean;
+  touch: boolean; // Enter adds a line (the keyboard has no Shift), so only the button sends
+  placeholder: string;
+  leading?: ReactNode;
+}) {
+  const round = "h-9 w-9 rounded-full pointer-coarse:h-10 pointer-coarse:w-10";
+  return (
+    // One bordered box; the textarea inside is borderless, so focus rings the whole dock instead.
+    <form
+      className="rounded-2xl border border-line-strong bg-surface shadow-float transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_16%,transparent),var(--shadow-float)]"
+      onSubmit={(e) => { e.preventDefault(); onSend(); }}
+    >
+      <Textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          // isComposing: Enter that confirms an IME word (Hindi, Chinese…) must not send.
+          if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            onSend();
+          }
+        }}
+        placeholder={placeholder}
+        aria-label="Your question"
+        rows={1}
+        className="field-sizing-content block max-h-[9rem] min-h-12 resize-none overflow-y-auto border-transparent bg-transparent px-4 pb-1 pt-3 text-[15px] shadow-none hover:border-transparent focus:border-transparent focus:bg-transparent focus:shadow-none focus-visible:outline-none"
+      />
+      <div className="flex items-center gap-1.5 px-2 pb-2">
+        {leading && <div className="flex min-w-0 items-center gap-1.5">{leading}</div>}
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          {!touch && <span className="hidden text-xs text-faint md:inline">Shift+Enter for new line</span>}
+          {busy ? (
+            // A filled square: an outlined one read as an empty checkbox.
+            <Button type="button" variant="secondary" size="icon" className={round} onClick={onStop} aria-label="Stop" title="Stop">
+              <Square size={11} className="fill-current" />
+            </Button>
+          ) : (
+            // Neutral while there's nothing to send (the primary's disabled look), indigo once there is.
+            <Button type="submit" size="icon" className={cn(round, "transition-colors duration-150")} disabled={!canSend} aria-label="Send" title="Send">
+              <ArrowUp size={17} />
+            </Button>
+          )}
+        </div>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * One message of a conversation (here and on a subject's Ask tab): a question sits in a bubble, an answer is set
+ * on the page under it. `sources` are the notes files and past-paper questions an answer was given (study chat only);
+ * `onRegenerate` asks its question again (the newest study-chat answer only).
+ */
+export function Bubble({ role, content, live, sources, onRegenerate }: {
+  role: "user" | "assistant";
+  content: string;
+  live?: boolean;
+  sources?: ChatSource[];
+  onRegenerate?: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   if (role === "user") {
     return (
       <div className="flex justify-end">
-        <p className="min-w-0 max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed">{content}</p>
+        <p className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-accent/20 bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-text">{content}</p>
       </div>
     );
   }
@@ -501,20 +583,44 @@ function Bubble({ role, content, live }: { role: "user" | "assistant"; content: 
       toast("Couldn't copy. Select the text instead.");
     }
   };
+  // The ::before widens the tap target on touch screens to about 40px without changing the look.
+  const action = "relative inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 pointer-coarse:before:inset-x-0 pointer-coarse:before:content-[''] [&_svg]:size-3.5";
   // The answer is set straight on the page, full column width, like a handout; only the question sits in a bubble.
   // A bubble around a long answer with tables and code was a box inside a box and narrowed every line.
   return (
-    <div className="group min-w-0 px-1">
+    <div className="min-w-0">
       <div aria-busy={live || undefined}>
-        <Markdown>{content}</Markdown>
-        {/* Just the copy button: the list of files and papers behind each answer was clutter. The answer cites them itself. */}
+        <Markdown className="prose-wide">{content}</Markdown>
+        {/* Once it's done: the files and papers it was given, as small tags rather than a list, then its actions. */}
         {!live && (
-          <div className="-ml-1 mt-2 flex">
-            {/* The ::before widens the tap target on touch screens to about 40px without changing the icon's look. */}
-            <button type="button" onClick={copy} aria-label="Copy answer" className="relative rounded-md p-1 text-faint hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-2.5 pointer-coarse:before:content-['']">
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-            </button>
-          </div>
+          <>
+            {!!sources?.length && (
+              <ul aria-label="Sources" className="mt-4 flex min-w-0 flex-wrap gap-1.5">
+                {sources.map((s, i) => (
+                  <li key={i} className="min-w-0 max-w-full">
+                    <Badge className="max-w-[16rem]">
+                      {/* An svg's aria-label isn't read reliably, so the kind is spoken as text. */}
+                      {s.kind === "notes" ? <FileText aria-hidden /> : <Target aria-hidden />}
+                      <span className="sr-only">{s.kind === "notes" ? "Notes: " : "Past paper: "}</span>
+                      <span className="min-w-0 truncate font-normal" title={s.label}>{s.label}</span>
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="-ml-2 mt-2 flex items-center gap-0.5">
+              <button type="button" onClick={copy} aria-label={copied ? "Copied" : "Copy answer"} title="Copy answer" className={action}>
+                {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+              {onRegenerate && (
+                <button type="button" onClick={onRegenerate} aria-label="Regenerate answer" title="Ask the question again" className={action}>
+                  <RotateCcw aria-hidden />
+                  Regenerate
+                </button>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

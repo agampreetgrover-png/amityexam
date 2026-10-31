@@ -3,19 +3,39 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BarChart3, Check, ChevronRight, Search, Settings as SettingsIcon } from "lucide-react";
-import { useState } from "react";
+import { CalendarDays, Check, ChevronRight, MapPin } from "lucide-react";
 import { db } from "@/lib/db";
-import { daysBetween, fromDay, prettyDay } from "@/lib/dates";
+import { daysBetween, fromDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
-import { byWhen, examTypeLabel } from "@/lib/exams";
-import { examInMode, examSyllabus, modeShort, useExamMode } from "@/lib/mode";
+import { byWhen, examTypeLabel, urgentMark } from "@/lib/exams";
+import { examInMode, examSyllabus, modeShort, topicsInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
-import { openCommandPalette } from "@/components/command-palette-loader";
-import { ModePill } from "@/components/mode-pill";
-import { CoverageBar, Panel, cn, subjectStyle } from "@/components/ui";
+import type { Exam } from "@/lib/types";
+import { ExamCalendar, QuickSheets } from "@/components/today/rail";
+import { Badge, CoverageBar, buttonClass, cn, daysTone, subjectStyle } from "@/components/ui";
 
-const daysWord = (d: number) => (d === 1 ? "day to go" : "days to go");
+// Progress bars on this page fill in emerald rather than the subject's colour: here they measure readiness.
+const MASTERY = subjectStyle("var(--mastery)");
+// The next exam's card: a breath of indigo on white in light; a plain card on dark, where an indigo wash turns muddy.
+const HERO_BG = { background: "light-dark(color-mix(in oklab, var(--accent-soft) 55%, var(--surface)), var(--surface))" };
+
+const daysLeft = (d: number) => (d === 0 ? "Today" : d === 1 ? "1 day left" : `${d} days left`);
+
+/** The overall readiness figure as a small ring: emerald for what's covered, a slate track for the rest. */
+function ReadinessRing({ value }: { value: number }) {
+  const r = 15;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg viewBox="0 0 40 40" className="h-11 w-11 shrink-0 -rotate-90" aria-hidden>
+      <circle cx="20" cy="20" r={r} fill="none" stroke="var(--track)" strokeWidth="5" />
+      <circle
+        cx="20" cy="20" r={r} fill="none" stroke="var(--mastery)" strokeWidth="5" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)}
+        className={cn("transition-[stroke-dashoffset] duration-700 ease-snappy", value === 0 && "opacity-0")}
+      />
+    </svg>
+  );
+}
 
 export default function TodayPage() {
   const t = useToday();
@@ -31,7 +51,6 @@ export default function TodayPage() {
     return { subjects, topics, units, exams, examCount, syllabusFiles };
   }, [t]);
   const mode = useExamMode();
-  const [pickedExam, setPickedExam] = useState<number | null>(null);
   if (!data) return null;
 
   const { subjects, topics, units, exams, examCount, syllabusFiles } = data;
@@ -51,181 +70,180 @@ export default function TodayPage() {
   const onboarding = steps.some((s) => !s.done);
 
   const modeExams = exams.filter((e) => examInMode(e, mode));
-  const shown = modeExams.find((e) => e.id === pickedExam) ?? modeExams[0];
-  const shownSubject = subject(shown?.subjectId);
-  const shownDays = shown ? daysBetween(t, shown.date) : 0;
-  const examTopics = (e: (typeof exams)[number]) => examSyllabus(e, topics, units, mode);
-  const examCoverage = (e: (typeof exams)[number]) => coverage(examTopics(e));
-  const shownCoverage = shown ? examCoverage(shown) : 0;
-  const shownTopics = shown ? examTopics(shown) : [];
-  const shownRevised = shownTopics.filter((t) => t.status === "revised").length;
-  const shownStudied = shownTopics.filter((t) => t.status === "studied").length;
-  // The exam written out as a row from the date sheet. Date and day always show; time and hall only when known.
-  const detailCells = shown
+  const next = modeExams[0];
+  const rest = modeExams.slice(1, 7);
+  const nextSubject = subject(next?.subjectId);
+  const nextDays = next ? daysBetween(t, next.date) : 0;
+  const examTopics = (e: Exam) => examSyllabus(e, topics, units, mode);
+  const nextTopics = next ? examTopics(next) : [];
+  const nextRevised = nextTopics.filter((x) => x.status === "revised").length;
+  const readiness = coverage(topicsInScope(topics, units, mode));
+  // The exam's facts as small pills: the date (with the time, when the date sheet gave one), then the hall if known.
+  const facts = next
     ? [
-        { label: "Date", value: format(fromDay(shown.date), "d MMM"), num: true },
-        { label: "Day", value: format(fromDay(shown.date), "EEEE"), num: false },
-        ...(shown.time ? [{ label: "Time", value: shown.time, num: true }] : []),
-        ...(shown.venue ? [{ label: "Hall", value: shown.venue, num: false }] : []),
+        { icon: CalendarDays, text: `${format(fromDay(next.date), "d MMM")}${next.time ? `, ${next.time}` : ""}` },
+        ...(next.venue ? [{ icon: MapPin, text: next.venue }] : []),
       ]
     : [];
-  const mobileIcon = "press grid h-10 w-10 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-text";
 
   return (
-    <div className="space-y-10">
-      <header className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-muted">{format(fromDay(t), "EEEE, d MMMM")}</p>
-          <h1 className="mt-1.5 font-display text-[28px] leading-[1.1] md:text-[34px]">
-            {mode === "mid-term" ? "Mid-sem dashboard" : mode === "end-term" ? "Major exam dashboard" : "Study dashboard"}
-          </h1>
-          <ModePill className="mt-4 md:hidden" />
-        </div>
-        <div className="-mr-2 flex shrink-0 md:hidden">
-          <button type="button" onClick={openCommandPalette} className={mobileIcon} aria-label="Search">
-            <Search size={20} />
-          </button>
-          <Link href="/progress" className={mobileIcon} aria-label="Progress"><BarChart3 size={20} /></Link>
-          <Link href="/settings" className={mobileIcon} aria-label="Settings"><SettingsIcon size={20} /></Link>
+    // data-wide: the layout gives this page a wider column for its right-hand rail.
+    <div data-wide className="space-y-8">
+      {/* The date and the exam-mode switch live in the top bar above every page. */}
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+        <h1 className="min-w-0 font-display text-[28px] leading-[1.1] md:text-[34px]">
+          {mode === "mid-term" ? "Mid-sem dashboard" : mode === "end-term" ? "Major exam dashboard" : "Study dashboard"}
+        </h1>
+        {/* Overall readiness: coverage of this exam mode's whole syllabus, every subject together. */}
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface py-2 pl-2 pr-4 shadow-sheet">
+          <ReadinessRing value={readiness} />
+          <div>
+            <p className="text-[12px] font-medium text-muted">Overall readiness</p>
+            <p className="text-[17px] font-bold leading-tight tabular-nums">{readiness}% ready</p>
+          </div>
         </div>
       </header>
 
-      {/* The date sheet: the chosen exam counted down in large figures, every upcoming exam of this mode listed beneath.
-          Picking a row switches which exam the countdown follows. */}
-      <section aria-labelledby="exams-heading">
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 id="exams-heading" className="text-[15px] font-semibold tracking-[-0.01em]">Upcoming exams</h2>
-          <Link href="/exams" className="group inline-flex items-center gap-0.5 rounded-md text-sm font-medium text-accent">
-            All exams <ChevronRight size={15} className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-        {shown ? (
-          <Panel>
-            {/* The countdown takes the exam's subject colour: a tinted sheet with that colour's tab down its edge.
-                Picking another exam below recolours it. */}
-            <div
-              key={shown.id}
-              style={subjectStyle(shownSubject?.color)}
-              className="subj-tint subj-edge-thick count-in grid gap-x-10 gap-y-6 p-6 pl-8 sm:grid-cols-[auto_1fr] sm:items-start sm:p-7 sm:pl-10"
-            >
-              {/* The countdown: the figure is the hero, its unit sat directly beneath so the two read as one.
-                  On exam day the word replaces the figure: a giant 0 reads as "nothing". */}
-              <div className="shrink-0">
-                <span className="numeral subj-ink block text-[88px] md:text-[132px]">
-                  <span className={cn(shownDays <= 3 && "mark")}>{shownDays === 0 ? "Today" : shownDays}</span>
-                </span>
-                {shownDays > 0 && <span className="mt-1 block text-[13px] font-medium text-muted">{daysWord(shownDays)}</span>}
-              </div>
-              <div className="min-w-0">
-                {/* Phones: the name takes the full width and the Exam kit button drops below it. */}
-                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3 sm:flex-nowrap">
-                  <div className="min-w-0 basis-full sm:basis-auto">
-                    <h3 className="line-clamp-2 break-words text-[22px] font-semibold leading-tight tracking-[-0.02em]">{shownSubject?.name ?? "Exam"}</h3>
-                    <p className="mt-1 text-sm text-muted">{examTypeLabel(shown.type)}{shownSubject?.code ? `, ${shownSubject.code}` : ""}</p>
-                  </div>
-                  <Link
-                    href={`/exams/view?id=${shown.id}`}
-                    className="press group subj-line inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border bg-surface px-3 text-[13px] font-medium shadow-control hover:bg-surface-2"
-                  >
-                    Exam kit <ChevronRight size={15} className="-mr-1 text-muted transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
-                  </Link>
-                </div>
-
-                {/* The exam as a row from the date sheet: labelled cells over hairlines, the top rule in the subject's ink. */}
-                {/* Phones: a two-column grid, since a wrapped row would start with a stray divider. */}
-                <dl className="subj-line mt-5 grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-4 sm:flex sm:flex-wrap sm:gap-x-0">
-                  {detailCells.map((c) => (
-                    <div key={c.label} className="min-w-0 sm:border-l sm:border-border sm:pl-4 sm:pr-6 sm:first:border-l-0 sm:first:pl-0">
-                      <dt className="text-[11px] font-medium text-faint">{c.label}</dt>
-                      <dd className={cn("mt-0.5 break-words text-sm font-medium text-text sm:truncate", c.num && "tabular-nums")}>{c.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-                {/* Are you ready: the coverage bar with its figure and a plain count of what's done. */}
-                <div className="mt-5">
-                  <div className="flex items-center gap-3">
-                    <CoverageBar topics={shownTopics} className="h-2 max-w-sm bg-surface/90" />
-                    <span className="shrink-0 text-[13px] text-muted"><strong className="font-semibold tabular-nums text-text">{shownCoverage}%</strong> covered</span>
-                  </div>
-                  <p className="mt-2 text-[13px] text-muted">
-                    {shownTopics.length
-                      ? `${shownRevised} of ${shownTopics.length} topics revised${shownStudied ? `, ${shownStudied} more studied` : ""}`
-                      : "No syllabus added for this exam yet"}
+      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <div className="min-w-0 space-y-8">
+          {next ? (
+            // The next exam, in the spotlight: the countdown on the left, what it covers and how ready you are on the right.
+            <section aria-labelledby="next-heading" style={HERO_BG} className="count-in rounded-2xl border border-accent/20 p-6 shadow-sheet sm:p-8">
+              <h2 id="next-heading" className="sr-only">Next exam</h2>
+              <div className="grid gap-x-10 gap-y-7 md:grid-cols-[auto_minmax(0,1fr)]">
+                <div>
+                  <p className="numeral text-[88px] text-text md:text-[112px]">
+                    <span className={urgentMark(nextDays)}>{nextDays === 0 ? "Today" : nextDays}</span>
                   </p>
+                  {nextDays > 0 && <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{nextDays === 1 ? "Day left" : "Days left"}</p>}
+                  <ul className="mt-5 flex flex-wrap gap-2">
+                    {facts.map(({ icon: Icon, text }) => (
+                      <li key={text} className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[12.5px] font-medium text-text">
+                        <Icon size={13} className="text-muted" aria-hidden />
+                        <span className="tabular-nums">{text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="flex min-w-0 flex-col md:pt-2">
+                  <div style={subjectStyle(nextSubject?.color)} className="flex items-start gap-2.5">
+                    <span aria-hidden className="subj-dot mt-2 h-2.5 w-2.5 shrink-0 rounded-full" />
+                    <h3 className="line-clamp-2 break-words text-xl font-bold leading-snug tracking-[-0.015em] md:text-2xl">{nextSubject?.name ?? "Exam"}</h3>
+                  </div>
+                  <p className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-sm text-muted">
+                    {nextSubject?.code && <Badge className="font-semibold text-text">{nextSubject.code}</Badge>}
+                    {examTypeLabel(next.type)}
+                  </p>
+
+                  <div className="mt-6" style={MASTERY}>
+                    <CoverageBar topics={nextTopics} />
+                    <div className="mt-2.5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[13px] text-muted">
+                      <span className="tabular-nums">{nextTopics.length ? `${nextRevised} of ${nextTopics.length} topics revised` : "No syllabus added for this exam yet"}</span>
+                      {nextTopics.length > 0 && <span><strong className="font-bold tabular-nums text-text">{coverage(nextTopics)}%</strong> covered</span>}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-2.5 md:mt-auto md:pt-6">
+                    <Link href={`/subjects/view?id=${next.subjectId}&tab=syllabus`} className={buttonClass("primary", "md", "h-10 px-4")}>
+                      Resume revision <ChevronRight size={16} aria-hidden />
+                    </Link>
+                    <Link href={`/exams/view?id=${next.id}`} className={buttonClass("secondary", "md", "h-10 px-4")}>Exam kit</Link>
+                  </div>
                 </div>
               </div>
-            </div>
-            {modeExams.length > 1 && (
-              // Toggle buttons, not tabs: picking a row re-points the countdown above rather than opening a panel of its own.
-              <div role="group" aria-label="Choose an exam" className="divide-y divide-border border-t border-border">
-                {modeExams.slice(0, 8).map((e) => {
+            </section>
+          ) : (
+            <section className="rounded-2xl border border-dashed border-line-strong px-6 py-8">
+              <p className="font-bold tracking-[-0.01em]">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams coming up</p>
+              <p className="mt-1 text-sm text-muted">
+                {examCount ? "Nothing upcoming in this exam mode. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
+              </p>
+              <Link href="/exams" className={buttonClass("primary", "md", "mt-5 h-10 px-4")}>Add exams</Link>
+            </section>
+          )}
+
+          {rest.length > 0 && (
+            <section aria-labelledby="upcoming-heading">
+              <div className="mb-4 flex items-baseline justify-between gap-3">
+                <h2 id="upcoming-heading" className="text-[17px] font-bold tracking-[-0.01em]">Upcoming exams</h2>
+                <Link href="/exams" className="group inline-flex items-center gap-0.5 text-sm font-medium text-accent">
+                  All exams <ChevronRight size={15} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
+                </Link>
+              </div>
+              <ul className="grid gap-4 sm:grid-cols-2">
+                {rest.map((e) => {
                   const s = subject(e.subjectId);
                   const d = daysBetween(t, e.date);
-                  const on = e.id === shown.id;
+                  const et = examTopics(e);
+                  const pct = coverage(et);
                   return (
-                    <button
-                      key={e.id}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => setPickedExam(e.id!)}
-                      style={subjectStyle(s?.color)}
-                      className={cn(
-                        "subj-tab grid w-full grid-cols-[3rem_1fr_auto] items-center gap-x-4 py-3 pl-6 pr-5 text-left transition-colors duration-150 sm:grid-cols-[3rem_1fr_9rem_3.5rem] sm:pl-8 sm:pr-6",
-                        on ? "subj-wash" : "subj-hover",
-                      )}
-                    >
-                      <span className="numeral text-[26px]"><span className={cn(d <= 3 && "mark")}>{d}</span><span className="sr-only"> {d === 0 ? "days, it's today" : d === 1 ? "day to go" : "days to go"},</span></span>
-                      <span className="min-w-0">
-                        <span className={cn("line-clamp-2 break-words text-sm", on ? "subj-ink font-semibold" : "font-medium")}>{s?.name}</span>
-                        <span className="mt-0.5 block truncate text-[13px] text-muted">{s?.code ? `${s.code}, ` : ""}{examTypeLabel(e.type)}</span>
-                      </span>
-                      <span className="hidden text-[13px] tabular-nums text-muted sm:block">{prettyDay(e.date)}{e.time && `, ${e.time}`}</span>
-                      <span className="text-right text-[13px] font-medium tabular-nums text-muted">{examCoverage(e)}%<span className="sr-only"> of syllabus covered</span></span>
-                    </button>
+                    <li key={e.id}>
+                      <Link
+                        href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
+                        style={subjectStyle(s?.color)}
+                        className="group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            {s?.code && <Badge className="font-semibold text-text">{s.code}</Badge>}
+                            <span className="truncate text-[13px] text-muted">{examTypeLabel(e.type)}</span>
+                          </div>
+                          <Badge tone={daysTone(d)}>{daysLeft(d)}</Badge>
+                        </div>
+                        <div className="mt-4 flex items-start gap-2.5">
+                          <span aria-hidden className="subj-dot mt-[7px] h-2 w-2 shrink-0 rounded-full" />
+                          <h3 className="line-clamp-2 break-words text-[16px] font-bold leading-snug tracking-[-0.01em]">{s?.name ?? "Exam"}</h3>
+                        </div>
+                        <p className="mt-1 pl-[18px] text-[13px] tabular-nums text-muted">
+                          {format(fromDay(e.date), "d MMM, EEEE")}{e.time && `, ${e.time}`}
+                        </p>
+                        <div className="mt-5 flex items-center gap-3" style={MASTERY}>
+                          <CoverageBar topics={et} />
+                          <span className="w-10 shrink-0 text-right text-[13px] font-semibold tabular-nums">{pct}%</span>
+                        </div>
+                        <span className="mt-5 inline-flex items-center gap-1 border-t border-border pt-4 text-[13px] font-medium text-accent">
+                          View topics <ChevronRight size={14} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
+                        </span>
+                      </Link>
+                    </li>
                   );
                 })}
-              </div>
-            )}
-          </Panel>
-        ) : (
-          <div className="rounded-xl border border-dashed border-line-strong px-6 py-7">
-            <p className="font-semibold tracking-[-0.01em]">No {mode ? `${modeShort(mode).toLowerCase()} ` : ""}exams coming up</p>
-            <p className="mt-1 text-sm text-muted">
-              {examCount ? "Nothing upcoming in this exam mode. Add the next date sheet when it's out." : "Add your date sheet and the countdown starts here."}
-            </p>
-            <Link
-              href="/exams"
-              className="press mt-5 inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.14),var(--shadow-control)] hover:bg-accent-hover"
-            >
-              Add exams
-            </Link>
-          </div>
-        )}
-      </section>
+              </ul>
+            </section>
+          )}
 
-      {onboarding && (
-        <section aria-label="Get set up" className="rounded-xl border border-accent/15 bg-accent-soft/60 px-5 py-4 sm:px-6">
-          <p className="mb-2 text-[15px] font-semibold tracking-[-0.01em]">Get set up</p>
-          <ol className="grid gap-1 sm:grid-cols-2">
-            {steps.map((s, i) => (
-              <li key={i}>
-                <Link href={s.href} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 text-sm transition-colors duration-150 hover:bg-surface/80">
-                  <span
-                    className={cn(
-                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums",
-                      s.done ? "bg-good text-bg" : "bg-surface text-accent ring-1 ring-accent/30",
-                    )}
-                  >
-                    {s.done ? <Check size={12} strokeWidth={3} aria-label="Done" /> : i + 1}
-                  </span>
-                  <span className={s.done ? "text-muted line-through" : "font-medium"}>{s.label}</span>
-                </Link>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+          {onboarding && (
+            <section aria-label="Get set up" className="rounded-2xl border border-accent/15 bg-accent-soft px-5 py-4 sm:px-6">
+              <p className="mb-2 text-[15px] font-bold tracking-[-0.01em]">Get set up</p>
+              <ol className="grid gap-1 sm:grid-cols-2">
+                {steps.map((s, i) => (
+                  <li key={i}>
+                    <Link href={s.href} className="flex items-center gap-3 rounded-xl px-1.5 py-1.5 text-sm transition-colors duration-150 hover:bg-surface/80">
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums",
+                          s.done ? "bg-mastery text-surface" : "bg-surface text-accent ring-1 ring-accent/30",
+                        )}
+                      >
+                        {s.done ? <Check size={12} strokeWidth={3} aria-label="Done" /> : i + 1}
+                      </span>
+                      <span className={s.done ? "text-muted line-through" : "font-medium"}>{s.label}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+        </div>
+
+        {/* The action rail: beside the main column on wide screens, below it (two across where there's room) elsewhere. */}
+        <aside aria-label="Study widgets" className="grid content-start items-start gap-5 md:grid-cols-2 xl:sticky xl:top-8 xl:grid-cols-1 xl:self-start">
+          {/* Keyed by the month it opens on, so stepping through months starts over when the next exam changes. */}
+          <ExamCalendar key={modeExams[0]?.date ?? t} today={t} exams={modeExams} subjects={subjects} />
+          <QuickSheets subjects={subjects} />
+        </aside>
+      </div>
     </div>
   );
 }

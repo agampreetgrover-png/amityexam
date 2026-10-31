@@ -1,5 +1,6 @@
 // Lists public Drive folders without an API key, via Drive's embeddable folder view.
 // Server-only: the page is fetched from Next's server, which avoids CORS.
+import { readLimited } from "../read-limited";
 
 type EntryType = "folder" | "file" | "gdoc" | "gslides" | "gsheet";
 
@@ -24,10 +25,17 @@ function parse(url: string): { id: string; type: EntryType } | null {
   return null;
 }
 
+// A folder's owner decides how many entries it has, so one listing is capped in bytes and entries
+// (a few thousand files is far beyond any real course folder).
+const MAX_LISTING_BYTES = 8 * 1024 * 1024;
+const MAX_ENTRIES = 5000;
+
 async function folderPage(folderId: string, signal?: AbortSignal): Promise<string> {
   const res = await fetch(`https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(folderId)}`, { signal, cache: "no-store" });
   if (!res.ok) throw new Error(`Drive folder unavailable (${res.status}). Is it still shared publicly?`);
-  const html = await res.text();
+  const bytes = await readLimited(res.body, MAX_LISTING_BYTES);
+  if (!bytes) throw new Error("This Drive folder is too large to list.");
+  const html = new TextDecoder().decode(bytes);
   // A private folder answers 200 with a sign-in page; without this check it would look like an empty folder.
   if (!html.includes("flip-entries")) throw new Error("This Drive folder isn't shared publicly (or the link is wrong).");
   return html;
@@ -47,6 +55,7 @@ export async function listFolder(folderId: string, signal?: AbortSignal): Promis
     const href = decode(m[1]);
     const p = parse(href);
     if (p) out.push({ ...p, name: decode(m[2]).trim(), url: href });
+    if (out.length >= MAX_ENTRIES) break;
   }
   return out;
 }

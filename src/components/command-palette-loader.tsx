@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 
-// Anything can open the palette (nav buttons, the Today header) by dispatching this event.
+// Anything can open the palette (nav buttons, the top bar) by dispatching this event.
 export const OPEN_EVENT = "open-command-palette";
 export const openCommandPalette = () => window.dispatchEvent(new Event(OPEN_EVENT));
 

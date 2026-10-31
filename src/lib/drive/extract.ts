@@ -155,7 +155,7 @@ export async function fileText(
     // Under ~40 characters per page means scanned images, not real text.
     if (text.length >= Math.max(200, pages * 40)) return { text: clip(text), ocr: false };
     if (buf.length > MAX_OCR_BYTES) throw new SkipFile("scanned PDF too large to read with AI");
-    if (!getProviders().some((p) => p.extract)) throw new DeferFile("scanned PDF: add an OpenRouter or Gemini key to read it");
+    if (!getProviders().length) throw new DeferFile("scanned PDF: add an OpenRouter or Gemini key to read it");
     if (!takeOcrSlot()) throw new DeferFile("scanned PDF: queued for a later sync to save AI quota");
     const data = buf.toString("base64");
     // OpenRouter reads it first. If Gemini has to, transcribing is easy work: the lite model does it well and its

@@ -2,15 +2,15 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, Send, Square, Trash2 } from "lucide-react";
+import { MessageCircle, Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { aiStream } from "@/lib/ai/client";
 import { aiModeFields, materialsForMode } from "@/lib/mode";
 import { AiErrorBox } from "../ai-error";
-import { Markdown } from "../markdown";
+import { Bubble, Dock } from "../study-chat/thread";
 import { Thinking } from "../thinking";
-import { Button, Textarea } from "../ui";
+import { Button } from "../ui";
 import { isAbort, MAX_TEXT, OfflineHint, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
 const MAX_HISTORY_CHARS = 20_000;
@@ -94,13 +94,13 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
   // Phones scroll the page, like the Chat page: a fixed-height box there left the answer a thin strip between the
   // header and the composer. From tablets up it's a box that fills the window and scrolls inside.
   return (
-    <div className="flex flex-col md:h-[calc(100dvh-18rem)] md:min-h-96">
+    <div className="flex flex-col md:h-[calc(100dvh-21.5rem)] md:min-h-96">
       <div className="mb-2 flex min-h-8 items-center justify-between gap-2 text-[13px] text-muted">
         <span className="min-w-0">{materials && (materials.length ? `Answers use your ${materials.length} uploaded file${materials.length === 1 ? "" : "s"}` : "No materials uploaded, so answers are general")}</span>
         {!!messages?.length && <Button variant="ghost" size="sm" onClick={clear} disabled={streaming !== null} className="shrink-0"><Trash2 size={14} /> Clear chat</Button>}
       </div>
 
-      <div className="flex min-h-[50dvh] flex-col gap-4 rounded-xl border border-border bg-surface p-4 shadow-sheet sm:p-5 md:min-h-0 md:flex-1 md:overflow-y-auto">
+      <div className="flex min-h-[50dvh] flex-col gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sheet sm:p-5 md:min-h-0 md:flex-1 md:overflow-y-auto">
         {!messages ? null : messages.length === 0 && streaming === null ? (
           <div className="flex flex-1 flex-col items-start justify-center gap-1.5 px-1">
             <span className="mb-2 grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent" aria-hidden><MessageCircle size={18} /></span>
@@ -112,63 +112,31 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
         ) : (
           <>
             {messages.map((m) => <Bubble key={m.id} role={m.role} content={m.content} />)}
-            {streaming !== null && (streaming ? <Bubble role="assistant" content={streaming} /> : <Thinking />)}
+            {streaming !== null && (streaming ? <Bubble role="assistant" content={streaming} live /> : <Thinking />)}
           </>
         )}
         {/* On phones the page scrolls, so keep the newest line clear of the composer pinned over it. */}
-        <div ref={bottom} className="scroll-mb-28 md:scroll-mb-0" />
+        <div ref={bottom} className="scroll-mb-36 md:scroll-mb-0" />
       </div>
 
       {/* On phones the composer sticks above the bottom bar, so it's reachable without scrolling past the header. */}
-      {/* The strip behind it is solid white with a top rule, so scrolled content passes under it instead of showing through. */}
+      {/* The strip behind it is painted the page's own colour with a top rule, so scrolled content passes under it instead of showing through. */}
       {/* The strip below it, down to the bottom bar, is painted too, so the conversation doesn't show through the gap. */}
       <div data-composer className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 space-y-2 border-t border-border bg-bg pb-1 pt-2 after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-bg md:static md:border-t-0 md:bg-transparent md:pb-0 md:pt-0 md:after:hidden">
         <OfflineHint online={online} />
         <AiErrorBox error={error} />
-        {/* The composer is one bordered box; the textarea inside is borderless, so focus rings the whole box instead. */}
-        <form
-          className="flex items-end gap-2 rounded-xl border border-border bg-surface p-1.5 shadow-sheet transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_16%,transparent)]"
-          onSubmit={(e) => { e.preventDefault(); send(); }}
-        >
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              // isComposing: Enter that confirms an IME word (Hindi, Chinese…) must not send.
-              if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder={touch ? "Ask a question" : "Ask a question. Enter sends, Shift+Enter adds a line."}
-            aria-label="Your question"
-            className="min-h-11 flex-1 resize-none border-transparent bg-transparent px-2.5 text-[15px] shadow-none hover:border-transparent focus:border-transparent focus:bg-transparent focus:shadow-none focus-visible:outline-none"
-            rows={2}
-          />
-          {streaming !== null ? (
-            // A filled square with its word, as on the Chat page: an outlined one read as an empty checkbox.
-            <Button type="button" variant="secondary" className="h-11 min-w-11 shrink-0 px-0 sm:px-4" onClick={() => ctrl.current?.abort()} aria-label="Stop">
-              <Square size={11} className="fill-current" /><span className="hidden sm:inline">Stop</span>
-            </Button>
-          ) : (
-            <Button type="submit" className="h-11 min-w-11 shrink-0 px-0 sm:px-4" disabled={!input.trim() || !online} aria-label="Send">
-              <Send size={16} /><span className="hidden sm:inline">Send</span>
-            </Button>
-          )}
-        </form>
+        {/* The same dock as the Chat page. */}
+        <Dock
+          value={input}
+          onChange={setInput}
+          onSend={send}
+          onStop={() => ctrl.current?.abort()}
+          busy={streaming !== null}
+          canSend={!!input.trim() && online}
+          touch={touch}
+          placeholder="Ask a question"
+        />
       </div>
     </div>
   );
-}
-
-function Bubble({ role, content }: { role: "user" | "assistant"; content: string }) {
-  if (role === "user") {
-    return (
-      <div className="flex justify-end">
-        <p className="min-w-0 max-w-[88%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed">{content}</p>
-      </div>
-    );
-  }
-  // The answer is set straight on the sheet at full width, as on the Chat page; a bubble around it was a box inside a box.
-  return <div className="min-w-0 px-1"><Markdown>{content}</Markdown></div>;
 }

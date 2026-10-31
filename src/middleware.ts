@@ -8,11 +8,14 @@ import { safeNext, unlockPage } from "@/lib/unlock-page";
 // 2. Only known host names are served (stops DNS rebinding, where evil.example is pointed at 127.0.0.1).
 // 3. With APP_PASSWORD set (for a deployed copy), the whole app asks for the password once per device.
 
-const IP_OR_LOCAL = /^(?:localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+\])$/i;
+const LOOPBACK = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
 
 function hostAllowed(host: string): boolean {
   const name = host.toLowerCase().replace(/:\d+$/, "");
-  if (IP_OR_LOCAL.test(name)) return true; // a rebinding attack always arrives under a domain name
+  // Only this computer's own addresses, plus ALLOWED_HOSTS. This is a browser defence (DNS rebinding: a page always
+  // sends its own domain as Host). Host is whatever the client says, so it can't keep a script on the same Wi-Fi out
+  // of a server listening on the LAN: that needs APP_PASSWORD, or the default 127.0.0.1-only bind.
+  if (LOOPBACK.test(name)) return true;
   const allowed = (process.env.ALLOWED_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
   return allowed.includes(name);
 }

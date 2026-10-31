@@ -18,7 +18,7 @@ Output only the transcription, with no preamble.`;
 
 /** Scanned PDFs and photos of notes → text: OpenRouter first, then Gemini. */
 export async function POST(req: Request) {
-  if (!getProviders().some((p) => p.extract))
+  if (!getProviders().length)
     return Response.json({ error: "Reading scans/photos needs an OPENROUTER_API_KEY or GEMINI_API_KEY." }, { status: 501 });
 
   try {

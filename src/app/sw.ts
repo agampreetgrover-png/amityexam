@@ -1,6 +1,6 @@
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist } from "serwist";
+import { NetworkOnly, Serwist } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -34,6 +34,8 @@ const serwist = new Serwist({
         return Response.redirect(to.href, 302);
       },
     },
+    // API responses (AI answers, Drive listings, date-sheet files) are always fetched fresh, never kept in a cache.
+    { matcher: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/api/"), handler: new NetworkOnly() },
     ...defaultCache,
   ],
   fallbacks: {

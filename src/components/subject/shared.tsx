@@ -17,6 +17,9 @@ export const noteTexts = (materials: Material[]) => materials.filter((m) => m.ki
 
 // Mirrors the request limits in AiRequestSchema so big subjects don't get a 400.
 const MAX_TOPICS = 150;
+/** A material's Drive link, if it really points at Google Drive or Docs (an imported backup could hold any URL). */
+export const isDriveUrl = (url: string) => /^https:\/\/(?:drive|docs)\.google\.com\//.test(url);
+
 export const MAX_CONTEXT = 400_000;
 export const MAX_TEXT = 100_000;
 const MAX_TITLE = 300;
@@ -84,8 +87,8 @@ export function TopicSelect({
 
 export const OfflineHint = ({ online, children }: { online: boolean; children?: ReactNode }) =>
   online ? null : (
-    <p className="flex items-start gap-2.5 rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text">
-      <WifiOff size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+    <p className="flex items-start gap-2.5 rounded-xl border border-border bg-surface-2 px-4 py-3 text-sm text-text">
+      <WifiOff size={16} className="mt-0.5 shrink-0 text-muted" aria-hidden />
       <span>{children ?? <>You&apos;re offline. AI features are paused until you reconnect.</>}</span>
     </p>
   );

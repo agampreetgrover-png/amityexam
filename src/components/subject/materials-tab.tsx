@@ -9,8 +9,8 @@ import { extractAny } from "@/lib/pdf";
 import { analyseSubject, setPaperExam } from "@/lib/pyq/analyse";
 import type { ExamMode, Material, MaterialKind } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Card, Empty, Field, Input, Modal, Panel, Section, Select, Textarea } from "../ui";
-import type { TabProps } from "./shared";
+import { Badge, Button, Card, Empty, Field, Input, Modal, Panel, Section, Select, Textarea } from "../ui";
+import { isDriveUrl, type TabProps } from "./shared";
 
 const KINDS: { value: MaterialKind; label: string }[] = [
   { value: "notes", label: "Notes" },
@@ -81,7 +81,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           )}
         </div>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-stretch">
-          <label className="group flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-line-strong px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/50 hover:bg-accent-soft/40 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
+          <label className="group flex min-h-14 flex-1 cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-line-strong px-4 py-3 text-sm transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-accent has-[:disabled]:cursor-default has-[:disabled]:opacity-60">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-border transition-colors duration-150 group-hover:text-accent" aria-hidden>
               <Upload size={16} className="transition-transform duration-200 ease-snappy group-hover:-translate-y-0.5" />
             </span>
@@ -118,21 +118,21 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           Every AI tool for this subject uses them.
         </Empty>
       ) : (
-        <Section title={<span>Files <span className="ml-1 text-[13px] font-normal tabular-nums text-muted">{materials.length}</span></span>}>
+        <Section title={<span className="flex items-center gap-2">Files <Badge>{materials.length}</Badge></span>}>
           <Panel as="ul" className="divide-y divide-border">
             {materials.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-surface-2/50 sm:flex-nowrap sm:px-5">
+              <li key={m.id} className="flex flex-wrap items-center gap-x-3.5 gap-y-2 px-4 py-3 transition-colors duration-150 hover:bg-surface-2 sm:flex-nowrap sm:px-5">
                 {m.source ? (
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent" title="Synced from Google Drive"><Cloud size={15} /></span>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent ring-1 ring-inset ring-accent/20" title="Synced from Google Drive"><Cloud size={15} /></span>
                 ) : (
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted ring-1 ring-inset ring-border" aria-hidden><FileText size={15} /></span>
                 )}
                 {/* On phones the name shares the first line with the icon (2rem + the 0.875rem gap); the controls wrap underneath. */}
                 <div className="min-w-0 flex-1 basis-[calc(100%-2.875rem)] sm:basis-auto">
                   <p className="truncate text-[15px] font-medium">{m.fileName}</p>
-                  <p className="mt-0.5 flex flex-wrap gap-x-3 text-[13px] text-muted">
-                    {m.source && <span className="truncate">Drive{m.source.path?.length ? ` / ${m.source.path.at(-1)}` : ""}</span>}
-                    {m.source?.ocr && <span>Read by AI</span>}
+                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] tabular-nums text-muted">
+                    {m.source && <span className="min-w-0 truncate">Drive{m.source.path?.length ? ` / ${m.source.path.at(-1)}` : ""}</span>}
+                    {m.source?.ocr && <Badge tone="accent">Read by AI</Badge>}
                     <span>{m.text.length.toLocaleString()} characters</span>
                     <span>{new Date(m.createdAt).toLocaleDateString()}</span>
                   </p>
@@ -170,7 +170,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
                   )}
                   {/* The actions stay together at the row's end, even when the selects take a line of their own. */}
                   <span className="ml-auto flex items-center gap-1">
-                    {m.source && (
+                    {m.source && isDriveUrl(m.source.url) && (
                       <a
                         href={m.source.url}
                         target="_blank"
