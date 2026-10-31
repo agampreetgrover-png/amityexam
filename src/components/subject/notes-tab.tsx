@@ -22,6 +22,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
   const [viewing, setViewing] = useState<GeneratedDoc | null>(null);
   const [filter, setFilter] = useState("all");
   const gen = useStreamDoc();
+  const [ready, setReady] = useState("");
   // What the doc being written will be saved as, so a stopped draft can still be saved under the right name.
   const [pending, setPending] = useState<Pick<GeneratedDoc, "topicId" | "kind" | "title"> | null>(null);
 
@@ -36,6 +37,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
   const generate = async () => {
     if (!materials) return; // still loading; the button waits for them
     setViewing(null);
+    setReady("");
     const topic = topics.find((t) => String(t.id) === topicId);
     const texts = noteTexts(materials);
     const context = topic ? retrieve(texts, topicQuery(topic, units), 15_000) : texts.join("\n\n").slice(0, MAX_CONTEXT);
@@ -50,6 +52,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
     const doc = await saveDoc({ subjectId, ...meta, content });
     gen.reset();
     setViewing(doc);
+    setReady(`${label} ready`);
   };
 
   return (
@@ -73,6 +76,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
         </div>
         {materials?.length === 0 && <p className="mt-3 text-[13px] text-muted">No materials uploaded, so notes will come from general knowledge.</p>}
         <div className="mt-3 space-y-2"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
+        <p role="status" className="sr-only">{gen.busy ? "Writing your notes" : ready}</p>
       </Card>
 
       <DraftCard
@@ -92,7 +96,7 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
       <Section
         className="no-print"
         title="Saved notes"
-        action={<TopicSelect units={units} topics={topics} value={filter === "all" ? "" : filter} onChange={(v) => setFilter(v || "all")} className="h-8 w-auto max-w-[60%] text-xs" />}
+        action={<TopicSelect units={units} topics={topics} value={filter === "all" ? "" : filter} onChange={(v) => setFilter(v || "all")} label="Filter saved notes by topic" className="h-8 w-auto max-w-[60%] text-xs" />}
       >
         {!shown ? null : shown.length ? (
           <DocList docs={shown} selected={viewing?.id} onSelect={setViewing} />

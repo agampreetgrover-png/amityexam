@@ -121,7 +121,7 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   };
 
   const remove = async () => {
-    if (!confirm(`Delete "${unit.title}" and its ${topics.length} topics?`)) return;
+    if (!confirm(`Delete "${unit.title}" and its ${topics.length} topic${topics.length === 1 ? "" : "s"}?`)) return;
     await deleteTopics(topics.map((t) => t.id!), unit.id);
   };
 
@@ -204,7 +204,7 @@ const STATUS_TONE: Record<TopicStatus, { pill: string; dot: string }> = {
 };
 
 /** A topic's status as a small pill: grey until studied, blue when studied, green when revised. */
-function StatusSelect({ status, onChange }: { status: TopicStatus; onChange: (s: TopicStatus) => void }) {
+function StatusSelect({ status, name, onChange }: { status: TopicStatus; name: string; onChange: (s: TopicStatus) => void }) {
   const tone = STATUS_TONE[status];
   return (
     <span className="relative inline-flex">
@@ -212,9 +212,9 @@ function StatusSelect({ status, onChange }: { status: TopicStatus; onChange: (s:
       <select
         value={status}
         onChange={(e) => onChange(e.target.value as TopicStatus)}
-        aria-label="Status"
+        aria-label={`Status of ${name}`}
         className={cn(
-          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium pointer-coarse:h-9 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-line-strong focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
+          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium pointer-coarse:h-9 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-line-strong focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
           tone.pill,
         )}
       >
@@ -255,8 +255,8 @@ function TopicRow({ topic }: { topic: Topic }) {
               setEditing(false);
             }}
           >
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" autoFocus aria-label="Topic name" />
-            <Button size="icon" type="submit" aria-label="Save"><Check size={14} /></Button>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="h-8" autoFocus aria-label={`New name for ${topic.title}`} />
+            <Button size="icon" type="submit" aria-label="Save name"><Check size={14} /></Button>
           </form>
         ) : (
           <span className={cn("text-[15px] leading-snug transition-colors duration-200", topic.status === "revised" && "text-text/75")}>
@@ -266,10 +266,10 @@ function TopicRow({ topic }: { topic: Topic }) {
       </div>
       {/* On a phone this wraps under the title; the actions keep to the right edge so they don't shift with the pill's width. */}
       <div className="flex items-center gap-2 max-sm:w-full">
-        <StatusSelect status={topic.status} onChange={(status) => db.topics.update(id, { status })} />
+        <StatusSelect status={topic.status} name={topic.title} onChange={(status) => db.topics.update(id, { status })} />
         <span className={cn(rowActions, "ml-auto")}>
-          <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label="Rename topic" title="Rename"><Pencil size={13} /></Button>
-          <Button variant="danger" size="icon" onClick={remove} aria-label="Delete topic" title="Delete"><Trash2 size={13} /></Button>
+          <Button variant="ghost" size="icon" onClick={toggleEdit} aria-label={`Rename ${topic.title}`} title="Rename"><Pencil size={13} /></Button>
+          <Button variant="danger" size="icon" onClick={remove} aria-label={`Delete ${topic.title}`} title="Delete"><Trash2 size={13} /></Button>
         </span>
       </div>
     </li>
@@ -363,14 +363,14 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
     return (
       <div className="space-y-5">
         <p className="text-sm text-muted">
-          Check {draft.length} units and {count} topics before saving. Fix names and remove anything wrong.
-          {mode === "mid-term" && " They'll be marked as in the mid-sem; untick any it doesn't cover after saving."}
+          Check {draft.length} unit{draft.length === 1 ? "" : "s"} and {count} topic{count === 1 ? "" : "s"} before saving. Fix names and remove anything wrong.
+          {mode === "mid-term" && " They'll count towards the mid-sem as well as the major. Remove any unit the mid-sem doesn't cover before you save."}
         </p>
         {draft.map((u, i) => (
           <div key={i}>
             <div className="mb-2 flex gap-2">
-              <Input value={u.title} onChange={(e) => editUnit(i, { title: e.target.value })} className="h-9 font-semibold" />
-              <Button variant="danger" size="sm" className="h-9" onClick={() => setDraft(draft.filter((_, j) => j !== i))} aria-label="Remove unit"><Trash2 size={14} /></Button>
+              <Input value={u.title} onChange={(e) => editUnit(i, { title: e.target.value })} className="h-9 font-semibold" aria-label={`Unit ${i + 1} name`} />
+              <Button variant="danger" size="sm" className="h-9" onClick={() => setDraft(draft.filter((_, j) => j !== i))} aria-label={`Remove unit ${i + 1}`}><Trash2 size={14} /></Button>
             </div>
             <ul className="space-y-1.5 border-l border-border pl-3">
               {u.topics.map((t, k) => (
@@ -379,8 +379,10 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
                     value={t.title}
                     onChange={(e) => editUnit(i, { topics: u.topics.map((x, m) => (m === k ? { ...x, title: e.target.value } : x)) })}
                     className="h-8 text-xs"
+                    // Positions, not titles: the titles are being edited here.
+                    aria-label={`Unit ${i + 1}, topic ${k + 1}`}
                   />
-                  <Button variant="ghost" size="sm" onClick={() => editUnit(i, { topics: u.topics.filter((_, m) => m !== k) })} aria-label="Remove topic"><Trash2 size={13} /></Button>
+                  <Button variant="ghost" size="sm" onClick={() => editUnit(i, { topics: u.topics.filter((_, m) => m !== k) })} aria-label={`Remove topic ${k + 1} from unit ${i + 1}`}><Trash2 size={13} /></Button>
                 </li>
               ))}
             </ul>
@@ -389,7 +391,7 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
         <AiErrorBox error={error} />
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setDraft(null)}>Back</Button>
-          <Button onClick={save} disabled={saving || !count}>Save {count} topics</Button>
+          <Button onClick={save} disabled={saving || !count}>Save {count} topic{count === 1 ? "" : "s"}</Button>
         </div>
       </div>
     );

@@ -3,7 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { Bell, Download, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { clearAll, db, exportAll, getSettings, importAll } from "@/lib/db";
+import { clearAll, db, exportAll, getSettings, importAll, validateBackup } from "@/lib/db";
 import { today } from "@/lib/dates";
 import { downloadText } from "@/lib/download";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/types";
@@ -23,7 +23,7 @@ export default function SettingsPage() {
   const theme = useTheme();
   // Each section reports next to its own buttons, and the line clears on that section's next action.
   const [notifyMsg, setNotifyMsg] = useState("");
-  const [dataMsg, setDataMsg] = useState("");
+  const [dataMsg, setDataMsg] = useState<{ text: string; bad?: boolean } | null>(null);
   // The browser's own permission, which the student can revoke in site settings behind the app's back.
   const [permission, setPermission] = useState<NotificationPermission | "unsupported" | null>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -48,29 +48,31 @@ export default function SettingsPage() {
   };
 
   const backup = async () => {
-    setDataMsg("");
+    setDataMsg(null);
     try {
       downloadText(JSON.stringify(await exportAll()), `amityexams-backup-${today()}.json`, "application/json");
-      setDataMsg("Backup downloaded.");
+      setDataMsg({ text: "Backup downloaded." });
     } catch (e) {
-      setDataMsg(e instanceof Error ? e.message : "Could not export backup");
+      setDataMsg({ text: e instanceof Error ? e.message : "Could not export backup", bad: true });
     }
   };
 
+  // The file is read and checked before asking, so a wrong file never gets as far as "Replace ALL".
   const restore = async (f: File) => {
-    setDataMsg("");
+    setDataMsg(null);
     try {
-      if (!confirm("Replace ALL current data with this backup?")) return;
       let backup: unknown;
       try {
         backup = JSON.parse(await f.text());
       } catch {
         throw new Error("That file isn't a valid backup (not JSON).");
       }
+      validateBackup(backup);
+      if (!confirm("Replace ALL current data with this backup?")) return;
       await importAll(backup);
-      setDataMsg("Backup restored.");
+      setDataMsg({ text: "Backup restored." });
     } catch (e) {
-      setDataMsg(e instanceof Error ? e.message : "Could not read backup");
+      setDataMsg({ text: e instanceof Error ? e.message : "Could not read backup", bad: true });
     }
   };
 
@@ -135,7 +137,7 @@ export default function SettingsPage() {
               variant="danger"
               className="text-bad"
               onClick={async () => {
-                setDataMsg("");
+                setDataMsg(null);
                 // Settings go too, so the app returns to the "What are you preparing for?" screen; say so up front.
                 if (
                   confirm(
@@ -149,7 +151,7 @@ export default function SettingsPage() {
               <Trash2 size={16} /> Delete everything
             </Button>
           </div>
-          {dataMsg && <p className="mt-3 text-sm" role="status">{dataMsg}</p>}
+          {dataMsg && <p className={cn("mt-3 text-sm", dataMsg.bad && "text-bad")} role={dataMsg.bad ? "alert" : "status"}>{dataMsg.text}</p>}
         </Section>
       </div>
     </>

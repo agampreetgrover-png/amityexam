@@ -80,17 +80,19 @@ export function DriveSettings() {
           <li key={s.id} className="flex items-center gap-3 py-2.5">
             <Cloud size={16} className="shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.label}</span>
-            <a href={folderUrl(s.id)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${s.label} in Drive`} className="rounded-md p-2 text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-accent pointer-coarse:p-3">
+            <a href={folderUrl(s.id)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${s.label} in Drive`} className="press relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']">
               <ExternalLink size={14} />
             </a>
-            <button
+            <Button
               type="button"
+              variant="danger"
+              size="icon"
               aria-label={`Remove ${s.label}`}
               onClick={() => confirm(`Stop syncing "${s.label}"? Files already imported stay.`) && save((cur) => ({ driveSources: (cur.driveSources ?? DEFAULT_DRIVE_SOURCES).filter((x) => x.id !== s.id) }))}
-              className="-mr-2 rounded-md p-2 text-muted transition-colors duration-150 hover:bg-bad/10 hover:text-bad pointer-coarse:p-3"
+              className="-mr-1.5"
             >
               <X size={14} />
-            </button>
+            </Button>
           </li>
         ))}
       </ul>

@@ -63,7 +63,7 @@ export default function ExamsPage() {
           ) : (
             <span className="grid h-8 w-8 place-items-center rounded-full bg-good/10 text-good"><Check size={17} strokeWidth={2.2} aria-hidden /></span>
           )}
-          <div className="mt-1.5 text-[12px] font-medium text-muted">{days === 0 ? "today" : days > 0 ? (days === 1 ? "day left" : "days left") : "done"}</div>
+          <div className="mt-1.5 text-[12px] font-medium text-muted">{days === 0 ? "It's today" : days > 0 ? (days === 1 ? "day left" : "days left") : "done"}</div>
         </div>
         {/* Stacked under the subject on narrow tables; its own three columns on wide ones. */}
         <div className="min-w-0 space-y-1.5 @xl:contents @xl:space-y-0">

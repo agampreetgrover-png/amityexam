@@ -28,18 +28,17 @@ const sizes = {
   icon: `h-8 w-8 px-0 ${touchRing}`,
 };
 
-export function Button({ variant = "primary", size = "md", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof sizes }) {
-  return (
-    <button
-      className={cn(
-        "press inline-flex select-none items-center justify-center gap-1.5 rounded-lg font-medium disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0",
-        sizes[size],
-        variants[variant],
-        className,
-      )}
-      {...p}
-    />
+/** A Button's classes, for a Link that should look like one. Client components only: this file is "use client". */
+export const buttonClass = (variant: Variant = "primary", size: keyof typeof sizes = "md", className?: string) =>
+  cn(
+    "press inline-flex select-none items-center justify-center gap-1.5 rounded-lg font-medium disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0",
+    sizes[size],
+    variants[variant],
+    className,
   );
+
+export function Button({ variant = "primary", size = "md", className, ...p }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: keyof typeof sizes }) {
+  return <button className={buttonClass(variant, size, className)} {...p} />;
 }
 
 /** A white sheet with a padded body: a form, a tool, a self-contained object. */
@@ -243,8 +242,18 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const { box, ready } = useSlider(wrap, '[aria-checked="true"]', [value, options.length]);
+  const i = options.findIndex((o) => o.value === value);
+  // One Tab stop for the group; the arrow keys (and Home/End) move the choice, as a radio group should.
+  const onKey = (e: KeyboardEvent) => {
+    const to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: options.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const n = (to + options.length) % options.length;
+    if (options[n].value !== value) onChange(options[n].value);
+    wrap.current?.querySelectorAll<HTMLElement>('[role="radio"]')[n]?.focus();
+  };
   return (
-    <div ref={wrap} role="radiogroup" aria-label={label} className={cn("relative inline-flex rounded-lg bg-surface-2 p-0.5 ring-1 ring-inset ring-border", className)}>
+    <div ref={wrap} role="radiogroup" aria-label={label} onKeyDown={onKey} className={cn("relative inline-flex rounded-lg bg-surface-2 p-0.5 ring-1 ring-inset ring-border", className)}>
       {box && (
         <span
           aria-hidden
@@ -261,6 +270,8 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
           type="button"
           role="radio"
           aria-checked={value === o.value}
+          // Falls back to the first option if the value matches none, so the group never drops out of the Tab order.
+          tabIndex={value === o.value || (i < 0 && o === options[0]) ? 0 : -1}
           title={o.title}
           onClick={() => value !== o.value && onChange(o.value)}
           className={cn(
@@ -339,13 +350,13 @@ export function Progress({ value, className, color }: { value: number; className
 }
 
 /**
- * Syllabus coverage as a two-tone bar: revised topics in the subject's full colour, studied ones (which count
- * half) in a paler band after them. Sits inside an element that sets --subj.
+ * Syllabus coverage as a two-tone bar: revised topics in the subject's full colour, then studied ones in a paler
+ * band at half their share, so the bar ends where coverage() puts it. Sits inside an element that sets --subj.
  */
 export function CoverageBar({ topics, className }: { topics: Pick<Topic, "status">[]; className?: string }) {
   const n = topics.length || 1;
   const revised = (topics.filter((t) => t.status === "revised").length / n) * 100;
-  const studied = (topics.filter((t) => t.status === "studied").length / n) * 100;
+  const studied = (topics.filter((t) => t.status === "studied").length / n) * 50; // counts half, as in coverage()
   return (
     <div className={cn("flex h-1.5 w-full overflow-hidden rounded-full bg-surface-3", className)} aria-hidden>
       <div className="subj-dot h-full transition-[width] duration-500 ease-snappy" style={{ width: `${revised}%` }} />
@@ -378,7 +389,8 @@ export function SyllabusStrip({ units, topics, className }: { units: Unit[]; top
       className={cn("flex h-2 w-full gap-1.5", className)}
     >
       {groups.map((g, i) => (
-        <div key={i} className="flex h-full gap-px sm:gap-[2px]" style={{ flexGrow: g.length, flexBasis: 0 }}>
+        // min-w-0 lets a big unit shrink to its share instead of pushing the strip past a phone's edge.
+        <div key={i} className="flex h-full min-w-0 gap-px overflow-hidden sm:gap-[2px]" style={{ flexGrow: g.length, flexBasis: 0 }}>
           {g.map((t) => <span key={t.id} className="strip-cell" data-s={t.status} title={`${t.title}: ${STATUS_WORD[t.status]}`} />)}
         </div>
       ))}
@@ -416,7 +428,7 @@ export function Tick({ done, onClick, label }: { done: boolean; onClick: () => v
       className={cn(
         // On touch screens an invisible ring widens the target to ~42px without changing how it looks.
         "relative flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] transition-colors duration-150 pointer-coarse:before:absolute pointer-coarse:before:-inset-2.5 pointer-coarse:before:content-['']",
-        done ? "border-good bg-good text-bg" : "border-line-strong hover:border-accent",
+        done ? "border-good bg-good text-bg" : "border-faint hover:border-accent",
         pop && "tick-done",
       )}
     >
@@ -498,7 +510,7 @@ export function Menu({ label, items, className }: { label: string; items: MenuIt
               it.onSelect();
             }}
             className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] outline-none pointer-coarse:py-2.5 [&_svg]:shrink-0",
+              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] focus-visible:-outline-offset-2 pointer-coarse:py-2.5 [&_svg]:shrink-0",
               it.danger ? "text-bad hover:bg-bad/10 focus-visible:bg-bad/10" : "hover:bg-surface-2 focus-visible:bg-surface-2",
             )}
           >

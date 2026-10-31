@@ -120,6 +120,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
   const [credits, setCredits] = useState(initial?.credits?.toString() ?? "");
   const [color, setColor] = useState(initial?.color ?? SUBJECT_COLORS[used % SUBJECT_COLORS.length]);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   // The picker hides subjects already added, but a typed name can still repeat one.
   const duplicate = !!name.trim() && taken.some((t) => subjectKey(t) === subjectKey(name));
 
@@ -128,6 +129,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
     // `required` lets a name of only spaces through; the guard also stops a double tap adding it twice.
     if (saving || !name.trim() || duplicate) return;
     setSaving(true);
+    setSaveError(false);
     const n = Number(credits);
     let code = shownCode.trim();
     // Saved before the course list arrived (it's slow on a cold start): look the code up now instead of saving none.
@@ -144,6 +146,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
       if (!initial || initial.name !== data.name || initial.code !== data.code) runDriveSync().catch(() => {});
     } catch {
       setSaving(false);
+      setSaveError(true);
     }
   };
 
@@ -159,7 +162,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
       </div>
       {/* Not <Field>: that's a <label>, and a label around these buttons made tapping "Colour" pick the first one. */}
       <div className="space-y-1.5">
-        <span id="subject-colour" className="block text-[13px] font-medium text-muted">Colour</span>
+        <span id="subject-colour" className="block text-[13px] font-medium text-text/85">Colour</span>
         <div role="radiogroup" aria-labelledby="subject-colour" className="flex flex-wrap gap-2.5">
           {SUBJECT_COLORS.map((c, i) => (
             <button
@@ -169,16 +172,17 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
               aria-label={`Colour ${i + 1}`}
               aria-checked={color === c}
               onClick={() => setColor(c)}
-              className="h-7 w-7 rounded-full transition-shadow duration-150 pointer-coarse:h-9 pointer-coarse:w-9"
-              // The chosen swatch gets a ring in its own colour, set off by a white gap.
+              className="subj-dot h-7 w-7 rounded-full transition-shadow duration-150 pointer-coarse:h-9 pointer-coarse:w-9"
+              // The chosen swatch gets a ring in its own colour, set off by a white gap. Both soften on the dark board like every subject dot.
               style={{
-                background: c,
-                boxShadow: color === c ? `0 0 0 2px var(--surface), 0 0 0 4px ${c}` : undefined,
+                ...subjectStyle(c),
+                boxShadow: color === c ? "0 0 0 2px var(--surface), 0 0 0 4px light-dark(var(--subj), color-mix(in oklab, var(--subj) 75%, var(--text)))" : undefined,
               }}
             />
           ))}
         </div>
       </div>
+      {saveError && <p className="text-sm text-bad" role="alert">Couldn&apos;t save the subject. Try again.</p>}
       <div className="flex justify-end pt-2"><Button type="submit" disabled={saving || !name.trim() || duplicate}>Save subject</Button></div>
     </form>
   );

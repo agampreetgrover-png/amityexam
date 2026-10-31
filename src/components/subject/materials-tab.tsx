@@ -230,6 +230,7 @@ function PasteForm({ subjectId, draft, onChange, onDone }: {
   const { name, kind, exam, text } = draft;
   const set = (patch: Partial<PasteDraft>) => onChange({ ...draft, ...patch });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   return (
     <form
       className="space-y-4"
@@ -237,6 +238,7 @@ function PasteForm({ subjectId, draft, onChange, onDone }: {
         e.preventDefault();
         if (saving || !text.trim()) return;
         setSaving(true);
+        setSaveError(false);
         try {
           await db.materials.add({
             subjectId, kind, fileName: name.trim() || "Pasted notes", text: text.trim(), createdAt: Date.now(),
@@ -246,6 +248,7 @@ function PasteForm({ subjectId, draft, onChange, onDone }: {
           onDone();
         } catch {
           setSaving(false);
+          setSaveError(true);
         }
       }}
     >
@@ -259,6 +262,7 @@ function PasteForm({ subjectId, draft, onChange, onDone }: {
         <Field label="Which exam"><ExamSelect value={exam} onChange={(m) => set({ exam: m })} /></Field>
       )}
       <Field label="Text"><Textarea value={text} onChange={(e) => set({ text: e.target.value })} className="min-h-56 text-xs" /></Field>
+      {saveError && <p className="text-sm text-bad" role="alert">Couldn&apos;t save this material. Try again.</p>}
       <div className="flex justify-end"><Button type="submit" disabled={saving || !text.trim()}>Save material</Button></div>
     </form>
   );

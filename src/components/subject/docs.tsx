@@ -72,8 +72,8 @@ export function DraftCard({ gen, busyTitle, onSave }: { gen: ReturnType<typeof u
         </Button>
       )}
     >
-      {canSave && <p className="mb-4 rounded-lg border border-mark/40 bg-mark-soft px-3.5 py-2.5 text-[13px]">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
-      <Markdown>{gen.text || "…"}</Markdown>
+      {canSave && <p className="mb-4 rounded-md border border-border bg-surface-2 px-3.5 py-2.5 text-[13px] text-muted">Writing stopped before the end. Save what&apos;s here, or generate again.</p>}
+      <div aria-busy={gen.busy}><Markdown>{gen.text || "…"}</Markdown></div>
     </Card>
   );
 }

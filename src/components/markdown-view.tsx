@@ -26,8 +26,26 @@ export default function MarkdownView({ children, className }: { children: string
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
-          // AI output can contain links; open them in a new tab without giving that page access to this one.
-          a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+          // AI output can contain links; open them in a new tab without giving that page access to this one. An
+          // instruction hidden in a Drive file could make the AI write a harmless-sounding link whose URL carries the
+          // student's question off to another site, so the real host always shows beside it. Anything that isn't a
+          // full web address (relative, //host, mailto) stays plain text. Parsed with no base, so nothing reads window.
+          a: ({ href, children }) => {
+            let host = "";
+            try {
+              const u = new URL(href ?? "");
+              if (u.protocol === "http:" || u.protocol === "https:") host = u.hostname;
+            } catch {
+              // not a full address
+            }
+            if (!host) return <span>{children}</span>;
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer">
+                {children}
+                <span className="text-xs text-muted"> ({host})</span>
+              </a>
+            );
+          },
           // Never load images: an instruction hidden in a Drive file could make the AI add one whose URL carries
           // the student's question off to another site. Show the alt text instead.
           img: ({ alt }) => (alt ? <span>[{alt}]</span> : null),

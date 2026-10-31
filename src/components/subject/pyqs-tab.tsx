@@ -71,7 +71,7 @@ export function PyqsTab({ subject, mode }: TabProps) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[17px] font-semibold tabular-nums">
-              <span>{scoped.length} {modeShort(mode)} paper{scoped.length === 1 ? "" : "s"}</span>
+              <span>{scoped.length} {modeShort(mode).toLowerCase()} paper{scoped.length === 1 ? "" : "s"}</span>
               <span>{shown.length} question{shown.length === 1 ? "" : "s"}</span>
               {years.size > 0 && <span className="font-normal text-muted">{years.size} year{years.size === 1 ? "" : "s"}</span>}
             </p>
@@ -113,11 +113,13 @@ export function PyqsTab({ subject, mode }: TabProps) {
       </div>
 
       {!scoped.length ? (
-        <Empty icon={<FileQuestion />} title={`No ${modeShort(mode)} papers yet`}>
+        <Empty icon={<FileQuestion />} title={`No ${modeShort(mode).toLowerCase()} papers yet`}>
           {unknown.length
             ? "Some papers don't say which exam they were for. Sort them below and they'll show up in the right exam."
-            : `Only ${modeShort(mode)} papers are shown here. Switch the exam mode to see the others.`}
+            : `Only ${modeShort(mode).toLowerCase()} papers are shown here. Switch the exam mode to see the others.`}
         </Empty>
+      ) : query.trim() && !shown.length ? (
+        <p className="py-6 text-sm text-muted">No questions match &ldquo;{query.trim()}&rdquo;.</p>
       ) : view === "year" ? (
         <YearView papers={scoped} questions={shown} topicById={topicById} searching={!!query.trim()} />
       ) : (
@@ -325,12 +327,7 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
-          Topics marked <HotLabel /> are asked most often.
-        </p>
-        {remap}
-      </div>
+      <div className="flex justify-end">{remap}</div>
 
       {g.units.map(({ unit, topics: stats }) => (
         <Section key={unit.id} title={unit.title}>
@@ -376,7 +373,7 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
 }
 
 /** Small navy tag for topics asked most often. */
-const HotLabel = () => <Badge className="bg-accent-soft text-accent">Asked often</Badge>;
+const HotLabel = () => <Badge className="bg-accent-soft text-accent">Most asked</Badge>;
 
 function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number, string> }) {
   const [open, setOpen] = useState(false);

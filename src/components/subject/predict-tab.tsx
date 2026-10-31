@@ -15,6 +15,7 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
   const online = useOnline();
   const gen = useStreamDoc();
+  const [ready, setReady] = useState("");
   const [viewing, setViewing] = useState<GeneratedDoc | null>(null);
   const [pendingTitle, setPendingTitle] = useState("");
 
@@ -29,6 +30,7 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
   const generate = async () => {
     if (!allPyqs) return;
     setViewing(null);
+    setReady("");
     // Label each paper so the model can count repeats across years.
     const context = pyqs.map((p) => `=== ${p.fileName} ===\n${p.text}`).join("\n\n").slice(0, MAX_CONTEXT);
     const title = `Prediction: ${subject.name}${mode ? `, ${modeShort(mode).toLowerCase()}` : ""} (${pyqs.length} paper${pyqs.length === 1 ? "" : "s"})`;
@@ -38,6 +40,7 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
     const doc = await saveDoc({ subjectId, kind: "predict", content, title });
     gen.reset();
     setViewing(doc);
+    setReady("Prediction ready");
   };
 
   return (
@@ -51,7 +54,9 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
             ? `Using ${pyqs.length} ${modeShort(mode).toLowerCase()} paper${pyqs.length === 1 ? "" : "s"}: ${pyqs.map((p) => p.fileName).join(", ")}${
                 skipped ? ` (${skipped} other paper${skipped === 1 ? "" : "s"} not for this exam, or of unknown type, left out)` : ""
               }`
-            : `No ${modeShort(mode)} papers yet. Sync Drive or upload some in Materials as “Previous year paper”. Until then, predictions use only the syllabus.${
+            : `No ${modeShort(mode).toLowerCase()} papers yet. Sync Drive or upload some in Materials as “Previous year paper”. ${
+                topics.length ? "Until then, predictions use only the syllabus." : "Add this exam's syllabus or a past paper to predict questions."
+              }${
                 skipped ? ` (${skipped} paper${skipped === 1 ? " is" : "s are"} for the other exam or of unknown type.)` : ""
               }`}
         </p>
@@ -61,6 +66,7 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
           )}
         </div>
         <div className="mt-4 max-w-prose space-y-2 empty:hidden"><OfflineHint online={online} /><AiErrorBox error={gen.error} /></div>
+        <p role="status" className="sr-only">{gen.busy ? "Writing your prediction" : ready}</p>
       </Section>
 
       <DraftCard

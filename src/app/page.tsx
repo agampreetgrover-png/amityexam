@@ -15,7 +15,7 @@ import { openCommandPalette } from "@/components/command-palette-loader";
 import { ModePill } from "@/components/mode-pill";
 import { CoverageBar, Panel, cn, subjectStyle } from "@/components/ui";
 
-const daysWord = (d: number) => (d === 0 ? "today" : d === 1 ? "day to go" : "days to go");
+const daysWord = (d: number) => (d === 1 ? "day to go" : "days to go");
 
 export default function TodayPage() {
   const t = useToday();
@@ -77,7 +77,7 @@ export default function TodayPage() {
         <div className="min-w-0">
           <p className="text-sm font-medium text-muted">{format(fromDay(t), "EEEE, d MMMM")}</p>
           <h1 className="mt-1.5 font-display text-[28px] leading-[1.1] md:text-[34px]">
-            {mode === "mid-term" ? "Mid-sem Dashboard" : mode === "end-term" ? "Major Exam Dashboard" : "Study Dashboard"}
+            {mode === "mid-term" ? "Mid-sem dashboard" : mode === "end-term" ? "Major exam dashboard" : "Study dashboard"}
           </h1>
           <ModePill className="mt-4 md:hidden" />
         </div>
@@ -108,12 +108,13 @@ export default function TodayPage() {
               style={subjectStyle(shownSubject?.color)}
               className="subj-tint subj-edge-thick count-in grid gap-x-10 gap-y-6 p-6 pl-8 sm:grid-cols-[auto_1fr] sm:items-start sm:p-7 sm:pl-10"
             >
-              {/* The countdown: the figure is the hero, its unit sat directly beneath so the two read as one. */}
+              {/* The countdown: the figure is the hero, its unit sat directly beneath so the two read as one.
+                  On exam day the word replaces the figure: a giant 0 reads as "nothing". */}
               <div className="shrink-0">
                 <span className="numeral subj-ink block text-[88px] md:text-[132px]">
-                  <span className={cn(shownDays <= 3 && "mark")}>{shownDays}</span>
+                  <span className={cn(shownDays <= 3 && "mark")}>{shownDays === 0 ? "Today" : shownDays}</span>
                 </span>
-                <span className="mt-1 block text-[13px] font-medium text-muted">{daysWord(shownDays)}</span>
+                {shownDays > 0 && <span className="mt-1 block text-[13px] font-medium text-muted">{daysWord(shownDays)}</span>}
               </div>
               <div className="min-w-0">
                 {/* Phones: the name takes the full width and the Exam kit button drops below it. */}
@@ -174,13 +175,13 @@ export default function TodayPage() {
                         on ? "subj-wash" : "subj-hover",
                       )}
                     >
-                      <span className="numeral text-[26px]"><span className={cn(d <= 3 && "mark")}>{d}</span></span>
+                      <span className="numeral text-[26px]"><span className={cn(d <= 3 && "mark")}>{d}</span><span className="sr-only"> {d === 0 ? "days, it's today" : d === 1 ? "day to go" : "days to go"},</span></span>
                       <span className="min-w-0">
                         <span className={cn("line-clamp-2 break-words text-sm", on ? "subj-ink font-semibold" : "font-medium")}>{s?.name}</span>
                         <span className="mt-0.5 block truncate text-[13px] text-muted">{s?.code ? `${s.code}, ` : ""}{examTypeLabel(e.type)}</span>
                       </span>
                       <span className="hidden text-[13px] tabular-nums text-muted sm:block">{prettyDay(e.date)}{e.time && `, ${e.time}`}</span>
-                      <span className="text-right text-[13px] font-medium tabular-nums text-muted">{examCoverage(e)}%</span>
+                      <span className="text-right text-[13px] font-medium tabular-nums text-muted">{examCoverage(e)}%<span className="sr-only"> of syllabus covered</span></span>
                     </button>
                   );
                 })}

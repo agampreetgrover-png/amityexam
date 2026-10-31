@@ -10,9 +10,10 @@ import { daysBetween, prettyDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
 import { examTypeLabel } from "@/lib/exams";
 import { examSyllabus, useExamMode } from "@/lib/mode";
+import { coverage } from "@/lib/stats";
 import { Markdown } from "@/components/markdown";
 import { toast } from "@/components/toast";
-import { Badge, Button, Card, Empty, Input, List, Select, Tick, cn, subjectStyle } from "@/components/ui";
+import { Button, Card, CoverageBar, Empty, Input, List, Select, Tick, cn, subjectStyle } from "@/components/ui";
 
 export default function ExamKitPage() {
   // The id is a query param, not a path segment, so this one prerendered (and precached) page serves every exam,
@@ -127,7 +128,15 @@ function ExamKit({ id }: { id: number }) {
             )}
             <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
               <dt className="text-[13px] leading-6 text-muted">Syllabus</dt>
-              <dd>{scope.length} topic{scope.length === 1 ? "" : "s"} in the syllabus. {notDone.length} not started, {weak.length} weak.</dd>
+              <dd>
+                {scope.length > 0 && (
+                  <div style={subjectStyle(subject?.color)} className="mb-1.5 flex items-center gap-3">
+                    <CoverageBar topics={scope} className="h-2 max-w-48" />
+                    <span className="shrink-0 text-[13px] text-muted"><strong className="font-semibold tabular-nums text-text">{coverage(scope)}%</strong> covered</span>
+                  </div>
+                )}
+                {scope.length} topic{scope.length === 1 ? "" : "s"} in the syllabus. {notDone.length} not started, {weak.length} weak.
+              </dd>
             </div>
           </dl>
           {exam.notes && <p className="mt-4 max-w-prose border-l-2 border-border pl-3 text-sm leading-relaxed">{exam.notes}</p>}
@@ -147,6 +156,18 @@ function ExamKit({ id }: { id: number }) {
             </ul>
           </Card>
         )}
+
+        <Card title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
+          {weak.length ? (
+            <List className="border-b-0">
+              {weak.map((t) => (
+                <li key={t.id} className="py-2.5 text-[15px]">
+                  <Link href={`/subjects/view?id=${exam.subjectId}`} className="min-w-0 break-words hover:text-accent hover:underline">{t.title}</Link>
+                </li>
+              ))}
+            </List>
+          ) : <p className="text-sm text-muted">No weak topics flagged.</p>}
+        </Card>
 
         <Card title="Checklist" action={<span className={cn("text-sm tabular-nums", checklist.length && packed === checklist.length ? "font-semibold text-good" : "text-muted")}>{packed} of {checklist.length} packed</span>}>
           <List className="border-t-0">
@@ -216,22 +237,9 @@ function ExamKit({ id }: { id: number }) {
           {sheet ? <Markdown>{sheet.content}</Markdown> : (
             <p className="text-sm text-muted">
               No cheat sheet yet. Generate one from{" "}
-              <Link className="font-medium text-accent underline underline-offset-2" href={`/subjects/view?id=${exam.subjectId}`}>{subject?.name ?? "the subject"}, Notes tab</Link>.
+              <Link className="font-medium text-accent underline underline-offset-2" href={`/subjects/view?id=${exam.subjectId}&tab=notes`}>{subject?.name ?? "the subject"}, Notes tab</Link>.
             </p>
           )}
-        </Card>
-
-        <Card title="Weak topics">
-          {weak.length ? (
-            <List className="border-b-0">
-              {weak.map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5 text-[15px]">
-                  <span className="min-w-0 break-words">{t.title}</span>
-                  <Badge className="shrink-0 bg-bad/10 text-bad">weak</Badge>
-                </li>
-              ))}
-            </List>
-          ) : <p className="text-sm text-muted">No weak topics flagged.</p>}
         </Card>
       </div>
     </>

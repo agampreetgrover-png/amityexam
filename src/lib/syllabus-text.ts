@@ -51,7 +51,7 @@ function splitList(line: string): string[] {
     } else cur += ch;
   }
   parts.push(cur);
-  return parts.map((p) => p.replace(MARKER, "").replace(/^(?:and|&)\s+/i, "").replace(/[.:]+$/, "").trim()).filter(Boolean);
+  return parts.map((p) => p.replace(MARKER, "").replace(/^(?:and|&)\s+/i, "").replace(/(?<![.:])[.:]+$/, "").trim()).filter(Boolean); // lookbehind: a dot leader is tried once, not from every dot
 }
 
 /**
@@ -69,7 +69,9 @@ export function parseSyllabus(text: string): SyllabusResult["units"] {
     const u = units[units.length - 1];
     if (!u.topics.some((t) => t.title.toLowerCase() === title.toLowerCase())) u.topics.push({ title });
   };
-  for (const raw of text.split(/\r?\n/)) {
+  // Every whitespace run becomes one space first, so each \s* in LOAD matches at most one character and
+  // a long run of padding (or BOM, form feed and the like from a PDF) can't make it backtrack quadratically.
+  for (const raw of text.replace(/[^\S\n]+/g, " ").split(/\r?\n/)) {
     if (/^[\s|:-]+$/.test(raw)) continue; // blank, or a Markdown table rule "|---|---|"
     // Photos and scans come back as Markdown tables: each cell is read like a line of its own.
     const cells = raw.replace(/\*\*|^#+\s*/g, "").split("|").map((c) => c.replace(MARKER, "").trim().replace(LOAD, "").trim()).filter(Boolean);

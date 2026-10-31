@@ -22,7 +22,8 @@
   --line-strong: light-dark(#cdd3df, #4c5954);
   --text: light-dark(#0e1630, #eaece6);
   --muted: light-dark(#5a6377, #b2beb9);
-  --faint: light-dark(#8b93a5, #8a9591);
+  /* Light value is the same grey-blue taken just dark enough to read as small text (4.5:1) on every paper surface. */
+  --faint: light-dark(#677084, #8a9591);
   --accent: light-dark(#3549d4, #a5c8ed);
   --accent-hover: light-dark(#2a3bb5, #bfdbf8);
   --accent-ink: light-dark(#ffffff, #111b28);
@@ -85,12 +86,9 @@ html {
   scrollbar-color: var(--line-strong) transparent;
 }
 
-/* Keep focused or scrolled-to items clear of the bottom nav on phones and the top bar elsewhere. */
+/* Keep focused or scrolled-to items clear of the bottom nav (and the home indicator under it) on phones. */
 @media (max-width: 767px) {
-  html { scroll-padding-bottom: 5rem; }
-}
-@media (min-width: 768px) {
-  html { scroll-padding-top: 4.5rem; }
+  html { scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
 }
 
 body {
@@ -269,7 +267,7 @@ body {
   .strip-cell {
     height: 100%;
     flex: 1 1 0;
-    min-width: 2px;
+    min-width: 1px;
     border-radius: 2px;
     background: var(--surface-3);
     transition: background-color 360ms var(--ease-snappy);
@@ -349,6 +347,10 @@ details[open] > summary .chev { transform: rotate(90deg); }
     animation-delay: 0ms !important;
     transition-duration: 1ms !important;
   }
+  /* Pseudo-elements the rule above doesn't reach. One rule each, so a browser that doesn't know one drops only that line. */
+  details::details-content { transition-duration: 1ms !important; }
+  .select-chevron::picker(select) { transition-duration: 1ms !important; }
+  dialog.sheet::backdrop { transition-duration: 1ms !important; }
 }
 
 /* Rendered AI markdown */

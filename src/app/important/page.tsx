@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronDown, ExternalLink, Flame } from "lucide-react";
+import { ChevronDown, ChevronRight, Flame } from "lucide-react";
 import { useMemo, useState } from "react";
 import { db, getSettings } from "@/lib/db";
 import { modeShort } from "@/lib/mode";
@@ -10,7 +10,7 @@ import { importantTopics, type ImportantTopic } from "@/lib/pyq/group";
 import { QuestionLine } from "@/components/pyq-question-line";
 import { Badge, Button, Empty, PageHeader, Panel, Select, cn, subjectStyle, tableHead } from "@/components/ui";
 
-const link = "text-accent underline underline-offset-2";
+const link = "font-medium text-accent underline underline-offset-2";
 // Enough to open the page quickly on a big question bank; the rest is a tap away.
 const FIRST_SHOWN = 60;
 
@@ -94,9 +94,6 @@ export default function ImportantTopicsPage() {
           <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[15px] tabular-nums text-muted">
             <span><span className="font-semibold text-text">{rows.length}</span> topic{rows.length === 1 ? "" : "s"} asked</span>
             <span><span className="font-semibold text-text">{totalAsked}</span> question{totalAsked === 1 ? "" : "s"}</span>
-            <span className="inline-flex items-center gap-1.5">
-              <HotBadge /> asked most often
-            </span>
           </p>
 
           <Panel>
@@ -127,8 +124,8 @@ export default function ImportantTopicsPage() {
   );
 }
 
-/** Navy tag for the most-asked topics, matching the per-subject topic view. */
-const HotBadge = () => <Badge className="bg-accent-soft text-accent">Hot</Badge>;
+/** Navy tag for the most-asked topics, worded like the "Most asked" filter on Zero prep. */
+const HotBadge = () => <Badge className="bg-accent-soft text-accent">Most asked</Badge>;
 
 function Row({ rank, stat, showSubject }: { rank: number; stat: ImportantTopic; showSubject: boolean }) {
   const [open, setOpen] = useState(false);
@@ -154,7 +151,7 @@ function Row({ rank, stat, showSubject }: { rank: number; stat: ImportantTopic; 
             {showSubject && (
               // Its own line on phones, cut to one line: a long subject name otherwise wraps three times.
               <span className="flex w-full min-w-0 items-center gap-1.5 sm:inline-flex sm:w-auto">
-                <span aria-hidden className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: subject.color }} />
+                <span aria-hidden className="subj-dot h-2.5 w-2.5 flex-none rounded-full" />
                 <span className="truncate">{subject.name}</span>
               </span>
             )}
@@ -175,9 +172,10 @@ function Row({ rank, stat, showSubject }: { rank: number; stat: ImportantTopic; 
           </ul>
           <Link
             href={`/subjects/view?id=${subject.id}&tab=pyqs`}
-            className="mt-2.5 inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:underline"
+            className="group mt-2.5 inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:underline"
           >
-            Open in {subject.name} PYQs <ExternalLink size={13} />
+            Open in {subject.name} PYQs{" "}
+            <ChevronRight size={14} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
           </Link>
         </div>
       )}

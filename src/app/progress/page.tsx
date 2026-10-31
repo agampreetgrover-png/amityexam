@@ -6,13 +6,14 @@ import Link from "next/link";
 import { AlertTriangle, BookOpen } from "lucide-react";
 import { useEffect, useState } from "react";
 import { StatTile } from "@/components/progress/stat-tile";
-import { Card, Empty, PageHeader, Panel, Section, Select, cn, tableHead } from "@/components/ui";
+import { Card, Empty, PageHeader, Panel, Section, Select, cn, subjectStyle, tableHead } from "@/components/ui";
 import { db, getSettings } from "@/lib/db";
 import { topicsInScope } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
 
 // recharts is large and only used here: it loads alongside the stats, and placeholders hold its space until it's in.
-const chartSpace = () => <div className="h-60 w-full animate-pulse rounded-lg bg-surface-2" />;
+// h matches the chart's plot height; mb-9 holds the "Show as table" row each chart adds underneath.
+const chartSpace = (h = 240) => <div style={{ height: h }} className="mb-9 w-full animate-pulse rounded-lg bg-surface-2" />;
 
 type Charts = typeof import("@/components/progress/charts");
 let loadedCharts: Charts | null = null; // kept for the session, so coming back to Progress draws the charts at once
@@ -40,7 +41,7 @@ function useCharts() {
   return charts;
 }
 
-const link = "text-accent underline underline-offset-2";
+const link = "font-medium text-accent underline underline-offset-2";
 
 export default function ProgressPage() {
   const [quizSubject, setQuizSubject] = useState<number | "all">("all");
@@ -84,7 +85,9 @@ export default function ProgressPage() {
   // A subject with no syllabus in this mode would show a misleading 0%; it's listed under the chart instead.
   const withSyllabus = subjects.filter((s) => scoped.some((x) => x.subjectId === s.id));
   const withoutSyllabus = subjects.filter((s) => !scoped.some((x) => x.subjectId === s.id));
-  const coverageData = withSyllabus.map((s) => ({ name: s.name, color: s.color, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }));
+  const coverageData = withSyllabus
+    .map((s) => ({ name: s.name, color: s.color, value: coverage(scoped.filter((x) => x.subjectId === s.id)) }))
+    .sort((a, b) => a.value - b.value); // least-covered first: the chart answers "what needs work"
 
   const quizData = quizzes
     .filter((q) => quizSubject === "all" || q.subjectId === quizSubject)
@@ -96,6 +99,11 @@ export default function ProgressPage() {
 
   const weak = scoped.filter((x) => x.weak);
   const subjectName = new Map(subjects.map((s) => [s.id!, s]));
+  // The figure that flags a topic weak: its last 3 quiz scores, as refreshWeak averages them (quizzes are oldest first).
+  const quizAvg = (id: number) => {
+    const s = quizzes.filter((q) => q.topicIds.includes(id)).slice(-3).map((q) => q.score);
+    return s.length ? Math.round(s.reduce((a, b) => a + b, 0) / s.length) : null;
+  };
   const seasonName = mode === "mid-term" ? "mid-sem" : "major";
 
   return (
@@ -103,7 +111,7 @@ export default function ProgressPage() {
       <PageHeader title="Progress" sub="How your preparation is going" />
       <div className="space-y-8">
         <div className="grid grid-cols-2 gap-4">
-          <StatTile tone="accent" icon={<BookOpen />} label="Topics revised" value={`${revised}/${scoped.length}`} sub={`${scoped.filter((x) => x.status === "studied").length} studied, not yet revised`} />
+          <StatTile tone="accent" icon={<BookOpen />} label="Topics revised" value={<>{revised}<span className="text-[0.55em] tracking-normal text-muted">/{scoped.length}</span></>} sub={`${scoped.filter((x) => x.status === "studied").length} studied, not yet revised`} />
           <StatTile
             tone="warn"
             icon={<AlertTriangle />}
@@ -113,9 +121,41 @@ export default function ProgressPage() {
           />
         </div>
 
+        <Section title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
+          {weak.length ? (
+            <Panel>
+              <div className={cn(tableHead, "flex items-center gap-3 px-4 py-2.5 sm:px-5")}>
+                <span aria-hidden className="w-[3px] shrink-0" />
+                <span className="flex-1">Topic</span>
+                <span className="hidden w-40 sm:block">Subject</span>
+                <span className="w-20 text-right">Quiz avg</span>
+              </div>
+              <ul className="divide-y divide-border">
+                {weak.map((x) => {
+                  const s = subjectName.get(x.subjectId);
+                  const avg = quizAvg(x.id!);
+                  return (
+                    <li key={x.id} className="flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-surface-2/60 sm:px-5">
+                      <span aria-hidden className="subj-dot h-5 w-[3px] shrink-0 rounded-full" style={subjectStyle(s?.color)} />
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/subjects/view?id=${x.subjectId}`} className="line-clamp-2 break-words font-medium text-text hover:text-accent hover:underline sm:block sm:truncate">{x.title}</Link>
+                        <p className="truncate text-[13px] text-muted sm:hidden">{s?.name}</p>
+                      </div>
+                      <span className="hidden w-40 truncate text-[13px] text-muted sm:block">{s?.name}</span>
+                      <span className="w-20 shrink-0 text-right text-[13px] tabular-nums text-muted">{avg == null ? "–" : `${avg}%`}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Panel>
+          ) : (
+            <p className="text-sm text-muted">No weak topics flagged. Topics whose recent quiz average is under 60% show up here.</p>
+          )}
+        </Section>
+
         <div className="grid gap-6 lg:grid-cols-2">
           <Card title="Syllabus coverage">
-            {scoped.length ? (charts ? <charts.CoverageChart data={coverageData} /> : chartSpace()) : <Empty title="No topics yet">Add {mode ? "this exam's" : "a"} syllabus to a subject.</Empty>}
+            {scoped.length ? (charts ? <charts.CoverageChart data={coverageData} /> : chartSpace(Math.max(120, coverageData.length * 40 + 40))) : <Empty title="No topics yet">Add {mode ? "this exam's" : "a"} syllabus to a subject.</Empty>}
             <p className="mt-2 text-[13px] text-muted">
               {mode && `${mode === "mid-term" ? "Mid-sem" : "Major"} syllabus only. `}Studied topics count half. Revised topics count in full.
             </p>
@@ -138,40 +178,9 @@ export default function ProgressPage() {
               </Select>
             }
           >
-            {quizData.length ? (charts ? <charts.QuizTrendChart data={quizData} /> : chartSpace()) : <Empty title="No quizzes taken">Take a practice quiz from a subject&apos;s Quiz tab.</Empty>}
+            {quizData.length ? (charts ? <charts.QuizTrendChart data={quizData} connect={quizSubject !== "all"} /> : chartSpace()) : <Empty title="No quizzes taken">Take a practice quiz from a subject&apos;s Quiz tab.</Empty>}
           </Card>
         </div>
-
-        <Section title="Weak topics" action={weak.length > 0 && <span className="text-[13px] tabular-nums text-muted">{weak.length}</span>}>
-          {weak.length ? (
-            <Panel>
-              <div className={cn(tableHead, "flex items-center gap-3 px-4 py-2.5 sm:px-5")}>
-                <span aria-hidden className="w-[3px] shrink-0" />
-                <span className="flex-1">Topic</span>
-                <span className="hidden w-40 sm:block">Subject</span>
-                <span className="w-20 text-right">Confidence</span>
-              </div>
-              <ul className="divide-y divide-border">
-                {weak.map((x) => {
-                  const s = subjectName.get(x.subjectId);
-                  return (
-                    <li key={x.id} className="flex items-center gap-3 px-4 py-3 text-sm transition-colors duration-150 hover:bg-surface-2/60 sm:px-5">
-                      <span aria-hidden className="h-5 w-[3px] shrink-0 rounded-full" style={{ background: s?.color }} />
-                      <div className="min-w-0 flex-1">
-                        <Link href={`/subjects/view?id=${x.subjectId}`} className="line-clamp-2 break-words font-medium text-text hover:text-accent hover:underline sm:block sm:truncate">{x.title}</Link>
-                        <p className="truncate text-[13px] text-muted sm:hidden">{s?.name}</p>
-                      </div>
-                      <span className="hidden w-40 truncate text-[13px] text-muted sm:block">{s?.name}</span>
-                      <span className="w-20 shrink-0 text-right text-[13px] tabular-nums text-muted">{x.confidence}/5</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Panel>
-          ) : (
-            <p className="text-sm text-muted">No weak topics flagged. Low confidence or quiz scores under 60% show up here.</p>
-          )}
-        </Section>
       </div>
     </>
   );

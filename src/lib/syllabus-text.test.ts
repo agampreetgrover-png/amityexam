@@ -78,4 +78,11 @@ describe("parseSyllabus", () => {
       ["Unit 2: Memory", ["Paging"]],
     ]);
   });
+
+  it("stays fast on long whitespace runs and dot leaders from a PDF", () => {
+    const start = Date.now();
+    const units = titles(`Unit 1\nPaging 10${"\uFEFF".repeat(100_000)}x\nThrashing${".".repeat(100_000)}`);
+    expect(Date.now() - start).toBeLessThan(1000);
+    expect(units).toEqual([["Unit 1", ["Paging 10 x", "Thrashing"]]]);
+  });
 });

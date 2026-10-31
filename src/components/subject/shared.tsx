@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { WifiOff } from "lucide-react";
 import { db } from "@/lib/db";
 import type { ExamMode, Material, Subject, Topic, Unit } from "@/lib/types";
@@ -20,6 +20,8 @@ const MAX_TOPICS = 150;
 export const MAX_CONTEXT = 400_000;
 export const MAX_TEXT = 100_000;
 const MAX_TITLE = 300;
+/** Each field of a written answer sent for marking: the question, the model answer and the student's answer. */
+export const MAX_ANSWER = 5000;
 
 /** Topic titles for an AI request, within the schema's caps (150 titles, 300 characters each). */
 export const topicTitles = (topics: Pick<Topic, "title">[], max = MAX_TOPICS) => topics.slice(0, max).map((t) => t.title.slice(0, MAX_TITLE));
@@ -55,7 +57,7 @@ export interface TabProps {
 
 /** Topic picker grouped by unit; value "" means the whole subject. */
 export function TopicSelect({
-  units, topics, value, onChange, allLabel = "Whole subject", className,
+  units, topics, value, onChange, allLabel = "Whole subject", className, label,
 }: {
   units: Unit[];
   topics: Topic[];
@@ -63,9 +65,11 @@ export function TopicSelect({
   onChange: (v: string) => void;
   allLabel?: string;
   className?: string;
+  /** Names the picker when it isn't inside a <Field>, whose label already does. */
+  label?: string;
 }) {
   return (
-    <Select value={value} onChange={(e) => onChange(e.target.value)} className={className}>
+    <Select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} className={className}>
       <option value="">{allLabel}</option>
       {units.map((u) => (
         <optgroup key={u.id} label={u.title}>
@@ -78,11 +82,11 @@ export function TopicSelect({
   );
 }
 
-export const OfflineHint = ({ online }: { online: boolean }) =>
+export const OfflineHint = ({ online, children }: { online: boolean; children?: ReactNode }) =>
   online ? null : (
     <p className="flex items-start gap-2.5 rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text">
       <WifiOff size={16} className="mt-0.5 shrink-0 text-accent" aria-hidden />
-      You&apos;re offline. AI features are paused until you reconnect.
+      <span>{children ?? <>You&apos;re offline. AI features are paused until you reconnect.</>}</span>
     </p>
   );
 

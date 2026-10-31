@@ -17,6 +17,7 @@ import type { ChatSource, Subject } from "@/lib/types";
 import { useToday } from "@/lib/use-today";
 import { AiErrorBox } from "../ai-error";
 import { Markdown } from "../markdown";
+import { Thinking } from "../thinking";
 import { isAbort, MAX_TEXT, OfflineHint, topicTitles, useOnline } from "../subject/shared";
 import { toast } from "../toast";
 import { Button, Empty, Input, Segmented, Select, Textarea, cn, subjectStyle } from "../ui";
@@ -283,7 +284,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
       <div className="w-full">
         <Empty icon={<BookOpen />} title="Add a subject first">
           <p className="text-sm text-muted">
-            The chat answers from each subject&apos;s notes and past papers. <Link href="/subjects" className="text-accent underline underline-offset-2">Add your subjects</Link>, and sync or upload their files.
+            The chat answers from each subject&apos;s notes and past papers. <Link href="/subjects" className="font-medium text-accent underline underline-offset-2">Add your subjects</Link>, and sync or upload their files.
           </p>
         </Empty>
       </div>
@@ -320,13 +321,14 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           </Button>
           {base.chat ? (
             renaming !== null ? (
-              <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={(e) => { e.preventDefault(); rename(); }}>
+              <form className="flex min-w-0 grow basis-56 items-center gap-1 sm:basis-0" onSubmit={(e) => { e.preventDefault(); rename(); }}>
                 <Input autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setRenaming(null)} aria-label="Chat name" className="h-8 min-w-0 flex-1 text-[14px]" />
                 <Button type="submit" variant="ghost" size="sm" aria-label="Save name"><Check size={15} /></Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setRenaming(null)} aria-label="Cancel"><X size={15} /></Button>
               </form>
             ) : (
-              <div className="flex min-w-0 flex-1 items-center gap-2">
+              // A real basis on phones, so the style menu drops to a line of its own instead of crushing the chat's name.
+              <div className="flex min-w-0 grow basis-56 items-center gap-2 sm:basis-0">
                 <span aria-hidden className="subj-dot h-2 w-2 shrink-0 rounded-full" />
                 <span className="min-w-0 truncate text-[14.5px] font-semibold">{base.chat.title}</span>
                 <Button variant="ghost" size="sm" onClick={() => setRenaming(base.chat!.title)} aria-label="Rename chat" disabled={busy}><Pencil size={14} /></Button>
@@ -340,7 +342,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           )}
           {/* Four buttons need a row of their own on a phone, and crowd out the chat's name beside the history on a laptop,
               so a menu stands in for them there. */}
-          <Select value={style} onChange={(e) => setStyle(e.target.value as Style)} aria-label="Answer style" className="h-9 w-auto shrink-0 sm:hidden md:inline-block md:h-8 xl:hidden">
+          <Select value={style} onChange={(e) => setStyle(e.target.value as Style)} aria-label="Answer style" className="ml-auto h-9 w-auto shrink-0 sm:hidden md:inline-block md:h-8 xl:hidden">
             {STYLES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </Select>
           <Segmented size="sm" label="Answer style" value={style} onChange={setStyle} options={STYLES} className="hidden sm:ml-auto sm:inline-flex md:hidden xl:inline-flex" />
@@ -349,17 +351,20 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
         {/* What answers are grounded in, so the student knows when to sync or upload more. A saved chat names its
             subject first; a new one shows it in the picker above. */}
         {scope && (
-          // One line on desktop, the subject name giving way first, so the bar stays level with the history's.
+          // One line on desktop, so the bar stays level with the history's. The countdown comes straight after the
+          // subject and never shrinks; the subject name and the counts give way instead.
           <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted md:mb-0 md:flex-nowrap md:whitespace-nowrap">
             {base.chat && <span className="min-w-0 max-w-full truncate text-text/80">{subject?.name}</span>}
-            <span className="inline-flex shrink-0 items-center gap-1"><FileText size={13} aria-hidden />{scope.notes.length ? `${scope.notes.length} notes file${scope.notes.length === 1 ? "" : "s"}` : "No notes yet"}</span>
-            <span className="inline-flex shrink-0 items-center gap-1">
-              <ScrollText size={13} aria-hidden />
-              {scope.questions.length
-                ? `${scope.questions.length} past-paper question${scope.questions.length === 1 ? "" : "s"}${mode && scope.ownSeason ? ` (${modeShort(mode)})` : ""}`
-                : scope.rawPapers.length ? `${scope.rawPapers.length} past paper${scope.rawPapers.length === 1 ? "" : "s"} being read` : "No past papers yet"}
-            </span>
             {days != null && <span className="subj-ink shrink-0 font-medium">{days === 0 ? "Exam today" : days === 1 ? "Exam tomorrow" : `Exam in ${days} days`}</span>}
+            <span className="inline-flex min-w-0 items-center gap-1"><FileText size={13} aria-hidden className="shrink-0" /><span className="truncate">{scope.notes.length ? `${scope.notes.length} notes file${scope.notes.length === 1 ? "" : "s"}` : "No notes yet"}</span></span>
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <ScrollText size={13} aria-hidden className="shrink-0" />
+              <span className="truncate">
+                {scope.questions.length
+                  ? `${scope.questions.length} past-paper question${scope.questions.length === 1 ? "" : "s"}${mode && scope.ownSeason ? ` (${modeShort(mode)})` : ""}`
+                  : scope.rawPapers.length ? `${scope.rawPapers.length} past paper${scope.rawPapers.length === 1 ? "" : "s"} being read` : "No past papers yet"}
+              </span>
+            </span>
           </p>
         )}
       </div>
@@ -414,8 +419,15 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
       {/* On phones the composer sticks above the bottom bar, so it's reachable without scrolling past the header. */}
       {/* The strip below it, down to the bottom bar, is painted too, so the conversation doesn't show through the gap. */}
       {/* Desktop: the foot of the sheet, ruled off, in the same reading column as the conversation. */}
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 border-t border-border bg-bg pb-1 pt-2 after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-bg md:static md:mt-0 md:bg-transparent md:px-8 md:pb-5 md:pt-4 md:after:hidden">
+      <div data-composer className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 mt-3 border-t border-border bg-bg pb-1 pt-2 after:absolute after:inset-x-0 after:top-full after:h-4 after:bg-bg md:static md:mt-0 md:bg-transparent md:px-8 md:pb-5 md:pt-4 md:after:hidden">
         <div className="mx-auto max-w-[46rem] space-y-2">
+          {/* For screen readers: once when words start arriving, once when the answer is done. Here, not in the
+              conversation, because this stays mounted; while it waits, Thinking's own status speaks. Only an answer
+              saved after the question this thread sent counts, so opening a saved chat, or a stop before any words,
+              says nothing. */}
+          <p role="status" className="sr-only">
+            {busy ? (streaming.text ? "Writing the answer" : "") : sent != null && last?.role === "assistant" && (last.id ?? 0) > sent ? "Answer finished" : ""}
+          </p>
           <OfflineHint online={online} />
           <AiErrorBox error={error} />
           {offSubject && (
@@ -471,25 +483,6 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
  * Until the first words arrive: what's happening and, once it's a while, for how long. Free models can sit
  * for half a minute before they start, and a bare "…" looked like the chat had stopped.
  */
-function Thinking() {
-  const [secs, setSecs] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setSecs((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const stage = secs < 3 ? "Reading your notes and past papers" : secs < 12 ? "Writing your answer" : "Still writing. Free AI models can be slow to start";
-  return (
-    // Set where the answer will start, on the page like the answer itself.
-    <div className="flex justify-start px-1">
-      <div role="status" className="flex items-center gap-3 text-[14px] text-muted">
-        <span aria-hidden className="thinking-dots"><span /><span /><span /></span>
-        <span>{stage}</span>
-        {secs >= 5 && <span aria-hidden className="tabular-nums text-faint">{secs}s</span>}
-      </div>
-    </div>
-  );
-}
-
 function Bubble({ role, content, live }: { role: "user" | "assistant"; content: string; live?: boolean }) {
   const [copied, setCopied] = useState(false);
   if (role === "user") {
@@ -512,7 +505,7 @@ function Bubble({ role, content, live }: { role: "user" | "assistant"; content: 
   // A bubble around a long answer with tables and code was a box inside a box and narrowed every line.
   return (
     <div className="group min-w-0 px-1">
-      <div>
+      <div aria-busy={live || undefined}>
         <Markdown>{content}</Markdown>
         {/* Just the copy button: the list of files and papers behind each answer was clutter. The answer cites them itself. */}
         {!live && (

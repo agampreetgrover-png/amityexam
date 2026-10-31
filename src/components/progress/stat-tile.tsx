@@ -5,7 +5,7 @@ import { cn } from "@/components/ui";
 const tones = {
   accent: "bg-accent-soft text-accent",
   good: "bg-good/10 text-good",
-  warn: "bg-mark-soft text-warn",
+  warn: "bg-warn/10 text-warn",
 };
 type Tone = keyof typeof tones;
 
@@ -17,7 +17,7 @@ export function StatTile({ label, value, sub, icon, tone = "accent" }: { label: 
         <p className="min-w-0 text-[13px] font-medium text-muted">{label}</p>
         {icon && <span aria-hidden className={cn("-m-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg [&_svg]:h-4 [&_svg]:w-4", tones[tone])}>{icon}</span>}
       </div>
-      <p className="numeral mt-4 break-words text-[36px] text-text sm:text-[44px]">{value}</p>
+      <p className="numeral mt-4 whitespace-nowrap text-[36px] text-text sm:text-[44px]">{value}</p>
       {sub && <p className="mt-2 text-[13px] text-muted [&_a:hover]:text-accent">{sub}</p>}
     </div>
   );

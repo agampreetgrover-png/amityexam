@@ -1,4 +1,4 @@
-import { listFolder, type CrawledFile } from "@/lib/drive/list";
+import { claimFolder, listFolder, newCrawlRun, type CrawledFile } from "@/lib/drive/list";
 import { DEFAULT_DRIVE_SOURCES } from "@/lib/drive/sources";
 import { readLimited } from "@/lib/read-limited";
 
@@ -29,7 +29,11 @@ async function candidates(sourceIds: string[]): Promise<Candidate[]> {
   if (hit && Date.now() - hit.at < TTL) return hit.list;
   const out: Candidate[] = [];
   let complete = true; // a list missing a folder that failed to load isn't kept, so the next request tries again
+  // Folder budget like the sync's, so a source with thousands of subfolders can't fan out without end.
+  // Folders skipped for budget don't clear `complete`, so a capped list is still cached.
+  const run = newCrawlRun(200);
   for (const source of sourceIds) {
+    if (!claimFolder(run, source)) continue;
     let top;
     try {
       top = await listFolder(source);
@@ -39,7 +43,7 @@ async function candidates(sourceIds: string[]): Promise<Candidate[]> {
     }
     for (const e of top) if (e.type === "file" && isSheet(e.name)) out.push({ ...e, path: [], source });
     // Subfolders are read 8 at a time; one unreadable folder is skipped.
-    const folders = top.filter((e) => e.type === "folder");
+    const folders = top.filter((e) => e.type === "folder" && claimFolder(run, e.id));
     for (let i = 0; i < folders.length; i += 8) {
       const batch = await Promise.all(
         folders.slice(i, i + 8).map((f) =>

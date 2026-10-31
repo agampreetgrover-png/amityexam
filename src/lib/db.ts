@@ -4,6 +4,7 @@ import {
   type Chat, type ChatMessage, type DriveFile, type Exam, type PyqQuestion, type GeneratedDoc, type Material,
   type QuizAttempt, type Settings, type Subject, type Topic, type Unit,
 } from "./types";
+import { MAX_DRIVE_SOURCES } from "./drive/sources";
 
 class ExamDB extends Dexie {
   subjects!: EntityTable<Subject, "id">;
@@ -92,7 +93,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v ===
 const LEGACY_TABLES = new Set(["flashcards", "sessions"]);
 
 /** Check a parsed backup before anything is cleared: known tables only, arrays of plain objects, sane size. */
-function validateBackup(backup: unknown): Record<string, Record<string, unknown>[]> {
+export function validateBackup(backup: unknown): Record<string, Record<string, unknown>[]> {
   if (!isPlainObject(backup) || backup.app !== "amityexams" || !isPlainObject(backup.data)) {
     throw new Error("Not an Amity Exams backup file");
   }
@@ -126,6 +127,17 @@ function validateBackup(backup: unknown): Record<string, Record<string, unknown>
     e.checklist = Array.isArray(e.checklist) ? e.checklist.filter((c) => isPlainObject(c) && typeof c.text === "string") : [];
   }
   for (const s of settings ?? []) if (s.examMode !== undefined && s.examMode !== "mid-term" && s.examMode !== "end-term") delete s.examMode; // asked again on launch
+  // Drive settings and the sync map over these, so a wrong shape would crash Settings (and its import button) for good.
+  const isFolderId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{10,}$/.test(v);
+  for (const s of settings ?? []) {
+    if (s.driveSources === undefined) continue;
+    if (Array.isArray(s.driveSources)) {
+      s.driveSources = s.driveSources.filter((x) => isPlainObject(x) && isFolderId(x.id) && typeof x.label === "string").slice(0, MAX_DRIVE_SOURCES);
+    } else delete s.driveSources; // back to the default folders; [] would mean the student removed them all
+  }
+  for (const r of (data.subjects ?? []) as Record<string, unknown>[]) {
+    if (r.driveFolderIds !== undefined) r.driveFolderIds = Array.isArray(r.driveFolderIds) ? r.driveFolderIds.filter(isFolderId) : [];
+  }
   return data as Record<string, Record<string, unknown>[]>;
 }
 

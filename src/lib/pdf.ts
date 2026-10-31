@@ -53,7 +53,7 @@ async function extractText(file: File): Promise<string> {
     } finally {
       await task.destroy();
     }
-    const text = pages.join("\n\n").replace(/[ \t]+/g, " ").trim();
+    const text = pages.join("\n\n").replace(/[^\S\n]+/g, " ").trim();
     if (!text) throw new Error(`${SCANNED} Paste the text instead.`);
     return text;
   }

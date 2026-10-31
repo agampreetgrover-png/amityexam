@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, PenLine, Sparkles, XCircle } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
@@ -12,7 +12,7 @@ import type { QuizAttempt, QuizQuestion } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Badge, Button, Card, Empty, Field, List, Panel, Progress, Section, Select, Textarea, cn } from "../ui";
 import { matchOption, norm } from "./quiz-match";
-import { noteTexts, OfflineHint, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
+import { MAX_ANSWER, noteTexts, OfflineHint, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
 type Difficulty = "easy" | "medium" | "hard";
 interface Graded { score: number; feedback?: string }
@@ -38,6 +38,10 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
   const [graded, setGraded] = useState<Graded[] | null>(null);
   // A past attempt opened from the list, to see which answers were wrong.
   const [reviewing, setReviewing] = useState<QuizAttempt | null>(null);
+  const qRef = useRef<HTMLParagraphElement>(null);
+
+  // Moves focus to each new question so screen readers announce it, and so focus isn't lost when Next turns into Submit.
+  useEffect(() => { qRef.current?.focus(); }, [page, questions]);
 
   const materials = useMaterials(subjectId);
   const attempts = useLiveQuery(() => db.quizzes.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]);
@@ -55,8 +59,10 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
       const context = retrieve(noteTexts(materials), chosen.map((t) => t.title).join(" "), 12_000);
       const res = await aiJson("quiz", { subject: subject.name, topics: topicTitles(chosen), context, count, difficulty, ...aiModeFields(mode, units) });
       // MCQs need options and an answer that is one of them; otherwise grade them as short answers instead.
+      // Kept to the number asked for, so marking never sends more answers than the grade request allows.
       const qs: QuizQuestion[] = res.questions
         .filter((q) => q.question.trim())
+        .slice(0, count)
         .map((q) => {
           const options = [...new Set((q.options ?? []).map((o) => o.trim()).filter(Boolean))];
           const answer = q.type === "mcq" && options.length >= 2 ? matchOption(q.answer, options) : null;
@@ -86,8 +92,10 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
       // Short answers: AI grading with partial credit; blank answers stay 0.
       const shortIdx = questions.map((q, i) => (q.type === "short" && responses[i].trim() ? i : -1)).filter((i) => i >= 0);
       if (shortIdx.length) {
+        // Clipped to the request's limits, so one overlong model answer can't make the whole quiz unmarkable.
+        const clip = (s: string) => s.slice(0, MAX_ANSWER);
         const res = await aiJson("grade", {
-          answers: shortIdx.map((i) => ({ question: questions[i].question, expected: questions[i].answer, given: responses[i] })),
+          answers: shortIdx.map((i) => ({ question: clip(questions[i].question), expected: clip(questions[i].answer), given: clip(responses[i]) })),
         });
         // Results are matched by position; a reply missing one would shift every later score onto the wrong answer.
         if (res.results.length !== shortIdx.length) throw new AiError("The AI marked the wrong number of answers. Submit again to re-mark.");
@@ -164,6 +172,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
   if (questions) {
     const q = questions[page];
     const answered = responses.filter((r) => r.trim()).length;
+    const blank = questions.length - answered;
     const set = (v: string) => setResponses((r) => r.map((x, i) => (i === page ? v : x)));
     // Choose-one answers are marked here; only written answers need the AI, so an all-MCQ quiz can be submitted offline.
     const needsAi = questions.some((x, i) => x.type === "short" && responses[i]?.trim());
@@ -176,11 +185,11 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         <Progress value={((page + 1) / questions.length) * 100} />
         <Card className="sm:p-6">
           <div className="mb-5 flex items-start justify-between gap-3">
-            <p className="text-[18px] font-medium leading-snug">{q.question}</p>
+            <p id={`q-${page}`} ref={qRef} tabIndex={-1} className="text-[18px] font-medium leading-snug outline-none">{q.question}</p>
             <Badge className="shrink-0">{q.type === "mcq" ? "Choose one" : "Short answer"}</Badge>
           </div>
           {q.type === "mcq" ? (
-            <div className="space-y-2">
+            <div role="radiogroup" aria-labelledby={`q-${page}`} className="space-y-2">
               {q.options!.map((o, oi) => (
                 <label
                   key={oi}
@@ -197,15 +206,19 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
               ))}
             </div>
           ) : (
-            <Textarea placeholder="Write your answer" value={responses[page]} onChange={(e) => set(e.target.value)} className="min-h-32" />
+            <Textarea aria-labelledby={`q-${page}`} placeholder="Write your answer" maxLength={MAX_ANSWER} value={responses[page]} onChange={(e) => set(e.target.value)} className="min-h-32" />
           )}
         </Card>
         <AiErrorBox error={error} />
-        {needsAi && !online && page === questions.length - 1 && (
-          <p className="rounded-md border border-accent/20 bg-accent-soft px-4 py-3 text-sm text-text">You&apos;re offline. Written answers are marked by AI, so submit once you&apos;re back online.</p>
+        {needsAi && page === questions.length - 1 && (
+          <OfflineHint online={online}>You&apos;re offline. Written answers are marked by AI, so submit once you&apos;re back online.</OfflineHint>
         )}
-        <div className="flex items-center justify-between gap-2">
-          <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0}><ChevronLeft size={16} /> Previous</Button>
+        {page === questions.length - 1 && blank > 0 && (
+          <p className="text-sm text-muted">{blank} question{blank === 1 ? "" : "s"} left blank. Blank answers count as wrong.</p>
+        )}
+        {/* Phones: Previous drops to its icon so the last page's three buttons fit on one line. */}
+        <div className="flex items-center justify-between gap-2 [&>button]:whitespace-nowrap">
+          <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0}><ChevronLeft size={16} /><span className="max-sm:sr-only">Previous</span></Button>
           <Button variant="ghost" disabled={!!busy} onClick={() => confirm("Leave this quiz? Your answers won't be saved.") && reset()}>Leave quiz</Button>
           {page < questions.length - 1 ? (
             <Button variant="secondary" onClick={() => setPage(page + 1)}>Next <ChevronRight size={16} /></Button>

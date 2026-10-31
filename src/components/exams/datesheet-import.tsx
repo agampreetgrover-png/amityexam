@@ -12,7 +12,7 @@ import { prettyDay } from "@/lib/dates";
 import { DEFAULT_CHECKLIST, EXAM_TYPES } from "@/lib/exams";
 import type { ExamType } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { useOnline } from "../subject/shared";
+import { OfflineHint, useOnline } from "../subject/shared";
 import { Button, Empty, Input, Segmented, Select } from "../ui";
 
 type Source = "upload" | "drive";
@@ -99,7 +99,7 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
         {subjects.length} subject{subjects.length === 1 ? "" : "s"}, matching by course code, and you check them before anything is saved.
       </p>
       <Segmented label="Date sheet source" value={source} onChange={setSource} options={[{ value: "upload", label: "Upload a file" }, { value: "drive", label: "From Drive" }]} />
-      {!online && <p className="rounded-md border border-mark/40 bg-mark-soft px-4 py-3 text-sm">You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</p>}
+      <OfflineHint online={online}>You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</OfflineHint>
       {source === "upload" ? (
         <label
           // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
@@ -261,20 +261,22 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
         Found {mine.length} exam{mine.length === 1 ? "" : "s"} for your subjects in <span className="font-medium text-text">{fileName}</span>. Check the dates, then save.
       </p>
       {!mine.length && (
-        <p className="rounded-md border border-mark/40 bg-mark-soft px-4 py-3 text-sm">
+        <p className="rounded-md border border-warn/25 bg-warn/5 px-4 py-3 text-sm">
           None of your subjects were found. Make sure each subject has its course code (e.g. CSE201), or check this is your programme&apos;s date sheet.
         </p>
       )}
       {/* A hairline table: ticked rows carry a navy rule down their left edge. The padding keeps focus rings clear of the clipped corners. */}
       {visible.length > 0 && <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border">
-        {visible.map((r) => (
+        {visible.map((r) => {
+          const name = subjects.find((s) => s.id === r.subjectId)?.name ?? "unmatched exam";
+          return (
           <li key={r.key} className="relative p-3">
             {r.include && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
             <div className="flex items-start gap-3">
               <input
                 type="checkbox"
                 className="mt-3 h-4 w-4 accent-[var(--accent)]"
-                aria-label="Include this exam"
+                aria-label={`Include ${name}`}
                 checked={r.include}
                 disabled={r.subjectId == null}
                 onChange={(e) => patch(r.key, { include: e.target.checked })}
@@ -291,13 +293,13 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
                   <option value="">Not my subject</option>
                   {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </Select>
-                <Select aria-label="Exam type" value={r.type} onChange={(e) => repatch(r, { type: e.target.value as ExamType })}>
+                <Select aria-label={`Exam type for ${name}`} value={r.type} onChange={(e) => repatch(r, { type: e.target.value as ExamType })}>
                   {EXAM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </Select>
                 <div>
                   <Input
                     type="date"
-                    aria-label="Date"
+                    aria-label={`Date for ${name}`}
                     aria-invalid={r.include && !r.date}
                     value={r.date}
                     onChange={(e) => repatch(r, { date: e.target.value })}
@@ -305,7 +307,7 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
                   />
                   {r.include && !r.date && <p className="mt-1 text-xs text-bad">Add a date to save this exam</p>}
                 </div>
-                <Input type="time" aria-label="Start time" value={r.time} onChange={(e) => patch(r.key, { time: e.target.value })} />
+                <Input type="time" aria-label={`Start time for ${name}`} value={r.time} onChange={(e) => patch(r.key, { time: e.target.value })} />
               </div>
             </div>
             {r.duplicate && <p className="mt-2 pl-7 text-xs text-muted">Already in your exams on {prettyDay(r.date)}.</p>}
@@ -319,7 +321,8 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
               </div>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>}
       {skipped > 0 && (
         <button type="button" className="rounded-md text-sm text-muted underline-offset-2 transition-colors duration-150 hover:text-text hover:underline" onClick={() => setShowSkipped(!showSkipped)}>

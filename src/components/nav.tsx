@@ -93,10 +93,11 @@ export function Nav() {
       {/* Desktop: a vertical sidebar down the left edge, ruled off by a hairline; a narrow icon rail that widens
           to show labels on large screens. The page column sits to its right. */}
       <nav
-        className="fixed inset-y-0 left-0 z-20 hidden w-16 flex-col border-r border-border bg-surface/85 backdrop-blur-md backdrop-saturate-150 md:flex lg:w-60"
+        // box-content: a landscape notch's inset is added outside the rail's width, so the icons clear it.
+        className="fixed inset-y-0 left-0 z-20 box-content hidden w-16 flex-col border-r pl-[env(safe-area-inset-left)] border-border bg-surface/85 backdrop-blur-md backdrop-saturate-150 md:flex lg:w-60"
         aria-label="Main"
       >
-        <Link href="/" onClick={onClick("/")} className="group flex h-14 shrink-0 items-center gap-2.5 px-3 lg:px-5">
+        <Link href="/" onClick={onClick("/")} aria-label="Amity Exams" title="Amity Exams" className="group flex h-14 shrink-0 items-center gap-2.5 px-3 lg:px-5">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.18)] transition-transform duration-200 ease-snappy group-hover:-rotate-6">
             <GraduationCap size={16} strokeWidth={2} />
           </span>

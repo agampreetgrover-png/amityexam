@@ -12,7 +12,7 @@ import { examInMode, modeShort, otherMode, setExamMode, useExamMode } from "@/li
 import { useToday } from "@/lib/use-today";
 import { OPEN_EVENT } from "./command-palette-loader";
 import { toast } from "./toast";
-import { cn } from "./ui";
+import { cn, subjectStyle } from "./ui";
 
 interface Command {
   id: string;
@@ -96,7 +96,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         hint: s.code,
         keywords: s.code,
         subject: { id: s.id!, name: s.name, code: s.code },
-        icon: <span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />,
+        icon: <span className="subj-dot h-2.5 w-2.5 rounded-full" style={subjectStyle(s.color)} />,
         run: go(`/subjects/view?id=${s.id}`),
       });
     }
@@ -186,13 +186,16 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
         {results.map((c, i) => {
           const heading = c.group !== lastGroup ? c.group : null;
           lastGroup = c.group;
+          // Headings inside a listbox aren't read out, so each option points at its group's heading.
+          const groupId = `${listId}-g-${c.group.replace(/\s+/g, "-")}`;
           return (
             <li key={c.id} role="presentation">
-              {heading && <p className="px-3 pb-1.5 pt-3 text-[12px] font-medium text-faint">{heading}</p>}
+              {heading && <p id={groupId} className="px-3 pb-1.5 pt-3 text-[12px] font-medium text-faint">{heading}</p>}
               <div
                 id={`${listId}-${c.id}`}
                 data-index={i}
                 role="option"
+                aria-describedby={groupId}
                 aria-selected={i === active}
                 onMouseMove={() => active !== i && setActive(i)}
                 onClick={() => run(c)}
@@ -211,6 +214,8 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
           );
         })}
       </ul>
+      {/* Always mounted, so a screen reader hears the count change as the query is typed. */}
+      <p role="status" className="sr-only">{query ? (results.length ? `${results.length} result${results.length === 1 ? "" : "s"}` : "No results") : ""}</p>
     </dialog>
   );
 }

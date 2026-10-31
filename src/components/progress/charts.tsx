@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn, subjectStyle } from "@/components/ui";
 import {
-  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 // Coverage bars wear each subject's colour so they match the rest of the app, but the axis labels still
@@ -97,7 +97,8 @@ export function CoverageChart({ data }: { data: { name: string; color?: string; 
   );
 }
 
-export function QuizTrendChart({ data }: { data: { label: string; full: string; value: number }[] }) {
+// connect is off when quizzes from several subjects are mixed: a line between them would read as one trend.
+export function QuizTrendChart({ data, connect = true }: { data: { label: string; full: string; value: number }[]; connect?: boolean }) {
   return (
     <ChartFrame columns={["Attempt", "Score %"]} rows={data.map((d) => [d.full, d.value])}>
       <ResponsiveContainer>
@@ -105,9 +106,11 @@ export function QuizTrendChart({ data }: { data: { label: string; full: string; 
           <CartesianGrid {...GRID} />
           <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={8} />
           <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} interval={0} {...AXIS} />
+          {/* The weak cut-off, so scores below it read without hovering. */}
+          <ReferenceLine y={60} stroke="var(--line-strong)" strokeDasharray="3 3" label={{ value: "60%", position: "insideTopRight", fill: "var(--muted)", fontSize: 11 }} />
           <Tooltip cursor={{ stroke: "var(--border)", strokeWidth: 1 }} content={(p) => <TooltipBox {...p} unit="%" />} />
           <Line
-            type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" isAnimationActive={false}
+            type="monotone" dataKey="value" stroke={connect ? "var(--accent)" : "none"} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" isAnimationActive={false}
             dot={{ r: 3, fill: "var(--accent)", stroke: "var(--surface)", strokeWidth: 1.5 }}
             activeDot={{ r: 4.5, fill: "var(--accent)", stroke: "var(--surface)", strokeWidth: 2 }}
           />

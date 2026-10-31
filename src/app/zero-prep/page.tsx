@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronDown, ExternalLink, RotateCw, Sprout } from "lucide-react";
+import { ChevronDown, ChevronRight, RotateCw, Sprout } from "lucide-react";
 import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { db, getSettings } from "@/lib/db";
 import { modeShort, topicsInScope } from "@/lib/mode";
@@ -13,7 +13,7 @@ import { AiErrorBox } from "@/components/ai-error";
 import { QuestionLine } from "@/components/pyq-question-line";
 import { Badge, Button, Empty, PageHeader, Panel, Progress, Segmented, Select, Tick, cn, subjectStyle, tableHead } from "@/components/ui";
 
-const link = "text-accent underline underline-offset-2";
+const link = "font-medium text-accent underline underline-offset-2";
 const FIRST_SHOWN = 60;
 const IMPORTANCE = { 3: "Core", 2: "Regular", 1: "Minor" } as const;
 const PREP_WORD: Record<PrepLevel, string> = { 0: "Zero prep", 1: "Light prep", 2: "Needs groundwork" };
@@ -266,10 +266,10 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
       <div ref={wrap} className="relative" onPointerLeave={() => setHover(null)}>
         <div role="img" aria-label={`${rows.length} topics, ${formatMins(total)} in total`} className="flex w-full gap-1.5">
           {runs.map((run) => (
-            <div key={run.subject.id} className="flex min-w-0 gap-[2px]" style={{ ...subjectStyle(run.subject.color), flexGrow: run.mins, flexBasis: 0 }}>
+            <div key={run.subject.id} className="flex min-w-0 gap-px overflow-clip [overflow-clip-margin:3px] sm:gap-[2px]" style={{ ...subjectStyle(run.subject.color), flexGrow: run.mins, flexBasis: 0 }}>
               {run.rows.map((r, i) => (
                 // The hit area is the full 24px band; only the middle 12px is painted.
-                <span key={r.topic.id} onPointerEnter={point(r)} className="flex h-6 min-w-[3px] items-center" style={{ flexGrow: r.prep.mins, flexBasis: 0 }}>
+                <span key={r.topic.id} onPointerEnter={point(r)} className="flex h-6 min-w-px items-center" style={{ flexGrow: r.prep.mins, flexBasis: 0 }}>
                   <span
                     className={cn(
                       "subj-dot h-3 w-full rounded-[1px] transition-opacity duration-300",
@@ -287,7 +287,7 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
         {hover && (
           <div
             aria-hidden
-            className="pointer-events-none absolute bottom-full z-10 mb-1 w-max max-w-64 -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-2 shadow-float"
+            className="pointer-events-none absolute bottom-full z-10 mb-1 w-max max-w-56 -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-2 shadow-float"
             // Kept inside the strip so it never runs off the page edge.
             style={{ left: Math.min(Math.max(hover.x, 112), Math.max(112, width - 112)) }}
           >
@@ -337,7 +337,7 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
               <span className={cn("min-w-0 break-words transition-colors duration-200", done && "text-muted")}>{topic.title}</span>
-              {hot && <Badge className="bg-accent-soft text-accent">Hot</Badge>}
+              {hot && <Badge className="bg-accent-soft text-accent">Most asked</Badge>}
             </p>
             {/* Phones fold the Time and Weight columns in here, first, so the facts the list is sorted by lead. */}
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted">
@@ -381,9 +381,10 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
           )}
           <Link
             href={`/subjects/view?id=${subject.id}&tab=${questions.length ? "pyqs" : "syllabus"}`}
-            className="inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:underline"
+            className="group inline-flex items-center gap-1 text-[13px] font-medium text-accent hover:underline"
           >
-            Open in {subject.name} {questions.length ? "PYQs" : "syllabus"} <ExternalLink size={13} />
+            Open in {subject.name} {questions.length ? "PYQs" : "syllabus"}{" "}
+            <ChevronRight size={14} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
           </Link>
         </div>
       )}
