@@ -31,27 +31,29 @@ If OpenRouter hits a limit, times out or fails, the app moves to Gemini on its o
 
 ## Workflow
 
-1. **Exam mode**: pick **Mid-sem** or **Major (End-sem)** in Settings or from the mode pill. Syllabus, papers and exams all follow the mode. Units tagged mid-sem are in both; the rest are major only.
+1. **Exam mode**: pick **Mid-sem** or **Major (End-term)** in Settings or from the mode pill. Syllabus, papers and exams all follow the mode. Units tagged mid-sem are in both; the rest are major only.
 2. **Subjects**: add each subject, then **Syllabus → Import syllabus** (paste text, or upload the syllabus PDF or a photo of it). Mark topics as studied or revised as you go.
-3. **Exams**: add the date sheet by hand or with **Upload date sheet** (date, time, venue, seat, and which topics are examined). The home page counts down to the next exam.
-4. **Subject** tabs:
+3. **Exams**: add the date sheet by hand or with **Upload date sheet** (date, time, venue, seat, and which topics are examined).
+4. **Today** (the home page): a countdown to the next exam with its date, time, hall and how much of its syllabus you've covered; the next few exams as cards; your overall readiness for this exam mode; a month calendar of the date sheet (written papers and practicals marked differently); and your latest cheat sheets one tap away.
+5. **Subject** tabs:
    - **Materials**: your notes and slides (PDF, text, or photos/scans, which are read by AI)
    - **PYQs**: past papers turned into a question bank, by year or by topic, with search
    - **Notes**: short notes or one-page cheat sheets per topic
    - **Quiz**: MCQ and short-answer practice. AI grades short answers, and low scores mark topics as weak
    - **Predict**: repeated questions, weightage and likely questions from past papers
    - **Ask**: a quick doubt chat for that subject, answered from your own notes
-5. **Chat**: the study chat. Pick a subject and ask anything:
+6. **Chat**: the study chat. Pick a subject and ask anything, or start from a tile (**High-yield prediction**, **Model answer**, **Rapid drill**, **Strategy**):
    - Answers are taught from your teacher's notes, which they cite by file name.
    - They're checked against past papers, with the year and marks when a question has been set before, e.g. "PYQ 2023, 10 marks".
    - They're pitched at your coming exam: its date, the most-asked topics and your weak ones.
    - Most answers end with an **In the exam** tip.
    - The chat never asks you to paste notes: it already has the subject's syllabus, notes and papers. Ask about another subject (by name, code or initials, like "ADA") and it moves the question there.
    - Choose **Auto**, **Simple**, **Exam answer** (sized to the marks) or **Quick revise**.
+   - Formulas show as proper maths, and code comes in highlighted blocks with a copy button. The same goes for notes and cheat sheets.
    - Every conversation is saved in **History**: grouped by date and searchable. You can rename, pin, copy or delete each one.
-6. **Important**: the topics asked most often in this exam's past papers, across all your subjects, with the questions under each.
-7. **Zero prep**: topics you can learn cold, without studying anything else first. AI rates each topic for groundwork needed, time and importance, and the quickest wins come first.
-8. **Exam page**: exam details, a packing checklist, the cheat sheet and weak topics. Printable.
+7. **Important**: the topics asked most often in this exam's past papers, across all your subjects, with the questions under each.
+8. **Zero prep**: topics you can learn cold, without studying anything else first. AI rates each topic for groundwork needed, time and importance, and the quickest wins come first.
+9. **Exam page**: exam details, a packing checklist, the cheat sheet and weak topics. Printable.
 
 Press **Ctrl+K** (⌘K on Mac) anywhere to jump to a page, subject or exam, or switch mode.
 
@@ -67,7 +69,7 @@ The app pulls notes, slides and past papers from shared Drive folders when you o
 
 ## Tech
 
-Next.js 15 · TypeScript · Tailwind v4 · Dexie (IndexedDB) · Serwist (PWA) · pdf.js · SheetJS (spreadsheet date sheets) · mammoth (Word files from Drive) · Recharts · Vitest.
+Next.js 15 · TypeScript · Tailwind v4 · Dexie (IndexedDB) · Serwist (PWA) · pdf.js · SheetJS (spreadsheet date sheets) · mammoth (Word files from Drive) · react-markdown with KaTeX (maths) and highlight.js (code) · Vitest.
 
 AI providers and default models, each overridable in `.env.local`:
 
@@ -75,6 +77,7 @@ AI providers and default models, each overridable in `.env.local`:
 | --- | --- | --- | --- |
 | OpenRouter | `nvidia/nemotron-3.5-super-vl:free`, then two more free models | `nvidia/nemotron-3.5-lightning:free`, then two more | `OPENROUTER_MODEL`, `OPENROUTER_FAST_MODEL`, `OPENROUTER_VISION_MODEL` (comma-separated lists) |
 | Gemini | `gemini-3.5-flash` | `gemini-3.5-flash-lite` | `GEMINI_MODEL`, `GEMINI_FAST_MODEL` |
+
 The full default lists are in `.env.example`.
 
 `npm test` runs the unit tests and `npm run lint` runs ESLint.
