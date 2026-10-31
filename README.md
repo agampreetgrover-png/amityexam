@@ -16,7 +16,7 @@ The production build is the one to use day to day: it's faster and it's the only
 
 Your data lives in the browser's storage for that exact address, so keep opening the app at `http://127.0.0.1:3000`. `localhost:3000` or another port starts with an empty app.
 
-Deploying (for example to Vercel) is optional. If you do, set `APP_PASSWORD`: every device then asks for it once, and nobody else can open the app or use your AI keys. Without it, anyone with the URL can. To serve the app under your own domain without a password, list that domain in `ALLOWED_HOSTS`. The AI and Drive routes only answer to this computer's own addresses (`localhost`, `127.0.0.1`) otherwise, which stops other websites from reaching a copy running on your laptop. Requests from other websites are refused either way.
+Deploying (for example to Vercel) is optional. If you do, set `APP_PASSWORD` (a long, random one): every device then asks for it once, and nobody else can open the app or use your AI keys. On Vercel the AI and Drive features stay off until it's set. Elsewhere, the AI and Drive routes only answer to this computer's own addresses (`localhost`, `127.0.0.1`) and the names in `ALLOWED_HOSTS`, which stops other websites from reaching a copy running on your laptop. `ALLOWED_HOSTS` is not a lock: anyone who can reach the server can send any host name, so a copy on the internet always needs `APP_PASSWORD`. Requests from other websites are refused either way.
 
 Drive sync parses PDFs, DOCX and PPTX in a worker loaded from `src/lib/drive/extract-worker.mjs`, so run the server from the project folder (`npm start`). Bundled serverless deploys don't include that file.
 

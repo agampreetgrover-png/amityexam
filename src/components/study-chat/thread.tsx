@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowUp, BookOpen, Check, Copy, FileText, History, MessagesSquare, PanelLeftOpen, Paperclip, Pencil, RotateCcw, Square, Target, Trash2, X, Zap } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { aiStream } from "@/lib/ai/client";
+import { ArrowUp, BookOpen, Check, Copy, FileText, History, ImagePlus, MessagesSquare, PanelLeftOpen, Paperclip, Pencil, RotateCcw, Square, Target, Trash2, X, Zap } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { aiStream, imageToDataUrl } from "@/lib/ai/client";
 import type { AiRequest } from "@/lib/ai/schemas";
 import { daysBetween } from "@/lib/dates";
 import { byWhen } from "@/lib/exams";
@@ -32,6 +32,9 @@ const STYLES: { value: Style; label: string; title: string }[] = [
 ];
 const STYLE_KEY = "amityexams:chatStyle";
 const MAX_HISTORY_CHARS = 20_000;
+const MAX_IMAGES = 4;
+// What the AI is asked when a question is only photos.
+const IMAGE_ONLY_QUESTION = "Explain what's in the attached image, or solve it if it's a question.";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const subjectLabel = (s: Subject) => (s.code ? `${s.name} (${s.code})` : s.name);
@@ -61,8 +64,11 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   const [renaming, setRenaming] = useState<string | null>(null);
   // A question that names another subject: asked there once that subject's notes have loaded (`pending`), or,
   // in a saved chat, held until the student says where to ask it (`offSubject`).
-  const [pending, setPending] = useState<{ text: string; subjectId: number } | null>(null);
-  const [offSubject, setOffSubject] = useState<{ text: string; subject: Subject } | null>(null);
+  const [pending, setPending] = useState<{ text: string; subjectId: number; images: string[] } | null>(null);
+  const [offSubject, setOffSubject] = useState<{ text: string; subject: Subject; images: string[] } | null>(null);
+  // Photos waiting in the box to go with the next question, shrunk to JPEG data URLs.
+  const [images, setImages] = useState<string[]>([]);
+  const [attaching, setAttaching] = useState(false);
   // The question this thread last sent. Its answer is saved just before `busy` clears, but the live query can
   // catch up a moment later, so it isn't mistaken for one left unanswered.
   const [sent, setSent] = useState<number>();
@@ -144,32 +150,67 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     bottom.current?.scrollIntoView({ block: "end" });
   }, [messages?.length, streaming?.text]);
 
+  // Picked, pasted or dropped: only images, at most MAX_IMAGES in the box, each shrunk before it's kept.
+  const addImages = async (files: File[]) => {
+    const picked = files.filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name));
+    if (!picked.length) {
+      if (files.length) toast("Only images can be attached here. Add notes and papers on the subject's Materials tab.");
+      return;
+    }
+    const room = MAX_IMAGES - images.length;
+    if (room <= 0) return toast(`Up to ${MAX_IMAGES} images per question`);
+    if (picked.length > room) toast(`Up to ${MAX_IMAGES} images per question, so only the first ${plural(room, "image")} were added`);
+    setAttaching(true);
+    try {
+      const urls: string[] = [];
+      for (const f of picked.slice(0, room)) {
+        try {
+          urls.push(await imageToDataUrl(f));
+        } catch (e) {
+          toast(e instanceof Error ? e.message : "Couldn't read this image. Try a JPG or PNG.");
+        }
+      }
+      if (urls.length) setImages((cur) => [...cur, ...urls].slice(0, MAX_IMAGES));
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   // `retryOf`: a question left without an answer (the page was closed mid-answer). It's asked again as new and
   // the old copy is deleted, so neither the history sent nor the thread has it twice.
   // `redo`: the last question and its answer, asked again (Regenerate). They're hidden while the new answer comes
   // and deleted once it's saved; if none arrives they come back as they were.
   // `here`: ask in this chat's subject even if the question names another one.
-  const send = async (raw?: string, { retryOf, redo, here }: { retryOf?: number; redo?: number[]; here?: boolean } = {}) => {
+  // `images`: the photos that go with it; a typed question takes the ones waiting in the box.
+  const send = async (raw?: string, { retryOf, redo, here, images: given }: { retryOf?: number; redo?: number[]; here?: boolean; images?: string[] } = {}) => {
     const text = (raw ?? input).trim();
+    const imgs = given ?? (raw == null ? images : []);
     // A ref, not state: two quick Enters both see the old `streaming` value before React re-renders.
-    if (!text || sending.current || !online || !subject || !scope || !material || !messages || !base) return;
+    if ((!text && !imgs.length) || attaching || sending.current || !online || !subject || !scope || !material || !messages || !base) return;
     // "how do I start ADA" asked with Networks picked would be answered from the Networks notes. A new chat just
     // moves to the subject it names; a saved one asks first, since the conversation so far is about this subject.
     const named = here || retryOf != null || redo ? undefined : namedSubject(text, base.subjects, subject.id);
     if (named) {
-      if (raw == null) setInput("");
+      if (raw == null) {
+        setInput("");
+        setImages([]);
+      }
       if (id == null && !messages.length) {
         setPicked(named.id!);
-        setPending({ text, subjectId: named.id! });
+        setPending({ text, subjectId: named.id!, images: imgs });
         toast(`Asking in ${named.name}`);
       } else {
-        setOffSubject({ text, subject: named });
+        setOffSubject({ text, subject: named, images: imgs });
       }
       return;
     }
     setOffSubject(null);
     sending.current = true;
-    if (raw == null) setInput(""); // a button's question (Ask again, a starter) leaves a half-typed draft alone
+    // A button's question (Ask again, a starter) leaves a half-typed draft and its photos alone.
+    if (raw == null) {
+      setInput("");
+      setImages([]);
+    }
     setError(null);
     const past = messages.filter((m) => m.id !== retryOf && !redo?.includes(m.id!));
     const lastUser = [...past].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -178,7 +219,11 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     const pyq = matchingPyqs(scope.questions, material.topics, query, { maxChars: 12_000 });
     const rawPapers = pyq.picked.length < 4 ? rawPaperExcerpts(scope.rawPapers, query, 6000) : "";
     const sources = sourcesOf(notes.files, pyq.picked);
-    const history = past.slice(-10).map(({ role, content }) => ({ role, content: content.slice(0, MAX_HISTORY_CHARS) }));
+    // Only this question's photos are sent; earlier ones are just noted, so a follow-up knows there was one.
+    const history = past.slice(-10).map(({ role, content, images: had }) => ({
+      role,
+      content: `${had?.length ? `[${plural(had.length, "image")} attached]\n` : ""}${content}`.slice(0, MAX_HISTORY_CHARS),
+    }));
     ctrl.current = new AbortController();
     setStreaming({ text: "", sources, hide: redo });
     let reply = "";
@@ -191,7 +236,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
       const now = Date.now();
       let saved: number;
       if (chat == null) {
-        saved = (await db.chats.add({ subjectId: subject.id!, title: chatTitle(text), createdAt: now, updatedAt: now })) as number;
+        saved = (await db.chats.add({ subjectId: subject.id!, title: chatTitle(text || "Image question"), createdAt: now, updatedAt: now })) as number;
         created = true;
         setId(saved);
         onCreated(saved);
@@ -200,7 +245,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
         await db.chats.update(saved, { updatedAt: now });
       }
       chat = saved;
-      questionId = await db.messages.add({ subjectId: subject.id!, chatId: saved, role: "user", content: text, createdAt: now });
+      questionId = await db.messages.add({ subjectId: subject.id!, chatId: saved, role: "user", content: text, createdAt: now, ...(imgs.length ? { images: imgs } : {}) });
       setSent(questionId);
       reply = await aiStream(
         "study",
@@ -212,7 +257,8 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           prepNotes: prepSummary(scope.prep),
           answerStyle: style,
           history,
-          text: text.slice(0, MAX_TEXT),
+          text: (text || IMAGE_ONLY_QUESTION).slice(0, MAX_TEXT),
+          ...(imgs.length ? { images: imgs } : {}),
           ...aiModeFields(mode, material.units),
         },
         (full) => {
@@ -245,7 +291,10 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
             if (mounted.current) onDiscarded();
           }
           // A regenerated question is still in the thread, so the box stays as it was.
-          if (!redo) setInput((cur) => cur || text);
+          if (!redo) {
+            setInput((cur) => cur || text);
+            if (imgs.length) setImages((cur) => (cur.length ? cur : imgs));
+          }
         }
       } finally {
         setStreaming(null);
@@ -259,19 +308,19 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   useEffect(() => {
     if (!pending || material?.subjectId !== pending.subjectId || !scope || !messages || sending.current) return;
     setPending(null);
-    void send(pending.text, { here: true });
+    void send(pending.text, { here: true, images: pending.images });
     // `send` is new every render; these are what decide whether it can go yet.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending, material, scope, messages]);
 
   // Leaves this saved chat for a new one on the subject the question named, and asks it there.
-  const askIn = (target: Subject, text: string) => {
+  const askIn = (target: Subject, text: string, imgs: string[]) => {
     ctrl.current?.abort();
     setOffSubject(null);
     setId(null);
     onDiscarded(); // the page forgets the saved chat's id without remounting this thread
     setPicked(target.id!);
-    setPending({ text, subjectId: target.id! });
+    setPending({ text, subjectId: target.id!, images: imgs });
   };
 
   const rename = async () => {
@@ -421,12 +470,12 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           ) : (
             <>
               {shown.map((m) => (
-                <Bubble key={m.id} role={m.role} content={m.content} sources={m.sources} onRegenerate={redo && m.id === last?.id ? () => send(asked!.content, { redo }) : undefined} />
+                <Bubble key={m.id} role={m.role} content={m.content} images={m.images} sources={m.sources} onRegenerate={redo && m.id === last?.id ? () => send(asked!.content, { redo, images: asked!.images ?? [] }) : undefined} />
               ))}
               {stranded && (
                 <div className="flex items-center justify-end gap-2 text-[13px] text-muted">
                   No answer arrived.
-                  <Button variant="secondary" size="sm" disabled={!online || !scope} onClick={() => send(stranded.content, { retryOf: stranded.id })}>Ask again</Button>
+                  <Button variant="secondary" size="sm" disabled={!online || !scope} onClick={() => send(stranded.content, { retryOf: stranded.id, images: stranded.images ?? [] })}>Ask again</Button>
                 </div>
               )}
               {streaming && (streaming.text ? <Bubble role="assistant" content={streaming.text} live /> : <Thinking />)}
@@ -459,9 +508,9 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
                 {subject?.name} notes.
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => askIn(offSubject.subject, offSubject.text)}>Ask in {offSubject.subject.name}</Button>
-                <Button size="sm" variant="secondary" onClick={() => send(offSubject.text, { here: true })}>Ask here anyway</Button>
-                <Button size="sm" variant="ghost" onClick={() => { setInput(offSubject.text); setOffSubject(null); }}>Edit question</Button>
+                <Button size="sm" onClick={() => askIn(offSubject.subject, offSubject.text, offSubject.images)}>Ask in {offSubject.subject.name}</Button>
+                <Button size="sm" variant="secondary" onClick={() => send(offSubject.text, { here: true, images: offSubject.images })}>Ask here anyway</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setInput(offSubject.text); setImages(offSubject.images); setOffSubject(null); }}>Edit question</Button>
               </div>
             </div>
           )}
@@ -471,13 +520,52 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
             onSend={() => send()}
             onStop={() => ctrl.current?.abort()}
             busy={busy}
-            canSend={!!input.trim() && online && !!scope}
+            canSend={(!!input.trim() || images.length > 0) && !attaching && online && !!scope}
             touch={touch}
-            placeholder="Ask a doubt, paste code, or request a past-paper solution…"
+            placeholder="Ask a doubt, paste code or a screenshot, or request a past-paper solution…"
+            onFiles={addImages}
+            attachments={
+              (images.length > 0 || attaching) && (
+                <ul aria-label="Attached images" className="flex flex-wrap gap-2 px-3 pt-3">
+                  {images.map((src, i) => (
+                    <li key={i} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a local data URL, nothing to optimise */}
+                      <img src={src} alt={`Attached image ${i + 1}`} className="size-16 rounded-lg border border-border object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setImages((cur) => cur.filter((_, j) => j !== i))}
+                        aria-label={`Remove image ${i + 1}`}
+                        title="Remove"
+                        className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-control hover:text-text pointer-coarse:size-6"
+                      >
+                        <X size={12} aria-hidden />
+                      </button>
+                    </li>
+                  ))}
+                  {attaching && <li aria-label="Adding image" className="size-16 animate-pulse rounded-lg border border-border bg-surface-2" />}
+                </ul>
+              )
+            }
             leading={
               subject && (
                 <>
-                  {/* Files are added on the subject's Materials tab; the chat reads whatever is there. */}
+                  {/* Photos and screenshots go with the question; label wraps the hidden input so the button opens the picker. */}
+                  <label title={`Attach images (up to ${MAX_IMAGES})`} className={cn(buttonClass("ghost", "icon", "rounded-full"), "cursor-pointer has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent", (busy || images.length >= MAX_IMAGES) && "pointer-events-none opacity-45")}>
+                    <ImagePlus size={16} aria-hidden />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      aria-label="Attach images"
+                      disabled={busy || images.length >= MAX_IMAGES}
+                      className="sr-only"
+                      onChange={(e) => {
+                        void addImages(Array.from(e.target.files ?? []));
+                        e.target.value = ""; // so picking the same photo again still adds it
+                      }}
+                    />
+                  </label>
+                  {/* Notes and papers are added on the subject's Materials tab; the chat reads whatever is there. */}
                   <Link href={`/subjects/view?id=${subject.id}&tab=materials`} aria-label="Add notes or papers" title="Add notes or papers" className={buttonClass("ghost", "icon", "rounded-full")}>
                     <Paperclip size={16} />
                   </Link>
@@ -498,9 +586,10 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
 /**
  * The box a question is typed in, docked at the foot of a conversation (here and on a subject's Ask tab). The text
  * grows to about five lines, then scrolls; under it sit `leading` (the chat's paperclip and subject), a keyboard
- * hint and Send, which fills in once there's something to send.
+ * hint and Send, which fills in once there's something to send. With `onFiles` (study chat), pasted or dropped
+ * files go to it, and `attachments` (their thumbnails) sit above the text.
  */
-export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, placeholder, leading }: {
+export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, placeholder, leading, attachments, onFiles }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
@@ -510,17 +599,50 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
   touch: boolean; // Enter adds a line (the keyboard has no Shift), so only the button sends
   placeholder: string;
   leading?: ReactNode;
+  attachments?: ReactNode;
+  onFiles?: (files: File[]) => void;
 }) {
   const round = "h-9 w-9 rounded-full pointer-coarse:h-10 pointer-coarse:w-10";
+  const [dragging, setDragging] = useState(false);
+  const dropProps = onFiles && !busy
+    ? {
+        onDragOver: (e: DragEvent) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          setDragging(true);
+        },
+        onDragLeave: (e: DragEvent) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+        },
+        onDrop: (e: DragEvent) => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          setDragging(false);
+          onFiles(Array.from(e.dataTransfer.files));
+        },
+      }
+    : {};
   return (
     // One bordered box; the textarea inside is borderless, so focus rings the whole dock instead.
     <form
-      className="rounded-2xl border border-line-strong bg-surface shadow-float transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_16%,transparent),var(--shadow-float)]"
+      className={cn(
+        "rounded-2xl border border-line-strong bg-surface shadow-float transition-[border-color,box-shadow] duration-150 focus-within:border-accent focus-within:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_16%,transparent),var(--shadow-float)]",
+        dragging && "border-accent border-dashed",
+      )}
       onSubmit={(e) => { e.preventDefault(); onSend(); }}
+      {...dropProps}
     >
+      {attachments}
       <Textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onPaste={(e) => {
+          // A copied screenshot arrives as a file; pasted text is left to the textarea.
+          const files = Array.from(e.clipboardData.files);
+          if (!onFiles || busy || !files.length) return;
+          e.preventDefault();
+          onFiles(files);
+        }}
         onKeyDown={(e) => {
           // isComposing: Enter that confirms an IME word (Hindi, Chinese…) must not send.
           if (e.key === "Enter" && !e.shiftKey && !touch && !e.nativeEvent.isComposing) {
@@ -559,18 +681,31 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
  * on the page under it. `sources` are the notes files and past-paper questions an answer was given (study chat only);
  * `onRegenerate` asks its question again (the newest study-chat answer only).
  */
-export function Bubble({ role, content, live, sources, onRegenerate }: {
+export function Bubble({ role, content, images, live, sources, onRegenerate }: {
   role: "user" | "assistant";
   content: string;
+  images?: string[]; // photos sent with a question (study chat)
   live?: boolean;
   sources?: ChatSource[];
   onRegenerate?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   if (role === "user") {
+    // Only data URLs of images: a restored backup could hold anything here.
+    const pics = Array.isArray(images) ? images.filter((s) => typeof s === "string" && s.startsWith("data:image/")) : [];
     return (
-      <div className="flex justify-end">
-        <p className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-accent/20 bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-text">{content}</p>
+      <div className="flex flex-col items-end gap-2">
+        {pics.length > 0 && (
+          <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
+            {pics.map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element -- a local data URL, nothing to optimise
+              <img key={i} src={src} alt={`Attached image ${i + 1}`} className="max-h-56 max-w-full rounded-xl border border-border object-contain sm:max-w-xs" />
+            ))}
+          </div>
+        )}
+        {content && (
+          <p className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-accent/20 bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-text">{content}</p>
+        )}
       </div>
     );
   }

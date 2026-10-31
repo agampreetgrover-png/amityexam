@@ -162,7 +162,7 @@ export default function ExamsPage() {
               <span aria-hidden className={cn("absolute left-0 top-1 size-[11px] rounded-full border-2", DOT[urgency(n)])} />
               <Day className="flex flex-wrap items-baseline gap-x-2 text-[13px] leading-5">
                 <time dateTime={d.date} className={cn("font-semibold tabular-nums", isPast ? "text-muted" : "text-text")}>{prettyDay(d.date)}</time>
-                {prev > 0 && <span className="tabular-nums text-faint">{plural(prev, "day")} after the previous paper</span>}
+                {prev > 0 && <span className="tabular-nums text-faint">{prev > 1 ? `${plural(prev - 1, "day")} break` : "No break"}</span>}
               </Day>
               <ul className="mt-3 space-y-2.5">{d.exams.map((e) => card(e, isPast))}</ul>
             </li>

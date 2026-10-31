@@ -91,6 +91,18 @@ const MAX_BACKUP_ROWS = 200_000;
 const isPlainObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 /** Tables older versions of the app exported but that no longer exist (flashcards and study sessions were removed). Skipped on import. */
 const LEGACY_TABLES = new Set(["flashcards", "sessions"]);
+/** Fields each row of a table must have as text. */
+const TEXT_FIELDS: Record<string, string[]> = {
+  subjects: ["name"],
+  units: ["title"],
+  topics: ["title"],
+  materials: ["fileName", "text"],
+  driveFiles: ["driveId", "name"],
+  pyqQuestions: ["number", "text"],
+  docs: ["title", "content"],
+  messages: ["role", "content"],
+  chats: ["title"],
+};
 
 /** Check a parsed backup before anything is cleared: known tables only, arrays of plain objects, sane size. */
 export function validateBackup(backup: unknown): Record<string, Record<string, unknown>[]> {
@@ -116,6 +128,12 @@ export function validateBackup(backup: unknown): Record<string, Record<string, u
     if (rows.some((r) => (r.id !== undefined && !isId(r.id)) || (r.subjectId !== undefined && !isId(r.subjectId)))) {
       throw new Error(`Backup table "${name}" is malformed`);
     }
+  }
+  // The text every page reads (sorting, searching, Markdown): a backup someone shared with a number or an object
+  // here would crash those pages on every launch, with no way back short of clearing the site's data.
+  for (const [name, fields] of Object.entries(TEXT_FIELDS)) {
+    const rows = (data[name] ?? []) as Record<string, unknown>[];
+    if (rows.some((r) => fields.some((f) => typeof r[f] !== "string"))) throw new Error(`Backup table "${name}" is malformed`);
   }
   const exams = (data.exams ?? []) as Record<string, unknown>[];
   if (exams.some((e) => !isId(e.subjectId) || typeof e.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(e.date))) {

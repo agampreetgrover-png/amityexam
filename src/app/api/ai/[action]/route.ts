@@ -11,7 +11,8 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const MAX_BODY_BYTES = 2 * 1024 * 1024; // Vercel caps bodies at ~4.5MB anyway
+// Room for up to four chat photos on top of the notes; Vercel caps bodies at ~4.5MB anyway.
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 const schemas: Record<JsonAction, z.ZodTypeAny> = {
   syllabus: SyllabusSchema,

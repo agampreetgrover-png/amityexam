@@ -44,9 +44,14 @@ export async function middleware(req: NextRequest) {
   if ((api || (pathname === "/unlock" && req.method === "POST")) && crossSite(req, host)) {
     return deny("Cross-site requests aren't allowed.", 403);
   }
-  // A password or a Vercel deployment already rules out rebinding (the attacker has no session cookie / can't
-  // point Vercel's hostnames at a laptop), so the host list only matters for a copy running without either.
-  if (api && !password && !process.env.VERCEL && !hostAllowed(host)) {
+  // A Vercel copy is on the public internet: without a password anyone with the URL (or a script) could spend the
+  // AI keys, so its API stays shut until APP_PASSWORD is set.
+  if (api && !password && process.env.VERCEL) {
+    return deny("This deployment has no APP_PASSWORD, so the AI and Drive features are off. Set APP_PASSWORD in the project's environment variables and redeploy.", 503);
+  }
+  // With a password, rebinding is already ruled out (the attacker has no session cookie), so the host list only
+  // matters for a copy running without one.
+  if (api && !password && !hostAllowed(host)) {
     return deny(`Unknown host "${host.slice(0, 100)}". Add it to ALLOWED_HOSTS (or set APP_PASSWORD) to serve the app under this name.`, 403);
   }
 

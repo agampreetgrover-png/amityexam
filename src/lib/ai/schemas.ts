@@ -149,6 +149,8 @@ export const AiRequestSchema = z.object({
   pyqs: z.string().transform((s) => s.slice(0, 100_000)).optional(),
   prepNotes: z.string().transform((s) => s.slice(0, 5000)).optional(),
   answerStyle: z.enum(["auto", "simple", "exam", "revise"]).optional(),
+  // Photos or screenshots attached to the question (study chat): JPEG data URLs, already shrunk in the browser.
+  images: z.array(z.string().max(1_500_000).regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/)).max(4).optional(),
   history: z
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(20_000) }))
     .max(20)

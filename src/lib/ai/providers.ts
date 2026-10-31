@@ -3,7 +3,15 @@ import { ApiError as GeminiApiError, GoogleGenAI, ThinkingLevel, type Content } 
 // Server-only AI providers. OpenRouter is tried first for everything; Gemini is the automatic fallback when it's
 // rate-limited, down or misconfigured.
 
-export type Msg = { role: "system" | "user" | "assistant"; content: string };
+/** `images`: data URLs of photos attached to a user message (study chat). */
+export type Msg = { role: "system" | "user" | "assistant"; content: string; images?: string[] };
+
+/** "data:image/jpeg;base64,AAA" → its type and base64 data. */
+const fromDataUrl = (url: string) => {
+  const m = /^data:([^;]+);base64,(.*)$/.exec(url);
+  return { mimeType: m?.[1] ?? "image/jpeg", data: m?.[2] ?? "" };
+};
+const hasImages = (messages: Msg[]) => messages.some((m) => m.images?.length);
 export type ProviderName = "gemini" | "openrouter";
 type CallOpts = { fast?: boolean; kind?: "json" | "text" | "chat" };
 
@@ -61,7 +69,10 @@ function toGemini(messages: Msg[]) {
   const system = messages.filter((m) => m.role === "system").map((m) => m.content).join("\n\n");
   const contents: Content[] = messages
     .filter((m) => m.role !== "system")
-    .map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
+    .map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [...(m.images ?? []).map((url) => ({ inlineData: fromDataUrl(url) })), { text: m.content }],
+    }));
   return { system: system || undefined, contents };
 }
 
@@ -199,6 +210,13 @@ function openrouter(apiKey: string): Provider {
   const visionModels = () =>
     list(process.env.OPENROUTER_VISION_MODEL, "nvidia/nemotron-3.5-super-vl:free,dots-studio/dots-3-note-preview:free,google/gemma-4-31b-it:free");
   const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  // OpenAI-style messages: one with photos becomes a list of parts, the text and then each image.
+  const toOpenRouter = (messages: Msg[]) =>
+    messages.map(({ role, content, images }) =>
+      images?.length
+        ? { role, content: [{ type: "text", text: content }, ...images.map((url) => ({ type: "image_url", image_url: { url } }))] }
+        : { role, content },
+    );
 
   // `signal`: a stream brings its own, since its timeout lasts until the first words rather than the whole answer.
   async function call(body: Record<string, unknown>, signal?: AbortSignal) {
@@ -275,7 +293,9 @@ function openrouter(apiKey: string): Provider {
       let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(() => ctrl.abort(new Error("no answer in time")), TIMEOUT_MS);
       let res: Response;
       try {
-        res = await call({ models: model(opts?.fast), messages, temperature: opts?.kind === "chat" ? 0.5 : 0.3, max_tokens: outCap(opts?.kind), stream: true }, ctrl.signal);
+        // A question with photos needs models that take images.
+        const models = hasImages(messages) ? visionModels() : model(opts?.fast);
+        res = await call({ models, messages: toOpenRouter(messages), temperature: opts?.kind === "chat" ? 0.5 : 0.3, max_tokens: outCap(opts?.kind), stream: true }, ctrl.signal);
       } catch (e) {
         clearTimeout(timer);
         throw openrouterError(e);

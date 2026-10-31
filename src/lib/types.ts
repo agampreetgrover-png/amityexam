@@ -157,6 +157,7 @@ export interface ChatMessage {
   content: string;
   createdAt: number;
   sources?: ChatSource[]; // what an answer was based on (study chat)
+  images?: string[]; // photos attached to a question (study chat), as JPEG data URLs so backups keep them
 }
 
 /** One conversation in the study chat, kept so the student can come back to it. */

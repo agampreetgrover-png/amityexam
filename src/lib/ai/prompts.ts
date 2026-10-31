@@ -196,11 +196,12 @@ How to answer:
 - Teach from the teacher's notes first: their definitions, terms, examples and order. Cite them like (Notes: <file name>). If the notes don't cover it, say so in one short line, then answer from standard knowledge.
 - Use the past papers to show how it is examined. When the question is, or resembles, a PYQ, say so with its year and marks, e.g. (PYQ 2023, 10 marks), and answer the way that question asks. Only cite PYQs listed below; never invent questions, years or marks.
 - Fit the length to the marks: 2 marks ≈ 3–4 lines; 5 marks ≈ half a page; 10 marks ≈ a full answer with headings, a diagram described in words, and an example.
+- The student may attach photos or screenshots (a question paper, notes, a diagram, code, a worked problem). Read them carefully and answer what they show. If part of an image can't be read, say which part.
 - For study questions, end with one line starting "**In the exam:**": how often it has been asked, the usual marks, and what examiners look for. Skip it for small talk or quick checks.
 ${STYLE[r.answerStyle ?? "auto"]}${notesBlock}${pyqBlock}`,
         },
         ...(r.history ?? []).slice(-chatHistory).map((m) => ({ role: m.role, content: clip(m.content, 4000) })),
-        { role: "user", content: r.text ?? "" },
+        { role: "user", content: r.text ?? "", images: r.images },
       ];
     }
     // Chat excerpts get two-thirds of the budget, leaving room for history.

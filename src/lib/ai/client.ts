@@ -57,23 +57,32 @@ const toBase64 = async (blob: Blob) => {
   return btoa(bin);
 };
 
-/** Downscale a photo so the long edge is at most 2000px, re-encoded as JPEG. */
-async function shrinkImage(file: File): Promise<Blob> {
+/** Downscale a photo so the long edge is at most `maxEdge` px, re-encoded as JPEG. */
+async function shrinkImage(file: File, maxEdge = MAX_IMAGE_EDGE): Promise<Blob> {
   let bmp: ImageBitmap;
   try {
     bmp = await createImageBitmap(file);
   } catch {
     throw new AiError("This image format can't be read here (HEIC photos often can't). Save it as JPG or PNG and try again.");
   }
-  const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bmp.width, bmp.height));
+  const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bmp.width * scale);
   canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const ctx = canvas.getContext("2d")!;
+  // JPEG has no transparency: a see-through PNG (a copied diagram) would otherwise turn black.
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
   bmp.close();
   const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.85));
   if (!blob) throw new AiError("Couldn't process this image. Try a JPG or PNG.");
   return blob;
+}
+
+/** A photo or screenshot for the study chat: shrunk to 1600px and returned as a JPEG data URL, ready to save and send. */
+export async function imageToDataUrl(file: File): Promise<string> {
+  return `data:image/jpeg;base64,${await toBase64(await shrinkImage(file, 1600))}`;
 }
 
 /** Transcribe a scanned PDF or a photo of notes to text using Gemini. */

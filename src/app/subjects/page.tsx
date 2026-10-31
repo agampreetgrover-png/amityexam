@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookOpen, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db, deleteSubject, getSettings } from "@/lib/db";
 import { modeShort, topicsInScope } from "@/lib/mode";
@@ -48,18 +48,18 @@ export default function SubjectsPage() {
         </Empty>
       )}
       {!!subjects?.length && data && (
-        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <ul className="space-y-3">
           {subjects.map((s) => (
-            <SubjectCard
-              key={s.id}
-              subject={s}
-              topics={data.topics.filter((t) => t.subjectId === s.id)}
-              questions={data.questions.filter((q) => q.subjectId === s.id)}
-              mode={data.mode}
-              imported={data.imported.has(s.id!)}
-              onEdit={() => setEditing(s)}
-            />
-          ))}
+              <SubjectCard
+                key={s.id}
+                subject={s}
+                topics={data.topics.filter((t) => t.subjectId === s.id)}
+                questions={data.questions.filter((q) => q.subjectId === s.id)}
+                mode={data.mode}
+                imported={data.imported.has(s.id!)}
+                onEdit={() => setEditing(s)}
+              />
+            ))}
         </ul>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit subject" : "Add subject"}>
@@ -91,8 +91,9 @@ const QUICK_LINKS = [
 ];
 
 /**
- * One subject as a card. Only the title links to the subject, since the card also holds a menu; the footer
- * jumps straight to its syllabus, past papers or a quiz.
+ * One subject in its own box. On wide screens the box is a single row whose columns have fixed widths, so the
+ * figures line up from box to box; narrower, it stacks. Only the name links to the subject, since the box also
+ * holds a menu; the quick links jump straight to its syllabus, past papers or a quiz.
  */
 function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit }: {
   subject: Subject;
@@ -121,85 +122,84 @@ function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit
   return (
     <li
       style={subjectStyle(s.color)}
-      className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift"
+      className="relative rounded-2xl border border-border bg-surface p-4 shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift sm:p-5 xl:grid xl:grid-cols-[minmax(0,1fr)_7rem_10rem_13rem_15rem_2rem] xl:items-center xl:gap-x-8"
     >
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex items-start gap-2">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-            {s.code && <Badge>{s.code}</Badge>}
-            {s.credits ? <Badge>{s.credits} credit{s.credits === 1 ? "" : "s"}</Badge> : null}
-            {/* "In progress" would be on nearly every card, so only the states worth noticing get a badge. */}
-            {st.label !== "In progress" && <Badge tone={st.tone}>{st.label}</Badge>}
-          </div>
-          <Menu
-            label={`Actions for ${s.name}`}
-            className="-mr-1.5 -mt-0.5"
-            items={[
-              { label: "Edit", icon: <Pencil size={15} />, onSelect: onEdit },
-              {
-                label: "Delete",
-                icon: <Trash2 size={15} />,
-                danger: true,
-                onSelect: () => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!),
-              },
-            ]}
-          />
-        </div>
-
-        <h2 className="mt-4 text-[16px] font-semibold leading-snug tracking-[-0.01em]">
+      <div className="min-w-0 pr-10 xl:pr-0">
+        <h2 className="text-[16px] font-semibold leading-snug tracking-[-0.01em]">
           <Link href={href} className="inline-flex max-w-full items-start gap-2.5 rounded-md transition-colors duration-150 hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))]">
             <span aria-hidden className="subj-dot mt-[0.45em] size-2 shrink-0 rounded-full" />
             <span className="line-clamp-2 break-words">{s.name}</span>
           </Link>
         </h2>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[18px]">
+          {s.code && <Badge>{s.code}</Badge>}
+          {s.credits ? <Badge>{s.credits} credit{s.credits === 1 ? "" : "s"}</Badge> : null}
+          {/* "In progress" would be on nearly every box, so only the states worth noticing get a badge. */}
+          {st.label !== "In progress" && <Badge tone={st.tone}>{st.label}</Badge>}
+        </div>
+      </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-2">
-          <div className="min-w-0 rounded-lg bg-surface-2 px-3 py-2.5">
-            <dt className="text-xs text-muted">{mode ? `${modeShort(mode)} topics` : "Topics"}</dt>
-            <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-              <span className="text-lg font-semibold tabular-nums">{ts.length}</span>
-              {weak > 0 && <span className="text-xs font-medium tabular-nums text-mark-ink">{weak} weak</span>}
-            </dd>
-          </div>
-          <div className="min-w-0 rounded-lg bg-surface-2 px-3 py-2.5">
-            <dt className="text-xs text-muted">Past-paper questions</dt>
-            <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-2">
-              <span className="text-lg font-semibold tabular-nums">{questions.length}</span>
-              {hot > 0 && <span className="text-xs font-medium tabular-nums text-accent">{hot} most asked</span>}
-            </dd>
-          </div>
-        </dl>
-
-        {/* Pushed to the card's foot, so the bars line up across a row whatever the title's length. Emerald, as
-            progress is everywhere: revised topics in full, studied ones paler at half their share. */}
-        <div className="mt-auto pt-5">
-          <div className="flex items-center gap-3" style={subjectStyle("var(--mastery)")}>
-            <CoverageBar topics={ts} className="flex-1" />
-            <span className="text-sm font-semibold tabular-nums">{cov}%<span className="sr-only"> of the syllabus covered</span></span>
-          </div>
-          <p className="mt-2 flex flex-wrap justify-between gap-x-3 gap-y-0.5 text-[13px] text-muted">
+      {/* Every figure has a small label over it, so each box reads on its own without column headings. */}
+      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 pl-[18px] sm:grid-cols-[7rem_10rem_minmax(0,1fr)] xl:contents">
+        <div className="min-w-0">
+          <dt className="text-xs text-muted">{mode ? `${modeShort(mode)} topics` : "Topics"}</dt>
+          <dd className="mt-1 flex flex-wrap items-baseline gap-x-2">
+            <span className="text-lg font-semibold leading-6 tabular-nums">{ts.length}</span>
+            {weak > 0 && <span className="text-xs font-medium tabular-nums text-mark-ink">{weak} weak</span>}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-xs text-muted">Past-paper questions</dt>
+          <dd className="mt-1 flex flex-wrap items-baseline gap-x-2">
+            <span className="text-lg font-semibold leading-6 tabular-nums">{questions.length}</span>
+            {hot > 0 && <span className="text-xs font-medium tabular-nums text-accent">{hot} most asked</span>}
+          </dd>
+        </div>
+        {/* Emerald, as progress is everywhere: revised topics in full, studied ones paler at half their share. */}
+        <div className="col-span-2 min-w-0 sm:col-span-1">
+          <dt className="flex justify-between gap-3 text-xs text-muted">
             <span className="tabular-nums">{revised} of {ts.length} revised</span>
             {timed.length > 0 && (
               <span className="tabular-nums" title="AI estimate for the topics still to revise">
                 {duration(mins)}{timed.length < left.length ? "+" : ""} left
               </span>
             )}
-          </p>
+          </dt>
+          <dd className="mt-1 flex h-6 items-center gap-3" style={subjectStyle("var(--mastery)")}>
+            <CoverageBar topics={ts} className="flex-1" />
+            <span className="w-9 text-right text-[13px] font-semibold tabular-nums">{cov}%<span className="sr-only"> of the syllabus covered</span></span>
+          </dd>
         </div>
-      </div>
+      </dl>
 
-      <nav aria-label={`${s.name} sections`} className="grid grid-cols-3 divide-x divide-border border-t border-border">
+      <nav
+        aria-label={`${s.name} sections`}
+        className="mt-5 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-lg border border-border xl:mt-0"
+      >
         {QUICK_LINKS.map((l) => (
           <Link
             key={l.tab}
             href={`${href}&tab=${l.tab}`}
-            className="group flex min-w-0 items-center justify-between gap-1 px-4 py-2.5 text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:-outline-offset-2"
+            className="flex h-9 items-center justify-center text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:-outline-offset-2"
           >
             {l.label}
-            <ChevronRight size={14} aria-hidden className="text-faint transition-colors duration-150 group-hover:text-muted" />
           </Link>
         ))}
       </nav>
+
+      <Menu
+        label={`Actions for ${s.name}`}
+        className="absolute right-3 top-3.5 sm:right-4 sm:top-4.5 xl:static"
+        items={[
+          { label: "Edit", icon: <Pencil size={15} />, onSelect: onEdit },
+          {
+            label: "Delete",
+            icon: <Trash2 size={15} />,
+            danger: true,
+            onSelect: () => confirm(`Delete ${s.name} and all its topics, exams, notes and quizzes?`) && deleteSubject(s.id!),
+          },
+        ]}
+      />
     </li>
   );
 }
