@@ -65,17 +65,26 @@ export class OwnerMismatchError extends Error {
 }
 
 let current: ExamDB | null = null;
+/** An open still in progress. React runs effects twice in development, so a second call must join it, not race it. */
+let opening: { name: string; promise: Promise<void> } | null = null;
 
 /**
  * Open the database for this page load (called once, by ProfileGate, in the browser). Its owner marker is written
  * when it is first opened and checked on every open after that: a mismatch closes it without writing anything.
  */
-export async function openDb(profile: Profile): Promise<void> {
+export function openDb(profile: Profile): Promise<void> {
   const name = dbNameOf(profile);
-  if (current) {
-    if (current.name === name) return;
-    throw new Error("Another profile's database is already open; switching profiles needs a page reload.");
-  }
+  const otherProfile = () => Promise.reject(new Error("Another profile's database is already open; switching profiles needs a page reload."));
+  if (current) return current.name === name ? Promise.resolve() : otherProfile();
+  if (opening) return opening.name === name ? opening.promise : otherProfile();
+  const promise = openInstance(profile, name).finally(() => {
+    opening = null;
+  });
+  opening = { name, promise };
+  return promise;
+}
+
+async function openInstance(profile: Profile, name: string): Promise<void> {
   const instance = new ExamDB(name);
   const expected = ownerOf(profile);
   try {
@@ -97,6 +106,7 @@ export async function openDb(profile: Profile): Promise<void> {
 export function closeDbForTests() {
   current?.close();
   current = null;
+  opening = null;
 }
 
 // Every module imports `db`; it forwards to the database openDb() chose. Using it before that (on the server, or

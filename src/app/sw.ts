@@ -1,6 +1,7 @@
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { NetworkOnly, Serwist } from "serwist";
+import { neverCache } from "@/lib/sw-rules";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -34,8 +35,10 @@ const serwist = new Serwist({
         return Response.redirect(to.href, 302);
       },
     },
-    // API responses (AI answers, Drive listings, date-sheet files) are always fetched fresh, never kept in a cache.
-    { matcher: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith("/api/"), handler: new NetworkOnly() },
+    // Never kept in a cache: API responses (AI answers, Drive listings, date-sheet files), sign-in pages and
+    // routes, and every other site (Supabase, Turnstile). Ahead of defaultCache, whose cross-origin rule would
+    // otherwise keep them for an hour. See src/lib/sw-rules.ts.
+    { matcher: neverCache, handler: new NetworkOnly() },
     ...defaultCache,
   ],
   fallbacks: {

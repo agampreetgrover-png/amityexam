@@ -61,6 +61,25 @@ describe("openDb owner marker", () => {
     expect(await ownerMarker(`amityexams-u-${A}`)).toBe("local");
   });
 
+  it("a second open while the first is still running joins it instead of opening another instance (React StrictMode)", async () => {
+    const open = vi.spyOn(indexedDB, "open");
+    try {
+      const [a, b] = [openDb(LOCAL), openDb(LOCAL)];
+      expect(b).toBe(a);
+      await Promise.all([a, b]);
+      expect(open.mock.calls.filter(([name]) => name === "amityexams")).toHaveLength(1);
+      await expect(openDb(userA)).rejects.toThrow(/page reload/);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  it("a different profile can't start opening while one is in progress", async () => {
+    const first = openDb(LOCAL);
+    await expect(openDb(userA)).rejects.toThrow(/page reload/);
+    await first;
+  });
+
   it("won't open a second profile in the same page load", async () => {
     await openDb(LOCAL);
     await expect(openDb(userA)).rejects.toThrow(/page reload/);

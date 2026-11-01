@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { appPassword, isValidSession, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/access";
+import { refreshSession } from "@/lib/supabase/middleware";
 import { safeNext, unlockPage } from "@/lib/unlock-page";
 
 // Guards the API routes, which spend the AI keys:
@@ -7,6 +8,8 @@ import { safeNext, unlockPage } from "@/lib/unlock-page";
 //    http://127.0.0.1:3000/api/ai/… (a "simple" text/plain request needs no CORS preflight) and use up the quota.
 // 2. Only known host names are served (stops DNS rebinding, where evil.example is pointed at 127.0.0.1).
 // 3. With APP_PASSWORD set (for a deployed copy), the whole app asks for the password once per device.
+// 4. A signed-in Supabase session (accounts) that is about to expire is refreshed here (route handlers calling
+//    getUser() may refresh too when this was skipped). It decides no access by itself.
 
 const LOOPBACK = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
 
@@ -46,26 +49,30 @@ export async function middleware(req: NextRequest) {
   }
   // A Vercel copy is on the public internet: without a password anyone with the URL (or a script) could spend the
   // AI keys, so its API stays shut until APP_PASSWORD is set.
+  // Refreshed session cookies (if any) ride on every response below, the refusals and the unlock page included.
+  const apply = await refreshSession(req);
+  const out = (r: Response) => apply(r instanceof NextResponse ? r : new NextResponse(r.body, r));
   if (api && !password && process.env.VERCEL) {
-    return deny("This deployment has no APP_PASSWORD, so the AI and Drive features are off. Set APP_PASSWORD in the project's environment variables and redeploy.", 503);
+    return out(deny("This deployment has no APP_PASSWORD, so the AI and Drive features are off. Set APP_PASSWORD in the project's environment variables and redeploy.", 503));
   }
   // With a password, rebinding is already ruled out (the attacker has no session cookie), so the host list only
   // matters for a copy running without one.
   if (api && !password && !hostAllowed(host)) {
-    return deny(`Unknown host "${host.slice(0, 100)}". Add it to ALLOWED_HOSTS (or set APP_PASSWORD) to serve the app under this name.`, 403);
+    return out(deny(`Unknown host "${host.slice(0, 100)}". Add it to ALLOWED_HOSTS (or set APP_PASSWORD) to serve the app under this name.`, 403));
   }
 
-  if (!password || pathname === "/unlock") return NextResponse.next();
+  // { request } passes refreshed cookies on to this request's pages and route handlers.
+  if (!password || pathname === "/unlock") return out(NextResponse.next({ request: req }));
   const ok = await isValidSession(req.cookies.get(SESSION_COOKIE)?.value);
   const navigation = req.headers.get("sec-fetch-mode") === "navigate" || (req.method === "GET" && !!req.headers.get("accept")?.includes("text/html"));
   if (!ok) {
     // API calls and the service worker's precaching get a plain 401. A page load gets the password form right
     // here, not a redirect: Next turns a middleware redirect into an absolute "localhost" URL, and 127.0.0.1 and
     // localhost hold different data (IndexedDB is per address). Being a 401, it's never cached as the page.
-    if (!navigation || api) return deny("This app is locked. Reload the page and enter the password.", 401);
-    return unlockPage(safeNext(pathname + search), "", 401);
+    if (!navigation || api) return out(deny("This app is locked. Reload the page and enter the password.", 401));
+    return out(unlockPage(safeNext(pathname + search), "", 401));
   }
-  const res = NextResponse.next();
+  const res = NextResponse.next({ request: req });
   // Sliding expiry: a device in regular use stays signed in.
   if (navigation) {
     res.cookies.set(SESSION_COOKIE, req.cookies.get(SESSION_COOKIE)!.value, {
@@ -73,7 +80,7 @@ export async function middleware(req: NextRequest) {
       secure: req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https",
     });
   }
-  return res;
+  return out(res);
 }
 
 export const config = {

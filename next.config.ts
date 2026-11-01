@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
+import { securityHeaders } from "./src/lib/security-headers";
 
 // New revision per build so precached app pages refresh after every deploy.
 const revision = randomUUID();
@@ -15,7 +16,11 @@ const pdfWorkerRevision = createHash("sha256").update(readFileSync(`public${PDF_
 const withSerwist = withSerwistInit({
   swSrc: "src/app/sw.ts",
   swDest: "public/sw.js",
-  cacheOnNavigation: true,
+  // Off: Serwist's "cache on navigation" patches history.pushState/replaceState and has a separate worker fetch each
+  // visited URL (query string included) straight into the "pages" cache, bypassing the service worker's routes and
+  // so the never-cache rules (src/lib/sw-rules.ts). Every app page is in PAGES below, precached for offline use,
+  // so it added nothing for offline use and could have cached sign-in pages or one-time sign-in links.
+  cacheOnNavigation: false,
   reloadOnOnline: false, // don't wipe in-progress quiz answers when the connection returns
   additionalPrecacheEntries: [...PAGES.map((url) => ({ url, revision })), { url: PDF_WORKER, revision: pdfWorkerRevision }],
   disable: process.env.NODE_ENV === "development",
@@ -24,18 +29,6 @@ const withSerwist = withSerwistInit({
   exclude: [/\.map$/, /^manifest.*\.js$/, /\.(?:woff|ttf)$/i],
 });
 
-// A full script CSP would need per-request nonces for Next's inline scripts, which breaks
-// static pages and offline precaching, so only the directives that can't break the app are set.
-const securityHeaders = [
-  { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "X-Frame-Options", value: "DENY" },
-  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), payment=(), usb=()" },
-  // img-src: AI answers are Markdown, and an injected remote image would leak data to another site.
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; img-src 'self' data: blob:" },
-  // Ignored over plain http (127.0.0.1); keeps a deployed copy on https.
-  { key: "Strict-Transport-Security", value: "max-age=31536000" },
-];
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
