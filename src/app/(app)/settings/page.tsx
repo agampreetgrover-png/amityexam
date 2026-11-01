@@ -145,7 +145,8 @@ export default function SettingsPage() {
           <p className={desc}>
             Everything is stored only on this device. Export a backup regularly, and use export and import to move between phone and laptop.
           </p>
-          <div className="flex flex-wrap gap-2">
+          {/* Phones: the two buttons stack full width rather than one wrapping under the other at its own size. */}
+          <div className="grid gap-2 sm:flex sm:flex-wrap">
             <Button onClick={backup}><Download size={16} /> Export backup</Button>
             <Button variant="secondary" onClick={() => file.current?.click()}><Upload size={16} /> Import backup</Button>
             <input ref={file} type="file" accept="application/json" hidden onChange={(e) => {
@@ -164,7 +165,7 @@ export default function SettingsPage() {
             </div>
             <Button
               variant="secondary"
-              className="text-bad hover:border-bad/40 hover:bg-bad/10"
+              className="text-bad hover:border-bad/40 hover:bg-bad/10 hover:text-bad max-sm:w-full"
               onClick={async () => {
                 setDataMsg(null);
                 // Settings go too, so the app returns to the "What are you preparing for?" screen; say so up front.
@@ -195,13 +196,14 @@ const THEME_OPTIONS: { value: ThemeChoice; label: string }[] = [
 /** Light, dark or system as three cards, each with a small drawing of a page in that theme. Native radios underneath. */
 function ThemePicker({ value }: { value: ThemeChoice }) {
   return (
-    <fieldset className="grid min-w-0 grid-cols-3 gap-2 sm:gap-3">
+    // Capped on wide screens: the three drawings only need to be big enough to tell apart.
+    <fieldset className="grid min-w-0 grid-cols-3 gap-2 sm:max-w-lg sm:gap-3">
       <legend className="sr-only">Theme</legend>
       {THEME_OPTIONS.map((o) => (
         <label
           key={o.value}
           className={cn(
-            "cursor-pointer rounded-xl border p-1.5 transition-colors duration-150 sm:p-2",
+            "press cursor-pointer rounded-xl border p-1.5 sm:p-2",
             "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent",
             value === o.value ? "border-accent bg-accent-soft ring-1 ring-accent" : "border-border hover:border-line-strong hover:bg-surface-2",
           )}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { AlertTriangle, CalendarCheck, Cloud, FileSpreadsheet, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, CalendarCheck, ChevronRight, Cloud, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { aiJson } from "@/lib/ai/client";
 import { db, getSettings } from "@/lib/db";
@@ -13,9 +13,20 @@ import { DEFAULT_CHECKLIST, EXAM_TYPES } from "@/lib/exams";
 import type { ExamType } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { OfflineHint, useOnline } from "../subject/shared";
-import { Badge, Button, Empty, Input, Segmented, Select } from "../ui";
+import { Badge, Button, Empty, Input, Segmented, Select, cn } from "../ui";
 
 type Source = "upload" | "drive";
+
+/**
+ * The review's action row, pinned to the foot of the Modal's scroll area with the body's padding pulled back so it
+ * sits flush (and covers the home-indicator strip on a phone's bottom sheet). Same row as the exam form's.
+ */
+const dialogFoot =
+  "sticky z-10 -mx-5 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface px-5 pt-3 bottom-[calc(-1.5rem_-_env(safe-area-inset-bottom))] mb-[calc(-1.5rem_-_env(safe-area-inset-bottom))] pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] sm:-bottom-6 sm:-mx-6 sm:-mb-6 sm:rounded-b-[15px] sm:px-6 sm:pb-3";
+
+/** What the file picker's accept list lets through, checked again for a dropped file (a drop skips that filter). */
+const looksLikeDatesheet = (f: File) => /\.(xlsx|xls|ods|csv|pdf)$/i.test(f.name) || f.type === "application/pdf" || f.type.startsWith("image/");
+
 type DriveSheet = { id: string; name: string; path: string[] };
 
 /** The exams found in a date sheet, waiting for the student's review. */
@@ -32,7 +43,9 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
   const [error, setError] = useState<unknown>(null);
   const [showSkipped, setShowSkipped] = useState(false);
   const [saved, setSaved] = useState<{ added: number; updated: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
   const online = useOnline();
+  const canTake = !busy && online;
 
   if (!subjects) return null;
   if (!subjects.length) {
@@ -102,11 +115,65 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
       <OfflineHint online={online}>You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</OfflineHint>
       {source === "upload" ? (
         <label
+          // A file dropped anywhere on the zone is read like a chosen one. Every drag is caught, even while it can't
+          // take a file, or the browser would open the dropped file in place of the app.
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = canTake ? "copy" : "none";
+            if (canTake && !dragging) setDragging(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            const f = e.dataTransfer.files[0];
+            if (!f || !canTake) return;
+            if (!looksLikeDatesheet(f)) {
+              setError("Can't read a date sheet from that file. Drop an Excel or CSV file, a PDF or a photo.");
+              return;
+            }
+            void analyse(f);
+          }}
           // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
-          className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted transition-colors duration-150 hover:border-accent/50 hover:bg-surface-2 has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent ${busy || !online ? "pointer-events-none opacity-60" : ""}`}
+          className={cn(
+            "flex min-h-40 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-6 py-8 text-center text-sm text-muted transition-[border-color,background-color] duration-150 ease-snappy has-[input:focus-visible]:border-accent has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-accent",
+            dragging
+              ? "border-accent bg-accent-soft"
+              : busy
+                ? "cursor-progress border-line-strong bg-surface-2/60"
+                : !online
+                  ? "cursor-not-allowed border-line-strong opacity-60"
+                  : "group cursor-pointer border-line-strong hover:border-accent/60 hover:bg-surface-2",
+          )}
         >
-          <Upload size={18} className="text-muted" aria-hidden />
-          <span><span className="font-medium text-text">Choose a date sheet</span> (.xlsx, .xls, .csv, PDF or photo)</span>
+          {busy ? (
+            // The reading shows here, where the file went, rather than in a line under the zone.
+            <>
+              <Loader2 size={18} className="animate-spin text-accent motion-reduce:animate-none" aria-hidden />
+              <span role="status" className="font-medium text-text">{busy}</span>
+            </>
+          ) : (
+            <>
+              <Upload
+                size={18}
+                aria-hidden
+                className={cn(
+                  "transition-[transform,color] duration-200 ease-snappy group-hover:-translate-y-0.5 group-hover:text-accent",
+                  dragging ? "-translate-y-0.5 text-accent" : "text-muted",
+                )}
+              />
+              {dragging ? (
+                <span className="font-medium text-accent">Drop to read it</span>
+              ) : (
+                <span>
+                  <span className="font-medium text-text">Choose a date sheet</span>
+                  <span className="hidden pointer-fine:inline"> or drop it here</span> (.xlsx, .xls, .csv, PDF or photo)
+                </span>
+              )}
+            </>
+          )}
           <input
             type="file"
             accept={DATESHEET_ACCEPT}
@@ -131,7 +198,9 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
           }
         }} />
       )}
-      {busy && <p className="flex items-center gap-2 text-sm font-medium"><Loader2 size={15} className="animate-spin text-accent" /> {busy}</p>}
+      {busy && source === "drive" && (
+        <p role="status" className="flex items-center gap-2 text-sm font-medium"><Loader2 size={15} className="animate-spin text-accent motion-reduce:animate-none" aria-hidden /> {busy}</p>
+      )}
       <AiErrorBox error={error} />
     </div>
   );
@@ -162,7 +231,7 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
     };
   }, []);
 
-  if (sheets === null) return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin" /> Looking in your Drive folders…</p>;
+  if (sheets === null) return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden /> Looking in your Drive folders…</p>;
   if (sheets === "error") return <AiErrorBox error="Couldn't reach your Drive folders. Check your connection, or upload the file instead." />;
   if (!sheets.length) return <p className="rounded-lg border border-dashed border-line-strong px-4 py-5 text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
   return (
@@ -174,13 +243,14 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
             type="button"
             disabled={disabled}
             onClick={() => onPick(s, sources)}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left [li:first-child>&]:rounded-t-[7px] [li:last-child>&]:rounded-b-[7px] transition-colors duration-150 hover:bg-surface-2 disabled:opacity-60"
+            className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 [li:first-child>&]:rounded-t-[11px] [li:last-child>&]:rounded-b-[11px] enabled:hover:bg-surface-2 enabled:active:bg-surface-3/60 disabled:cursor-progress disabled:opacity-60"
           >
             <Cloud size={16} className="shrink-0 text-muted" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{s.name}</span>
               {s.path.length > 0 && <span className="block truncate text-xs text-muted">{s.path.join(" / ")}</span>}
             </span>
+            <ChevronRight size={16} aria-hidden className="shrink-0 text-faint transition-transform duration-200 ease-snappy group-enabled:group-hover:translate-x-0.5" />
           </button>
         </li>
       ))}
@@ -265,24 +335,34 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
           None of your subjects were found. Make sure each subject has its course code (e.g. CSE201), or check this is your programme&apos;s date sheet.
         </p>
       )}
-      {/* A hairline table: ticked rows carry an indigo rule down their left edge. The padding keeps focus rings clear of the clipped corners. */}
+      {/* A hairline table. Rows left out sit on a grey wash, so the ticked ones read as the list being saved.
+          The padding keeps focus rings clear of the clipped corners. On phones subject and type take a line each,
+          with date and time side by side under them; from sm up it's two columns. */}
       {visible.length > 0 && <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
         {visible.map((r) => {
           const name = subjects.find((s) => s.id === r.subjectId)?.name ?? "unmatched exam";
           return (
-          <li key={r.key} className="relative p-3">
-            {r.include && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
-            <div className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                className="mt-3 h-4 w-4 accent-[var(--accent)]"
-                aria-label={`Include ${name}`}
-                checked={r.include}
-                disabled={r.subjectId == null}
-                onChange={(e) => patch(r.key, { include: e.target.checked })}
-              />
-              <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[1fr_9.5rem]">
+          <li key={r.key} className={cn("p-3 transition-colors duration-150 ease-snappy", !r.include && "bg-surface-2/60")}>
+            <div className="flex items-start gap-2.5">
+              {/* The tick's whole cell is the target, as tall as the fields beside it. */}
+              <label
+                className={cn(
+                  "-ml-1.5 grid size-9 shrink-0 place-items-center rounded-md transition-colors duration-150",
+                  r.subjectId == null ? "cursor-not-allowed" : "cursor-pointer hover:bg-surface-3/60",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  aria-label={`Include ${name}`}
+                  checked={r.include}
+                  disabled={r.subjectId == null}
+                  onChange={(e) => patch(r.key, { include: e.target.checked })}
+                />
+              </label>
+              <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-2 sm:grid-cols-[minmax(0,1fr)_9.5rem]">
                 <Select
+                  className="col-span-2 sm:col-span-1"
                   aria-label="Subject"
                   value={r.subjectId ?? ""}
                   onChange={(e) => {
@@ -293,7 +373,7 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
                   <option value="">Not my subject</option>
                   {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </Select>
-                <Select aria-label={`Exam type for ${name}`} value={r.type} onChange={(e) => repatch(r, { type: e.target.value as ExamType })}>
+                <Select className="col-span-2 sm:col-span-1" aria-label={`Exam type for ${name}`} value={r.type} onChange={(e) => repatch(r, { type: e.target.value as ExamType })}>
                   {EXAM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </Select>
                 <div>
@@ -301,22 +381,22 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
                     type="date"
                     aria-label={`Date for ${name}`}
                     aria-invalid={r.include && !r.date}
+                    aria-describedby={r.include && !r.date ? `${r.key}-date-error` : undefined}
                     value={r.date}
                     onChange={(e) => repatch(r, { date: e.target.value })}
-                    className={r.include && !r.date ? "border-bad" : undefined}
                   />
-                  {r.include && !r.date && <p className="mt-1 text-xs text-bad">Add a date to save this exam</p>}
+                  {r.include && !r.date && <p id={`${r.key}-date-error`} className="mt-1 text-xs text-bad">Add a date to save this exam</p>}
                 </div>
                 <Input type="time" aria-label={`Start time for ${name}`} value={r.time} onChange={(e) => patch(r.key, { time: e.target.value })} />
               </div>
             </div>
             {r.duplicate && (
-              <p className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs text-muted">
+              <p className="mt-2 flex flex-wrap items-center gap-2 pl-10 text-xs text-muted">
                 <Badge>Already saved</Badge> In your exams on {prettyDay(r.date)}.
               </p>
             )}
             {r.clash && (
-              <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-xs">
+              <div className="mt-2 flex flex-wrap items-center gap-2 pl-10 text-xs">
                 <Badge tone="warn"><AlertTriangle aria-hidden /> Clash</Badge>
                 <span className="text-muted">You already have this exam on {prettyDay(r.clash.date)}.</span>
                 <Select aria-label="What to do" className="h-8 w-auto py-0 text-xs" value={r.action} onChange={(e) => patch(r.key, { action: e.target.value as ImportRow["action"] })}>
@@ -330,7 +410,12 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
         })}
       </ul>}
       {skipped > 0 && (
-        <button type="button" className="rounded-md text-sm text-muted underline-offset-2 transition-colors duration-150 hover:text-text hover:underline" onClick={() => setShowSkipped(!showSkipped)}>
+        <button
+          type="button"
+          aria-expanded={showSkipped}
+          className="press -mx-1.5 rounded-md px-1.5 py-1 text-sm text-muted underline-offset-2 hover:text-text hover:underline"
+          onClick={() => setShowSkipped(!showSkipped)}
+        >
           {showSkipped ? "Hide" : "Show"} {skipped} exam{skipped === 1 ? "" : "s"} that didn&apos;t match your subjects
         </button>
       )}
@@ -340,7 +425,8 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
         </p>
       )}
       <AiErrorBox error={error} />
-      <div className="flex flex-wrap justify-between gap-2 pt-1">
+      {/* Pinned to the foot of the dialog's scroll area (as in the exam form), so Save stays in reach under a long sheet. */}
+      <div className={cn(dialogFoot, "justify-between")}>
         <Button variant="secondary" onClick={onBack} disabled={saving}>Use another file</Button>
         <Button onClick={save} disabled={saving || !chosen.length}>
           {saving ? "Saving…" : `Save ${chosen.length} exam${chosen.length === 1 ? "" : "s"}`}

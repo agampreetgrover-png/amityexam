@@ -56,4 +56,48 @@ describe("syncDrive", () => {
     }
     expect(events.find((e) => e.type === "plan")).toEqual({ type: "plan", total: 2, remaining: 0 });
   });
+
+  it("keeps same-named files in different subfolders of a folder linked by hand", async () => {
+    const tree: Record<string, { id: string; name: string; folder?: boolean }[]> = {
+      linkedAaaaa: [{ id: "minorAaaaaa", name: "Minor", folder: true }, { id: "majorAaaaaa", name: "Major", folder: true }],
+      minorAaaaaa: [{ id: "fileMinor01", name: "DBMS 2023.pdf" }],
+      majorAaaaaa: [{ id: "fileMajor01", name: "DBMS 2023.pdf" }],
+    };
+    vi.stubGlobal("fetch", async (url: string) => new Response(page(tree[new URL(url).searchParams.get("id")!] ?? [])));
+
+    const events: SyncEvent[] = [];
+    for await (const ev of syncDrive({
+      subjects: [{ id: 1, name: "Database Management Systems" }],
+      known: [],
+      sources: [],
+      links: [{ subjectId: 1, folderIds: ["linkedAaaaa"] }],
+    })) {
+      events.push(ev);
+      if (ev.type === "plan") break;
+    }
+    expect(events.find((e) => e.type === "plan")).toEqual({ type: "plan", total: 2, remaining: 0 });
+  });
+
+  it("still treats a linked folder's file and the same file in a source's subject folder as one copy", async () => {
+    const tree: Record<string, { id: string; name: string; folder?: boolean }[]> = {
+      linkedAaaaa: [{ id: "minorAaaaaa", name: "Minor", folder: true }],
+      minorAaaaaa: [{ id: "fileLinked1", name: "DBMS 2023.pdf" }],
+      sourceAaaaa: [{ id: "folderAaaaa", name: "Database Management Systems", folder: true }],
+      folderAaaaa: [{ id: "minorBbbbbb", name: "Minor", folder: true }],
+      minorBbbbbb: [{ id: "fileSource1", name: "DBMS 2023.pdf" }],
+    };
+    vi.stubGlobal("fetch", async (url: string) => new Response(page(tree[new URL(url).searchParams.get("id")!] ?? [])));
+
+    const events: SyncEvent[] = [];
+    for await (const ev of syncDrive({
+      subjects: [{ id: 1, name: "Database Management Systems" }],
+      known: [],
+      sources: [{ id: "sourceAaaaa", label: "A" }],
+      links: [{ subjectId: 1, folderIds: ["linkedAaaaa"] }],
+    })) {
+      events.push(ev);
+      if (ev.type === "plan") break;
+    }
+    expect(events.find((e) => e.type === "plan")).toEqual({ type: "plan", total: 1, remaining: 0 });
+  });
 });

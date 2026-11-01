@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent } from "react";
+import { flushSync } from "react-dom";
 import { BookOpen, Flame, GraduationCap, House, MessagesSquare, Moon, Search, Settings, Sprout, Sun } from "lucide-react";
 import { openCommandPalette } from "./command-palette-loader";
 import { setTheme, useTheme } from "@/lib/theme";
@@ -26,6 +27,48 @@ const groups = [
   { label: "Study tools", items: [byPath("/chat"), byPath("/important")] },
 ];
 const ROUTES = [...primary, settings].map((i) => i.href);
+
+/**
+ * Flip to the other theme. Where the browser has view transitions, the new theme opens as a circle from the button
+ * that was pressed, over a still picture of the old one; elsewhere, or with reduced motion, it just switches.
+ */
+function flipTheme(next: "light" | "dark", from: HTMLElement) {
+  const root = document.documentElement;
+  if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return setTheme(next);
+  const r = from.getBoundingClientRect();
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  const reach = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  root.classList.add("theme-reveal");
+  // flushSync: the sun/moon icon swaps inside the same snapshot as the colours.
+  const t = document.startViewTransition(() => flushSync(() => setTheme(next)));
+  t.ready
+    .then(() =>
+      root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${reach}px at ${x}px ${y}px)`] },
+        { duration: 460, easing: "cubic-bezier(0.16, 1, 0.3, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    )
+    .catch(() => {});
+  t.finished.finally(() => root.classList.remove("theme-reveal"));
+}
+
+/**
+ * The tablet rail shows icons only, so hovering or tabbing to one shows its name beside it. One label for the whole
+ * rail, fixed to the window so the rail's own scrolling box can't clip it. Hidden from lg up, where the names show.
+ */
+function useRailTip() {
+  const [tip, setTip] = useState<{ label: string; y: number } | null>(null);
+  const show = (label: string) => (e: PointerEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
+    if (e.type === "focus") {
+      if (!e.currentTarget.matches(":focus-visible")) return; // focus from a click; the pointer already shows it
+    } else if ((e as PointerEvent<HTMLElement>).pointerType !== "mouse") return; // a tap navigates; no label left on touch
+    const r = e.currentTarget.getBoundingClientRect();
+    setTip({ label, y: r.top + r.height / 2 });
+  };
+  const hide = () => setTip(null);
+  return { tip, show, hide };
+}
 
 export function Nav() {
   const path = usePathname() ?? "/";
@@ -65,6 +108,11 @@ export function Nav() {
     return () => ro.disconnect();
   }, [current]);
 
+  const { tip, show, hide } = useRailTip();
+  // The rail scrolling, or the page changing under the pointer, leaves the label pointing at nothing.
+  useEffect(hide, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tipProps = (label: string) => ({ onPointerEnter: show(label), onPointerLeave: hide, onFocus: show(label), onBlur: hide });
+
   // One row in the sidebar: the icon always, the label once the sidebar is wide enough (lg+).
   const item = ({ href, label, icon: Icon }: (typeof primary)[number], inRail = true) => {
     const on = active(href);
@@ -75,7 +123,7 @@ export function Nav() {
           onClick={onClick(href)}
           aria-current={on ? "page" : undefined}
           aria-label={label}
-          title={label}
+          {...tipProps(label)}
           className={cn(
             "press relative z-10 flex h-10 items-center gap-3 rounded-xl text-[14px] font-medium",
             "justify-center lg:justify-start lg:px-3",
@@ -101,14 +149,14 @@ export function Nav() {
         className="fixed inset-y-0 left-0 z-20 box-content hidden w-16 flex-col border-r border-border bg-side pl-[env(safe-area-inset-left)] md:flex lg:w-64"
         aria-label="Main"
       >
-        <Link href="/" onClick={onClick("/")} aria-label="Amity Exams" title="Amity Exams" className="group flex h-16 shrink-0 items-center gap-3 px-3 lg:px-5">
+        <Link href="/" onClick={onClick("/")} aria-label="Amity Exams" className="group flex h-16 shrink-0 items-center gap-3 px-3 lg:px-5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent-solid text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.18)] transition-transform duration-200 ease-snappy group-hover:-rotate-6">
             <GraduationCap size={17} strokeWidth={2} />
           </span>
           <span className="hidden text-[16px] font-bold tracking-[-0.02em] lg:inline">Amity Exams</span>
         </Link>
 
-        <div ref={rail} className="relative flex-1 overflow-y-auto px-2 py-2 lg:px-3">
+        <div ref={rail} onScroll={hide} className="relative flex-1 overflow-y-auto px-2 py-2 lg:px-3">
           {pill && (
             <span
               aria-hidden
@@ -135,7 +183,7 @@ export function Nav() {
               type="button"
               onClick={openCommandPalette}
               aria-label="Search"
-              title="Search"
+              {...tipProps("Search")}
               className="press flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface-2 text-[13px] text-muted hover:border-line-strong hover:text-text lg:flex-1 lg:justify-start lg:px-3"
             >
               <Search size={16} aria-hidden className="shrink-0" />
@@ -145,9 +193,9 @@ export function Nav() {
             {/* Flips to the other theme and pins it; Settings can put it back to following the device. */}
             <button
               type="button"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={(e) => flipTheme(theme === "dark" ? "light" : "dark", e.currentTarget)}
               aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              title={theme === "dark" ? "Light theme" : "Dark theme"}
+              {...tipProps(theme === "dark" ? "Light theme" : "Dark theme")}
               className={cn(
                 "press flex h-9 w-full items-center justify-center rounded-xl text-muted hover:bg-surface-2 hover:text-text lg:w-9",
                 "[&_svg]:transition-transform [&_svg]:duration-300 [&_svg]:ease-snappy hover:[&_svg]:rotate-[-18deg]",
@@ -158,11 +206,23 @@ export function Nav() {
           </div>
         </div>
       </nav>
+      {tip && (
+        <span
+          role="presentation"
+          aria-hidden
+          // Just right of the rail (64px plus a landscape notch), centred on the row; only while the rail is icons-only.
+          className="tip-in pointer-events-none fixed left-[calc(4rem+env(safe-area-inset-left)+0.5rem)] z-30 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-text px-2 py-1 text-[12px] font-medium text-bg shadow-float md:block lg:hidden"
+          style={{ top: tip.y }}
+        >
+          {tip.label}
+        </span>
+      )}
 
       {/* Mobile: bottom bar of the primary items; Settings lives in the top bar. The current item's icon
           sits on a soft pill that slides between them. */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-20 flex border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+        // Page content scrolls on under the bar, so it is a frosted step of the card colour where the browser can blur.
+        className="fixed inset-x-0 bottom-0 z-20 flex select-none border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] supports-[backdrop-filter]:bg-surface/85 supports-[backdrop-filter]:backdrop-blur-xl supports-[backdrop-filter]:backdrop-saturate-150 md:hidden"
         aria-label="Main"
       >
         {mobileIndex >= 0 && (
@@ -181,11 +241,12 @@ export function Nav() {
             onClick={onClick(href)}
             aria-current={active(href) ? "page" : undefined}
             className={cn(
-              "relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2 text-[11px] transition-colors duration-150",
+              "group relative flex min-w-0 flex-1 flex-col items-center gap-1 whitespace-nowrap pb-2 pt-2 text-[11px] transition-colors duration-150",
               active(href) ? "font-semibold text-nav-active-ink" : "font-medium text-muted",
             )}
           >
-            <span className="flex h-7 items-center justify-center">
+            {/* The icon dips under the thumb, so a tap is felt before the next page has loaded. */}
+            <span className="flex h-7 items-center justify-center transition-transform duration-150 ease-snappy group-active:scale-[0.88]">
               <Icon size={20} strokeWidth={active(href) ? 2.1 : 1.75} />
             </span>
             {label}

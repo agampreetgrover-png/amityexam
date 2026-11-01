@@ -117,6 +117,8 @@
 html {
   background: var(--bg);
   scrollbar-color: var(--line-strong) transparent;
+  /* Every control draws its own pressed state (.press, the bars' pills), so the browser's grey tap flash only doubles it. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Keep focused or scrolled-to items clear of the bottom nav (and the home indicator under it) on phones. */
@@ -142,6 +144,8 @@ body {
     outline-offset: 2px;
   }
   input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+  /* The caret is the one mark in a field that moves while you type; it takes the accent like everything else in focus. */
+  input, textarea, [contenteditable] { caret-color: var(--accent); }
   button:not(:disabled), summary { cursor: pointer; }
 }
 
@@ -315,6 +319,9 @@ body {
 .tab-in { animation: rise-in 200ms var(--ease-snappy) both; }
 
 .toast-in { animation: rise-in 200ms var(--ease-snappy); }
+/* The rail's name label: it slides out a hair from the icon it names. */
+@keyframes tip-in { from { opacity: 0; transform: translateX(-4px); } }
+.tip-in { animation: tip-in 120ms var(--ease-snappy) both; }
 .palette-in[open] { animation: drop-in 180ms var(--ease-snappy); }
 .count-in { animation: fade-in 180ms var(--ease-snappy); }
 .tick-done { animation: tick-pop 180ms var(--ease-snappy); }
@@ -337,6 +344,22 @@ dialog.sheet[open] { opacity: 1; transform: none; }
 @starting-style {
   dialog.sheet[open] { opacity: 0; transform: translateY(6px) scale(0.985); }
 }
+/* On phones the dialog is a bottom sheet (see Modal), so it rises from the edge it is attached to and drops back
+   there, a little quicker on the way out. Opacity stays at full so the sheet reads as one solid object moving. */
+@media (max-width: 639px) {
+  dialog.sheet {
+    opacity: 1;
+    transform: translateY(100%);
+    transition: transform 160ms cubic-bezier(0.4, 0, 1, 1), overlay 160ms allow-discrete, display 160ms allow-discrete;
+  }
+  dialog.sheet[open] {
+    transform: none;
+    transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1), overlay 280ms allow-discrete, display 280ms allow-discrete;
+  }
+  @starting-style {
+    dialog.sheet[open] { opacity: 1; transform: translateY(100%); }
+  }
+}
 dialog.sheet::backdrop {
   background: transparent;
   transition: background 180ms, overlay 180ms allow-discrete, display 180ms allow-discrete;
@@ -345,6 +368,15 @@ dialog.sheet[open]::backdrop { background: var(--scrim); }
 @starting-style {
   dialog.sheet[open]::backdrop { background: transparent; }
 }
+
+/* The sidebar's sun/moon: the new theme opens as a circle from the button that was pressed (clip-path set in nav.tsx),
+   over a still snapshot of the old one. Only while that class is on, so no other view transition is affected. */
+:root.theme-reveal::view-transition-old(root),
+:root.theme-reveal::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+:root.theme-reveal::view-transition-new(root) { z-index: 1; }
 
 /* Disclosure: the content eases open where the browser can animate to auto height. */
 details { interpolate-size: allow-keywords; }
@@ -361,6 +393,9 @@ details[open] > summary .chev { transform: rotate(90deg); }
   *, *::before, *::after {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
+    /* A looping animation (a spinner, a pulse) would otherwise restart every 1ms and flicker; it plays once and
+       rests on its last frame. Loading states still say so in words beside them. */
+    animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
   /* Pseudo-elements the rule above doesn't reach. One rule each, so a browser that doesn't know one drops only that line. */
@@ -394,13 +429,13 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .prose-ai .code-block > pre { background: none; border: 0; border-radius: 0 0 8px 8px; }
 .prose-ai strong { font-weight: 600; }
 /* A quote is set as a callout: a note or a "remember" box in an answer, not greyed-out text. */
-.prose-ai blockquote { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: 0 8px 8px 0; padding: 0.6em 0.95em; margin: 0.85em 0; }
+.prose-ai blockquote { border: 1px solid color-mix(in oklab, var(--accent) 22%, var(--border)); background: var(--accent-soft); border-radius: 8px; padding: 0.6em 0.95em; margin: 0.85em 0; }
 .prose-ai blockquote > :first-child { margin-top: 0; }
 .prose-ai blockquote > :last-child { margin-bottom: 0; }
 .prose-ai hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
 .prose-ai table { border-collapse: collapse; margin: 0.85em 0; display: block; overflow-x: auto; font-size: 14px; }
 .prose-ai th, .prose-ai td { border-bottom: 1px solid var(--border); padding: 0.5em 0.9em 0.5em 0; text-align: left; vertical-align: top; line-height: 1.55; }
-.prose-ai th { font-weight: 600; border-bottom-color: var(--line-strong); }
+.prose-ai th { font-size: 13px; font-weight: 500; color: var(--muted); border-bottom-color: var(--line-strong); }
 /* Code in a table cell stays on one line; a wide table scrolls (above) rather than breaking a loop header in half. */
 .prose-ai td code { white-space: nowrap; }
 /* A wide equation scrolls on its own instead of widening a phone page. */

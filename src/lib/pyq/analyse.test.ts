@@ -90,6 +90,27 @@ describe("matching questions to a long syllabus", () => {
   });
 });
 
+describe("work asked for while another analysis runs", () => {
+  it("analyses a subject's paper (an upload or a Retry) once the run in progress ends, instead of dropping it", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    aiJson.mockImplementation(async (action) => {
+      if (action === "pyqmap") {
+        await gate;
+        return { map: [] };
+      }
+      return { year: 2024, exam: "end-term", questions: [{ number: "1", text: "Define normalisation." }] };
+    });
+    const busy = remapSubject(1); // holds the analysis lock until released
+    tables.materials.push({ id: 9, subjectId: 1, kind: "pyq", fileName: "DBMS 2024.pdf", text: "Q1 Define normalisation." });
+    await analyseSubject(1); // asked while busy: queued, not run
+    expect(aiJson.mock.calls.some(([a]) => a === "pyq")).toBe(false);
+    release();
+    await busy;
+    await vi.waitFor(() => expect(tables.materials.find((m) => m.id === 9)!.analysedAt).toBeDefined());
+  });
+});
+
 describe("reading a paper", () => {
   it("doesn't mark a paper analysed when the AI found no questions in it", async () => {
     tables.materials = [{ id: 8, subjectId: 1, kind: "pyq", fileName: "DBMS 2023.pdf", text: "scan noise" }];

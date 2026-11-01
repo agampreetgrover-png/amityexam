@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight, BookOpen, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
+import { ArrowDown, ArrowLeftRight, ArrowUp, BookOpen, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/db";
@@ -30,6 +30,22 @@ interface Command {
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** The part of a label the query matched, in the selection tint. A row found by a keyword or a short form shows plain. */
+function Matched({ text, query }: { text: string; query: string }) {
+  const q = norm(query);
+  const at = q ? text.toLowerCase().indexOf(q) : -1;
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="rounded-[3px] bg-[var(--selection)] text-inherit">{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </>
+  );
+}
+
+const kbd = "inline-flex h-5 min-w-5 items-center justify-center rounded-md bg-surface-2 px-1 font-sans text-[11px] font-medium text-muted ring-1 ring-inset ring-border";
 
 /** Ctrl/Cmd+K search: jump to any page, subject or exam, or run a common action. */
 export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean }) {
@@ -159,9 +175,10 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
       onClose={() => setOpen(false)}
       onClick={(e) => e.target === dialog.current && setOpen(false)}
       aria-label="Search"
-      className="palette-in mx-auto mt-[12vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[var(--scrim)]"
+      // Phones: a near-full-width sheet just under the top edge, so the results stay above the keyboard. Wider: lower down.
+      className="palette-in mx-auto mt-[max(0.75rem,env(safe-area-inset-top))] w-[calc(100%-1.5rem)] max-w-xl overflow-hidden rounded-2xl border border-border bg-surface p-0 text-text shadow-float backdrop:bg-[var(--scrim)] sm:mt-[12vh] sm:w-[calc(100%-2rem)]"
     >
-      <div className="flex items-center gap-3 border-b border-border px-4 sm:px-5">
+      <div className="flex items-center gap-3 border-b border-border pl-4 pr-2 sm:px-5">
         <Search size={18} className="shrink-0 text-muted" aria-hidden />
         <input
           ref={input}
@@ -181,10 +198,19 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
           // The open palette already shows where focus is, so the global focus ring would only box in the field.
           className="h-14 min-w-0 flex-1 bg-transparent text-[16px] outline-none placeholder:text-faint focus-visible:outline-none"
         />
-        <kbd className="hidden rounded-md bg-surface-2 px-1.5 py-0.5 font-sans text-[11px] font-medium text-muted ring-1 ring-inset ring-border sm:block">Esc</kbd>
+        <kbd className={cn(kbd, "hidden px-1.5 sm:inline-flex")}>Esc</kbd>
+        {/* Phones have no Esc key. Tapping the backdrop closes too, but a word is easier to find. */}
+        <button type="button" onClick={() => setOpen(false)} className="press h-10 shrink-0 rounded-lg px-2.5 text-sm font-medium text-muted hover:bg-surface-2 hover:text-text sm:hidden">
+          Cancel
+        </button>
       </div>
-      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="max-h-[min(60vh,420px)] overflow-y-auto p-1.5">
-        {results.length === 0 && <li className="px-3 py-6 text-sm text-muted">Nothing matches &ldquo;{query}&rdquo;.</li>}
+      <ul ref={listRef} id={listId} role="listbox" aria-label="Results" className="max-h-[min(60dvh,420px)] overflow-y-auto overscroll-contain p-1.5">
+        {results.length === 0 && (
+          <li className="px-3 py-6 text-sm">
+            <p className="font-medium">Nothing matches &ldquo;{query}&rdquo;</p>
+            <p className="mt-1 text-muted">Try a subject&apos;s name or course code, or a page such as Exams.</p>
+          </li>
+        )}
         {results.map((c, i) => {
           const heading = c.group !== lastGroup ? c.group : null;
           lastGroup = c.group;
@@ -204,18 +230,26 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
                 className={cn(
                   "relative flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] transition-colors duration-100",
                   // The active row: a quiet fill, inset from the palette's edges, with its icon in the accent.
-                  i === active && "bg-surface-2",
+                  i === active && "bg-surface-2 active:bg-surface-3",
                 )}
               >
-                <span className={cn("flex w-5 shrink-0 justify-center", i === active ? "text-accent" : "text-muted")}>{c.icon}</span>
-                <span className="min-w-0 flex-1 truncate font-medium">{c.label}</span>
+                <span className={cn("flex w-5 shrink-0 justify-center transition-colors duration-100", i === active ? "text-accent" : "text-muted")}>{c.icon}</span>
+                {/* A long subject name takes a second line on a phone instead of losing its end to the date badge. */}
+                <span className="line-clamp-2 min-w-0 flex-1 font-medium sm:line-clamp-1"><Matched text={c.label} query={query} /></span>
                 {c.hint && <Badge tone={c.hintTone} className="shrink-0">{c.hint}</Badge>}
-                {i === active && <CornerDownLeft size={14} className="shrink-0 text-muted" aria-hidden />}
+                {/* Return opens the active row. The mark keeps its space on every row so badges don't shift as it moves,
+                    and touch screens, with no Return key, don't show it. */}
+                <CornerDownLeft size={14} className={cn("shrink-0 text-muted pointer-coarse:hidden", i !== active && "invisible")} aria-hidden />
               </div>
             </li>
           );
         })}
       </ul>
+      {/* How to drive it from a keyboard, on screens that have one. */}
+      <div aria-hidden className="hidden items-center gap-4 border-t border-border px-5 py-2 text-[12px] text-muted pointer-fine:sm:flex">
+        <span className="flex items-center gap-1.5"><kbd className={kbd}><ArrowUp size={11} /></kbd><kbd className={kbd}><ArrowDown size={11} /></kbd> to move</span>
+        <span className="flex items-center gap-1.5"><kbd className={kbd}><CornerDownLeft size={11} /></kbd> to open</span>
+      </div>
       {/* Always mounted, so a screen reader hears the count change as the query is typed. */}
       <p role="status" className="sr-only">{query ? (results.length ? `${results.length} result${results.length === 1 ? "" : "s"}` : "No results") : ""}</p>
     </dialog>

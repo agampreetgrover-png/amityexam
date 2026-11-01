@@ -50,11 +50,22 @@ function CodeBlock({ node, children }: { children?: ReactNode } & ExtraProps) {
   };
   return (
     <div className="code-block">
-      <div className="flex items-center justify-between gap-2 border-b border-border py-1 pl-3 pr-1.5 text-xs text-muted">
+      <div className="flex items-center justify-between gap-2 border-b border-border py-1 pl-3 pr-1 text-xs text-muted">
         <span className="min-w-0 truncate font-mono">{lang || "code"}</span>
-        {/* The ::before widens the tap target on touch screens to about 40px without changing the icon's look. */}
-        <button type="button" onClick={copy} aria-label="Copy code" title="Copy code" className="relative shrink-0 rounded-md p-1 text-faint transition-colors duration-150 hover:bg-surface-3 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-2.5 pointer-coarse:before:content-['']">
-          {copied ? <Check size={13} /> : <Copy size={13} />}
+        {/* Named in words, so it's found without hovering; it says "Copied" in green for a moment once it has.
+            The ::before widens the tap target on touch screens to about 40px without changing the look. */}
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : "Copy code"}
+          title="Copy code"
+          className={cn(
+            "press relative inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 font-sans font-medium hover:bg-surface-3 hover:text-text focus-visible:outline-offset-0 pointer-coarse:before:absolute pointer-coarse:before:-inset-y-2 pointer-coarse:before:inset-x-0 pointer-coarse:before:content-['']",
+            copied ? "text-good hover:text-good" : "text-muted",
+          )}
+        >
+          {copied ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+          {copied ? "Copied" : "Copy"}
         </button>
       </div>
       <pre ref={ref}>{children}</pre>

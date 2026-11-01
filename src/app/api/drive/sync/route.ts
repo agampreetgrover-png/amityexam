@@ -2,17 +2,19 @@ import { z } from "zod";
 import { BadRequest, readJsonBody } from "@/lib/ai/errors";
 import { MAX_DRIVE_SOURCES, MAX_SOURCE_LABEL } from "@/lib/drive/sources";
 import { syncDrive } from "@/lib/drive/sync";
+import { SYNC_LIMITS } from "@/lib/drive/sync-request";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024; // `known` can hold 50,000 ids
 
+const L = SYNC_LIMITS;
 const Body = z.object({
-  subjects: z.array(z.object({ id: z.number().int(), name: z.string().max(200), code: z.string().max(20).optional() })).max(50),
-  known: z.array(z.string().max(100)).max(50_000),
+  subjects: z.array(z.object({ id: z.number().int(), name: z.string().max(L.subjectName), code: z.string().max(L.subjectCode).optional() })).max(L.subjects),
+  known: z.array(z.string().max(L.knownId)).max(L.known),
   sources: z.array(z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/), label: z.string().max(MAX_SOURCE_LABEL) })).max(MAX_DRIVE_SOURCES),
-  links: z.array(z.object({ subjectId: z.number().int(), folderIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,100}$/)).max(10) })).max(50).optional(),
+  links: z.array(z.object({ subjectId: z.number().int(), folderIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,100}$/)).max(L.folderIdsPerLink) })).max(L.links).optional(),
   maxFiles: z.number().int().min(1).max(200).optional(),
   maxOcr: z.number().int().min(0).max(50).optional(),
 });

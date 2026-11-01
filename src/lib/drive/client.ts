@@ -6,6 +6,7 @@ import { db, getSettings } from "@/lib/db";
 import type { Material } from "@/lib/types";
 import type { SyncEvent } from "./sync";
 import { DEFAULT_DRIVE_SOURCES, MAX_DRIVE_SOURCES, MAX_SOURCE_LABEL } from "./sources";
+import { fitSyncRequest } from "./sync-request";
 
 interface DriveSyncState {
   running: boolean;
@@ -94,10 +95,11 @@ async function sync(auto: boolean) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subjects: subjects.map((s) => ({ id: s.id!, name: s.name, code: s.code })),
-          known,
+          ...fitSyncRequest(
+            subjects.map((s) => ({ id: s.id!, name: s.name, code: s.code, driveFolderIds: s.driveFolderIds })),
+            known,
+          ),
           sources,
-          links: subjects.filter((s) => s.driveFolderIds?.length).map((s) => ({ subjectId: s.id!, folderIds: s.driveFolderIds! })),
           maxOcr: round === 0 ? OCR_PER_OPEN : 0,
         }),
       });
@@ -116,7 +118,9 @@ async function sync(auto: boolean) {
     await db.transaction("rw", db.settings, async () => db.settings.put({ ...(await getSettings()), lastDriveSync: Date.now() }));
     // Split new past papers into questions and sort them by year and topic (runs in the background).
     // Imported here so the analyser isn't in every page's bundle just because sync is mounted in the layout.
-    void import("@/lib/pyq/analyse").then((m) => m.analyseAll());
+    void import("@/lib/pyq/analyse")
+      .then((m) => m.analyseAll())
+      .catch(() => {}); // offline or a stale deploy: the next app open analyses them
     const { imported, deferred, errors } = state;
     set({
       message: imported

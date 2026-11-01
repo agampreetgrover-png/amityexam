@@ -20,6 +20,9 @@ export default function ChatPage() {
   const [historyOpen, setHistoryOpen] = useState(false); // phones show the history or the chat, not both
   // From tablets up the history can be folded away for a wider conversation; remembered on this device.
   const [collapsed, setCollapsed] = useState(false);
+  // Set once the student first swaps or unfolds a panel, so the one that appears settles in (.tab-in) then, and
+  // not on page load.
+  const [moved, setMoved] = useState(false);
 
   // Read once rather than with useSearchParams, which would remount the thread whenever the id changes.
   useEffect(() => {
@@ -46,6 +49,7 @@ export default function ChatPage() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.repeat || e.key.toLowerCase() !== "b" || e.defaultPrevented) return;
       e.preventDefault();
+      setMoved(true);
       if (window.matchMedia("(min-width: 768px)").matches) setCollapsed((c) => !c);
       else setHistoryOpen((o) => !o);
     };
@@ -53,10 +57,15 @@ export default function ChatPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   // The thread's History button: on a phone it swaps to the list, on a wider screen it unfolds the panel.
-  const showHistory = () => (window.matchMedia("(min-width: 768px)").matches ? setCollapsed(false) : setHistoryOpen(true));
+  const showHistory = () => {
+    setMoved(true);
+    if (window.matchMedia("(min-width: 768px)").matches) setCollapsed(false);
+    else setHistoryOpen(true);
+  };
   const syncUrl = (id: number | null) => window.history.replaceState(window.history.state, "", id ? `/chat?id=${id}` : "/chat");
 
   const open = (id: number) => {
+    if (historyOpen) setMoved(true); // a phone swapping back to the chat
     // Already open (on a phone, tapping it in History to go back): remounting would cut off its answer.
     if (id === selected) return setHistoryOpen(false);
     setSelected(id);
@@ -65,6 +74,7 @@ export default function ChatPage() {
     syncUrl(id);
   };
   const startNew = () => {
+    if (historyOpen) setMoved(true);
     setSelected(null);
     setThreadKey((k) => k + 1);
     setHistoryOpen(false);
@@ -90,10 +100,25 @@ export default function ChatPage() {
             collapsed ? "md:grid-cols-[minmax(0,1fr)]" : "md:grid-cols-[15rem_minmax(0,1fr)] xl:grid-cols-[17.5rem_minmax(0,1fr)]",
           )}
         >
-          <aside className={cn("min-h-0 md:border-r md:border-border md:bg-side", historyOpen ? "flex" : "hidden", collapsed ? "md:hidden" : "md:flex")} aria-label="Chat history">
-            <ChatHistory selected={selected} onOpen={open} onNew={startNew} onClose={() => setHistoryOpen(false)} onCollapse={() => setCollapsed(true)} />
+          {/* .tab-in restarts whenever the history goes from hidden to shown: on a phone, swapping to it from the
+              chat; from tablets up, unfolding it. `moved` only turns on with one of those, never while it's showing. */}
+          <aside className={cn("min-h-0 md:border-r md:border-border md:bg-side", historyOpen ? "flex" : "hidden", collapsed ? "md:hidden" : "md:flex", moved && "tab-in")} aria-label="Chat history">
+            <ChatHistory
+              selected={selected}
+              onOpen={open}
+              onNew={startNew}
+              onClose={() => {
+                setMoved(true);
+                setHistoryOpen(false);
+              }}
+              onCollapse={() => {
+                setMoved(true);
+                setCollapsed(true);
+              }}
+            />
           </aside>
-          <section className={cn("min-h-0 md:flex", historyOpen ? "hidden" : "flex")} aria-label="Conversation">
+          {/* The conversation only ever hides on a phone, so only there does it settle in (tab-in's rise-in). */}
+          <section className={cn("min-h-0 md:flex", historyOpen ? "hidden" : "flex", moved && "max-md:animate-[rise-in_200ms_var(--ease-snappy)_both]")} aria-label="Conversation">
             <ChatThread
               key={threadKey}
               chatId={selected}

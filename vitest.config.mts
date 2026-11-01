@@ -11,6 +11,8 @@ export default defineConfig({
       "server-only": fileURLToPath(new URL("./node_modules/server-only/empty.js", import.meta.url)),
     },
   },
+  // tsconfig keeps JSX as written for Next ("preserve"); tests that render components need it compiled.
+  oxc: { jsx: { runtime: "automatic" } },
   // Agent worktrees under .claude/ hold full copies of the repo; only test this one.
   test: { exclude: [...configDefaults.exclude, ".claude/**"] },
 });

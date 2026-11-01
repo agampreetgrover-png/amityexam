@@ -11,11 +11,12 @@ export function Thinking() {
   }, []);
   const stage = secs < 3 ? "Reading your notes and past papers" : secs < 12 ? "Writing your answer" : "Still writing. Free AI models can be slow to start";
   return (
-    // Set where the answer will start, on the page like the answer itself.
-    <div className="flex justify-start px-1">
-      <div role="status" className="flex items-center gap-3 text-[14px] text-muted">
-        <span aria-hidden className="thinking-dots"><span /><span /><span /></span>
-        <span>{stage}</span>
+    // Set where the answer will start (flush with its first line), on the page like the answer itself. The stage
+    // fades in when it changes, so a new line reads as progress rather than a flicker.
+    <div className="flex justify-start">
+      <div role="status" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[14px] text-muted">
+        <span aria-hidden className="thinking-dots text-faint"><span /><span /><span /></span>
+        <span key={stage} className="count-in">{stage}</span>
         {secs >= 5 && <span aria-hidden className="tabular-nums text-faint">{secs}s</span>}
       </div>
     </div>

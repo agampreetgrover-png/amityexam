@@ -88,14 +88,26 @@ export const PrepSchema = z.object({
   ),
 });
 
-// "2:30 PM", "14.30", "10:00" → "HH:mm"; anything else → null.
-const timeOrNull = z.preprocess((v) => {
+// A start time with no AM/PM of its own, then a range whose end has one: "02:00 to 03:00 PM".
+const RANGE_END = /^\d{1,2}[:.]\d{2}\s*(?:-|–|—|to)\s*(\d{1,2})[:.]\d{2}\s*([ap])\.?m\.?/i;
+
+// "2:30 PM", "14.30", "10:00", "02:00 to 03:00 PM" → "HH:mm"; anything else → null.
+export const timeOrNull = z.preprocess((v) => {
   if (typeof v !== "string") return null;
-  const m = v.trim().match(/^(\d{1,2})[:.](\d{2})\s*([ap]\.?m\.?)?/i);
+  const s = v.trim();
+  const m = s.match(/^(\d{1,2})[:.](\d{2})\s*([ap]\.?m\.?)?/i);
   if (!m) return null;
   let h = Number(m[1]);
-  const pm = m[3]?.toLowerCase().startsWith("p");
-  if (m[3] && h === 12) h = pm ? 12 : 0;
+  let meridiem = m[3];
+  const range = !meridiem && h >= 1 && h <= 12 ? s.match(RANGE_END) : null;
+  if (range) {
+    // The end's AM/PM covers the start too, unless the range crosses noon: "10:00 to 01:00 PM" starts at 10 AM.
+    const start = h % 12;
+    const end = Number(range[1]) % 12;
+    meridiem = range[2].toLowerCase() === "p" && start > end ? "am" : range[2];
+  }
+  const pm = meridiem?.toLowerCase().startsWith("p");
+  if (meridiem && h === 12) h = pm ? 12 : 0;
   else if (pm) h += 12;
   return h < 24 && Number(m[2]) < 60 ? `${String(h).padStart(2, "0")}:${m[2]}` : null;
 }, z.string().nullable()).catch(null);

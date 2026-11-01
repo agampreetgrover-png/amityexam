@@ -90,9 +90,10 @@ export function List({ className, children }: { className?: string; children: Re
 // Touch screens get 16px text: iOS zooms the whole page into any field set smaller when it takes focus.
 const field =
   "w-full rounded-lg border border-line-control bg-surface px-3 py-2 text-sm text-text shadow-control transition-[border-color,box-shadow] duration-150 placeholder:text-faint pointer-coarse:text-base hover:border-faint focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none disabled:opacity-60 aria-[invalid=true]:border-bad";
-export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input className={cn(field, "h-9", className)} {...p} />;
+// 40px on touch screens, the thumb-sized floor; 36px with a mouse.
+export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input className={cn(field, "h-9 pointer-coarse:h-10", className)} {...p} />;
 export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea className={cn(field, "min-h-24 leading-relaxed", className)} {...p} />;
-export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => <select className={cn(field, "select-chevron h-9", className)} {...p} />;
+export const Select = ({ className, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => <select className={cn(field, "select-chevron h-9 pointer-coarse:h-10", className)} {...p} />;
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return (
@@ -332,14 +333,16 @@ export function Modal({ open, onClose, title, children }: { open: boolean; onClo
       ref={ref}
       onClose={onClose}
       aria-labelledby={titleId}
-      className="sheet m-auto w-[calc(100%-2rem)] max-w-lg rounded-2xl border border-border bg-surface p-0 text-text shadow-float"
+      // On phones it is a sheet that rises from the bottom edge, full width, where the thumb already is; from sm up, a centred card.
+      className="sheet m-auto w-full max-w-none rounded-t-2xl border border-b-0 border-border bg-surface p-0 text-text shadow-float max-sm:mb-0 sm:w-[calc(100%-2rem)] sm:max-w-lg sm:rounded-2xl sm:border-b"
     >
       <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-3.5 sm:px-6">
         <h2 id={titleId} className="min-w-0 truncate text-[16px] font-semibold tracking-[-0.01em]">{title}</h2>
         <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close" className="-mr-1.5"><X size={18} /></Button>
       </div>
-      {/* dvh: the visible height, so the buttons at the foot stay reachable with the phone's keyboard and browser bars up. */}
-      <div className="max-h-[75dvh] overflow-y-auto px-5 pb-6 pt-5 sm:px-6">{shown && children}</div>
+      {/* dvh: the visible height, so the buttons at the foot stay reachable with the phone's keyboard and browser bars up.
+          On phones the foot also clears the home indicator. */}
+      <div className="max-h-[80dvh] overflow-y-auto overscroll-contain px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5 sm:max-h-[75dvh] sm:px-6 sm:pb-6">{shown && children}</div>
     </dialog>
   );
 }

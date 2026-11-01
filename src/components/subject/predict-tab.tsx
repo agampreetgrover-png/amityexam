@@ -2,12 +2,12 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { Sparkles, TrendingUp } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { aiModeFields, modeShort, pyqMatchesMode } from "@/lib/mode";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Empty, Section } from "../ui";
+import { Badge, Button, Empty, Section } from "../ui";
 import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
 import { MAX_CONTEXT, OfflineHint, topicTitles, useOnline, type TabProps } from "./shared";
 
@@ -79,11 +79,18 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
         }}
       />
 
-      {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
+      {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} onClose={() => setViewing(null)} />}
 
       {/* Past predictions are a plain list on the page, under the generator. */}
-      <Section className="no-print" title="Past predictions">
-        {!docs ? null : docs.length ? <DocList docs={docs} selected={viewing?.id} onSelect={setViewing} /> : <Empty icon={<TrendingUp size={18} />} title="No predictions yet" />}
+      <Section className="no-print" title={docs?.length ? <span className="flex items-center gap-2">Past predictions <Badge>{docs.length}</Badge></span> : "Past predictions"}>
+        {!docs ? null : docs.length ? (
+          <DocList docs={docs} selected={viewing?.id} onSelect={setViewing} />
+        ) : (
+          // No icon card: the button above is the next step; this says what comes back and where it's kept.
+          <Empty title="No predictions yet">
+            Press Predict questions above. Each prediction is saved here to read again or print.
+          </Empty>
+        )}
       </Section>
     </div>
   );

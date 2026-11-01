@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Cloud, ExternalLink, Link2, Loader2, Plus, RefreshCw, X } from "lucide-react";
+import { ChevronRight, Cloud, ExternalLink, Link2, Loader2, Plus, RefreshCw, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { db, getSettings } from "@/lib/db";
 import { runDriveSync, useDriveSync } from "@/lib/drive/client";
@@ -82,7 +82,8 @@ export function DriveSettings() {
           {sources.map((s) => (
             <li key={s.id} className="flex items-center gap-3 py-2 pl-3 pr-2">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted" aria-hidden><Cloud size={15} /></span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{s.label}</span>
+              {/* Wraps rather than truncates: on a phone the two buttons leave little room, and the name is all there is. */}
+              <span className="min-w-0 flex-1 text-sm font-medium leading-snug">{s.label}</span>
               <a href={folderUrl(s.id)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${s.label} in Drive`} className="press relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']">
                 <ExternalLink size={14} />
               </a>
@@ -101,26 +102,43 @@ export function DriveSettings() {
       )}
 
       <form onSubmit={addSource} className="mb-1 flex gap-2">
-        <Input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Paste a Drive folder link" aria-label="Drive folder link" />
-        <Button type="submit" variant="secondary" disabled={!link.trim() || checking}>{checking ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add</Button>
+        <Input
+          value={link}
+          onChange={(e) => {
+            setLink(e.target.value);
+            if (linkError) setLinkError(""); // the message was about the old text
+          }}
+          placeholder="Paste a Drive folder link"
+          aria-label="Drive folder link"
+          aria-invalid={!!linkError || undefined}
+          aria-describedby={linkError ? "drive-link-error" : undefined}
+          className="min-w-0 pointer-coarse:h-10"
+        />
+        <Button type="submit" variant="secondary" disabled={!link.trim() || checking} aria-busy={checking || undefined} className="shrink-0 pointer-coarse:h-10">
+          {checking ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />} Add
+        </Button>
       </form>
-      {linkError && <p className="mt-1 text-sm text-bad">{linkError}</p>}
+      {linkError && <p id="drive-link-error" role="alert" className="mt-1 text-sm text-bad">{linkError}</p>}
       {settings.driveSources && (
-        <button type="button" className="mt-1.5 text-xs text-muted underline-offset-2 transition-colors duration-150 hover:text-text hover:underline" onClick={() => save({ driveSources: undefined })}>
+        <button type="button" className="mt-1.5 rounded text-xs text-muted underline-offset-2 transition-colors duration-150 hover:text-text hover:underline pointer-coarse:py-2" onClick={() => save({ driveSources: undefined })}>
           Reset to the default folders
         </button>
       )}
 
-      {/* Syncing and its status, ruled off from the folder list above. */}
-      <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-border pt-5">
-        <Button onClick={() => runDriveSync()} disabled={sync.running}>
-          {sync.running ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {sync.running ? "Syncing…" : "Sync now"}
-        </Button>
-        <Button variant="secondary" onClick={() => setLinking(true)}><Link2 size={16} /> Link a folder to a subject</Button>
-        <label className="ml-1 flex cursor-pointer items-center gap-2 text-sm text-muted transition-colors duration-150 hover:text-text">
+      {/* Syncing and its status, ruled off from the folder list above: the setting as a row like Reminders, then the actions. */}
+      <div className="mt-6 space-y-4 border-t border-border pt-5">
+        {/* A label round the switch, so the words toggle it too. */}
+        <label className="flex cursor-pointer items-center justify-between gap-4">
+          <span id="drive-sync-label" className="text-sm font-medium">Sync when the app opens</span>
           <Switch checked={settings.driveSync !== false} onChange={(on) => save({ driveSync: on })} labelledBy="drive-sync-label" />
-          <span id="drive-sync-label">Sync when the app opens</span>
         </label>
+        {/* Phones: full-width buttons, stacked; wider screens: side by side. */}
+        <div className="grid gap-2 sm:flex sm:flex-wrap">
+          <Button onClick={() => runDriveSync()} disabled={sync.running}>
+            {sync.running ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {sync.running ? "Syncing…" : "Sync now"}
+          </Button>
+          <Button variant="secondary" onClick={() => setLinking(true)}><Link2 size={16} /> Link a folder to a subject</Button>
+        </div>
       </div>
 
       <div className="mt-5 space-y-2 text-sm" role="status">
@@ -152,10 +170,17 @@ export function DriveSettings() {
         {sync.remaining > 0 && !sync.running && <p className="text-warn">{sync.remaining} more files found. They&apos;ll come in on the next sync.</p>}
         {sync.errors.length > 0 && (
           <div>
-            <button type="button" className="text-warn underline-offset-2 hover:underline" onClick={() => setShowErrors((v) => !v)}>
+            <button
+              type="button"
+              aria-expanded={showErrors}
+              aria-controls="drive-sync-errors"
+              className="inline-flex items-start gap-1 rounded text-left text-warn underline-offset-2 hover:underline"
+              onClick={() => setShowErrors((v) => !v)}
+            >
+              <ChevronRight size={14} aria-hidden className={cn("mt-[3px] shrink-0 transition-transform duration-150 ease-snappy", showErrors && "rotate-90")} />
               {sync.errors.length} file{sync.errors.length === 1 ? "" : "s"} couldn&apos;t be fetched (retried next time)
             </button>
-            {showErrors && <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-muted">{sync.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
+            {showErrors && <ul id="drive-sync-errors" className="count-in mt-1 list-disc space-y-0.5 break-words pl-8 text-xs text-muted">{sync.errors.map((e, i) => <li key={i}>{e}</li>)}</ul>}
           </div>
         )}
         {sync.notices.length > 0 && (
@@ -238,7 +263,7 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
             {[...linked].map((id) => (
               <li key={id} className="flex items-center justify-between gap-2 py-2">
                 <span className="truncate">{(groups !== "error" && groups?.flatMap((g) => g.folders).find((f) => f.id === id)?.name) || id}</span>
-                <button type="button" className="-mr-2 shrink-0 rounded-md px-2 py-1 text-xs text-muted transition-colors duration-150 hover:bg-bad/10 hover:text-bad" onClick={() => db.subjects.update(subject!.id, { driveFolderIds: [...linked].filter((x) => x !== id) }).catch(() => toast("Couldn't save that. Try again."))}>
+                <button type="button" className="press -mr-2 shrink-0 rounded-md px-2 py-1 text-xs text-muted hover:bg-bad/10 hover:text-bad pointer-coarse:py-2" onClick={() => db.subjects.update(subject!.id, { driveFolderIds: [...linked].filter((x) => x !== id) }).catch(() => toast("Couldn't save that. Try again."))}>
                   Unlink
                 </button>
               </li>

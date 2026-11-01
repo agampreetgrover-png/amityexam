@@ -1,12 +1,12 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { db } from "@/lib/db";
 import { newTopic, parseTopics } from "@/lib/syllabus-text";
 import type { ExamMode } from "@/lib/types";
 import { AiErrorBox } from "./ai-error";
-import { Button, Input, Textarea } from "./ui";
+import { Button, Input, Textarea, cn } from "./ui";
 
 /**
  * Lets the student type or paste an exam's syllabus right in the exam form.
@@ -22,10 +22,13 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
   onAdded: (topicIds: number[]) => void;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  // Opened or closed by the student (not open from the start): focus moves into the fields, or back to the button.
+  const [moved, setMoved] = useState(false);
   const [unit, setUnit] = useState("");
   const [text, setText] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const topicsId = useId(); // Enter in the unit name moves here
   const titles = parseTopics(text);
 
   const add = async () => {
@@ -48,6 +51,7 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
       onAdded(ids);
       setUnit("");
       setText("");
+      setMoved(true);
       setOpen(false);
     } catch (e) {
       setError(e instanceof Error ? `Could not save the topics: ${e.message}` : "Could not save the topics.");
@@ -60,26 +64,38 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md text-sm font-medium text-accent underline-offset-2 hover:underline"
+        autoFocus={moved}
+        onClick={() => {
+          setMoved(true);
+          setOpen(true);
+        }}
+        className="press -mx-1.5 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-medium text-accent hover:bg-accent-soft hover:text-accent-hover"
       >
-        <Plus size={15} /> Type or paste topics
+        <Plus size={15} aria-hidden /> Type or paste topics
       </button>
     );
   }
 
   return (
     // A div, not a nested <form>: this sits inside the exam form, and Enter in the unit name must not save the exam.
-    <div className="space-y-2.5 rounded-xl border border-border bg-surface-2 p-3">
+    // Settles in when the student opens it; already open on arrival, it just sits there.
+    <div className={cn("space-y-2.5 rounded-xl border border-border bg-surface-2 p-3", moved && "tab-in")}>
       <Input
+        autoFocus={moved}
         value={unit}
         onChange={(e) => setUnit(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+        // Enter moves on to the topics instead of saving the exam.
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          document.getElementById(topicsId)?.focus();
+        }}
         placeholder="Unit name (optional), e.g. Unit 1: Relational model"
         aria-label="Unit name"
         className="h-9 bg-surface"
       />
       <Textarea
+        id={topicsId}
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={"One topic per line, e.g.\nER model\nNormalization\nSQL joins"}
@@ -94,7 +110,7 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
             : `Added to the subject's syllabus too${season === "mid-term" ? ", marked as mid-sem" : ""}`}
         </p>
         <div className="flex gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); setError(""); }}>Cancel</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setMoved(true); setOpen(false); setError(""); }}>Cancel</Button>
           <Button type="button" size="sm" onClick={add} disabled={!titles.length || saving}>
             {saving ? "Adding…" : titles.length ? `Add ${titles.length} topic${titles.length === 1 ? "" : "s"}` : "Add topics"}
           </Button>

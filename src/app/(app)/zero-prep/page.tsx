@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronDown, ChevronRight, Flame, RotateCw, Sprout } from "lucide-react";
+import { ChevronDown, ChevronRight, Flame, RotateCw } from "lucide-react";
 import { useId, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { db, getSettings } from "@/lib/db";
 import { modeShort, topicsInScope } from "@/lib/mode";
@@ -12,12 +12,13 @@ import type { PrepLevel, Subject, TopicPrep } from "@/lib/types";
 import { AiErrorBox } from "@/components/ai-error";
 import { QuestionLine } from "@/components/pyq-question-line";
 import { toast } from "@/components/toast";
-import { Badge, Button, Empty, PageHeader, Panel, Progress, Segmented, Select, Tick, cn, subjectStyle, tableHead } from "@/components/ui";
+import { Badge, Button, buttonClass, Empty, PageHeader, Panel, Progress, Segmented, Select, Tick, cn, subjectStyle, tableHead } from "@/components/ui";
 
-const link = "font-medium text-accent underline underline-offset-2";
 const FIRST_SHOWN = 60;
 const IMPORTANCE = { 3: "Core", 2: "Regular", 1: "Minor" } as const;
 const PREP_WORD: Record<PrepLevel, string> = { 0: "Zero prep", 1: "Light prep", 2: "Needs groundwork" };
+// What each rating means, as the rating is defined in lib/types (TopicPrep.level).
+const PREP_MEANS: Record<PrepLevel, string> = { 0: "Learn it cold, nothing first", 1: "A little groundwork first", 2: "Builds on other topics" };
 
 export default function ZeroPrepPage() {
   const [prep, setPrep] = useState<PrepFilter>("zero");
@@ -26,6 +27,8 @@ export default function ZeroPrepPage() {
   const [subjectId, setSubjectId] = useState<number | "all">("all");
   const [sort, setSort] = useState<PrepSort>("wins");
   const [showAll, setShowAll] = useState(false);
+  // Set by the first filter or sort change; from then on a change re-plays the list's settle-in.
+  const [refiltered, setRefiltered] = useState(false);
   const run = usePrepRun();
 
   const data = useLiveQuery(async () => {
@@ -66,8 +69,13 @@ export default function ZeroPrepPage() {
     return (
       <>
         {header}
-        <Empty icon={<Sprout size={28} />} title={`No ${seasonName} syllabus yet`}>
-          Add a syllabus to your <Link href="/subjects" className={link}>subjects</Link>. The AI then sorts its topics by how much groundwork each one needs.
+        <Empty title={`No ${seasonName} syllabus yet`}>
+          Add a syllabus to your subjects. The AI then sorts its topics by how much groundwork each one needs.
+          <div className="mt-4">
+            <Link href="/subjects" className={buttonClass("primary", "md", "group")}>
+              Go to Subjects <ChevronRight size={16} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
+            </Link>
+          </div>
         </Empty>
       </>
     );
@@ -77,18 +85,40 @@ export default function ZeroPrepPage() {
     return (
       <>
         {header}
-        {run.running ? (
-          <RunStatus run={run} />
-        ) : (
-          <Empty icon={<Sprout size={28} />} title="Find the topics you can start cold">
-            <p>
+        {/* Before any ratings: what the page will do, the three ratings it sorts by (the staircases the list uses),
+            and the one button that starts it. While it runs, progress takes the button's place, so the student's
+            eye stays where they pressed. */}
+        <Panel as="section" className="grid lg:grid-cols-[minmax(0,1fr)_19rem]">
+          <div className="px-5 py-6 sm:px-6 sm:py-7">
+            <h2 className="text-[17px] font-semibold tracking-[-0.01em]">Find the topics you can start cold</h2>
+            <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">
               The AI reads each of your {scope.topics.length} topics once and rates how much groundwork it needs, how long it takes and how much it
               matters. Then they&apos;re ranked against how often your {seasonName} past papers asked them.
             </p>
-            <Button className="mt-4" onClick={() => ratePrep()}>Rate my topics</Button>
-            {run.error ? <div className="mt-4"><AiErrorBox error={run.error} /></div> : null}
-          </Empty>
-        )}
+            <div className="mt-5 max-w-md">
+              {run.running ? (
+                <RunProgress run={run} />
+              ) : (
+                <Button onClick={() => ratePrep()}>Rate my topics</Button>
+              )}
+            </div>
+            {run.error && !run.running ? <div className="mt-4 max-w-prose"><AiErrorBox error={run.error} /></div> : null}
+          </div>
+          <div className="border-t border-border bg-surface-2/40 px-5 py-5 sm:px-6 lg:border-l lg:border-t-0 lg:py-7">
+            <p id="prep-levels" className="text-[13px] font-medium text-muted">Each topic gets one of three ratings</p>
+            <ul aria-labelledby="prep-levels" className="mt-3 space-y-3">
+              {([0, 1, 2] as const).map((level) => (
+                <li key={level} className="flex items-start gap-3">
+                  <span className="flex h-5 shrink-0 items-center"><PrepGlyph level={level} /></span>
+                  <span className="min-w-0 text-[13px] leading-5">
+                    <span className="font-medium text-text">{PREP_WORD[level]}</span>
+                    <span className="block text-muted">{PREP_MEANS[level]}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Panel>
       </>
     );
   }
@@ -99,6 +129,7 @@ export default function ZeroPrepPage() {
     setAsked("any");
     setImportance("any");
     setSubjectId("all");
+    setRefiltered(true);
   };
 
   const total = rows.reduce((a, r) => a + r.prep.mins, 0);
@@ -122,6 +153,7 @@ export default function ZeroPrepPage() {
             onChange={(v) => {
               setPrep(v);
               setShowAll(false);
+              setRefiltered(true);
             }}
             options={[
               { value: "zero", label: <><PrepGlyph level={0} />Zero prep</> },
@@ -131,7 +163,10 @@ export default function ZeroPrepPage() {
           {subjectsRated.length > 1 && (
             <Select
               value={subject}
-              onChange={(e) => setSubjectId(e.target.value === "all" ? "all" : Number(e.target.value))}
+              onChange={(e) => {
+                setSubjectId(e.target.value === "all" ? "all" : Number(e.target.value));
+                setRefiltered(true);
+              }}
               className="col-span-2 h-9 w-full min-w-0 text-[13px] sm:w-auto sm:max-w-48"
               aria-label="Subject"
             >
@@ -139,12 +174,28 @@ export default function ZeroPrepPage() {
               {subjectsRated.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </Select>
           )}
-          <Select value={importance} onChange={(e) => setImportance(e.target.value as ImportanceFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="Weight">
+          <Select
+            value={importance}
+            onChange={(e) => {
+              setImportance(e.target.value as ImportanceFilter);
+              setRefiltered(true);
+            }}
+            className="h-9 w-full min-w-0 text-[13px] sm:w-auto"
+            aria-label="Weight"
+          >
             <option value="any">Any weight</option>
             <option value="medium">Core and regular</option>
             <option value="high">Core only</option>
           </Select>
-          <Select value={asked} onChange={(e) => setAsked(e.target.value as AskedFilter)} className="h-9 w-full min-w-0 text-[13px] sm:w-auto" aria-label="How often asked">
+          <Select
+            value={asked}
+            onChange={(e) => {
+              setAsked(e.target.value as AskedFilter);
+              setRefiltered(true);
+            }}
+            className="h-9 w-full min-w-0 text-[13px] sm:w-auto"
+            aria-label="How often asked"
+          >
             <option value="any">Asked or not</option>
             <option value="asked">Asked in PYQs</option>
             <option value="often">Asked 2+ times</option>
@@ -155,7 +206,10 @@ export default function ZeroPrepPage() {
             label="Sort by"
             className="col-span-2 flex sm:ml-auto sm:inline-flex [&>button]:flex-1 sm:[&>button]:flex-none"
             value={sort}
-            onChange={setSort}
+            onChange={(v) => {
+              setSort(v);
+              setRefiltered(true);
+            }}
             options={[
               { value: "quick", label: "Quickest" },
               { value: "asked", label: "Most asked" },
@@ -178,10 +232,20 @@ export default function ZeroPrepPage() {
         )}
 
         {!rows.length ? (
-          <Empty icon={<Sprout size={28} />} title="No topics match these filters">
+          <Empty title="No topics match these filters">
             {prep === "zero" ? "Few topics need nothing at all first. " : ""}Try a wider filter.
             <div className="mt-4 flex flex-wrap gap-2">
-              {prep === "zero" && <Button size="sm" onClick={() => setPrep("light")}>Show light prep too</Button>}
+              {prep === "zero" && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPrep("light");
+                    setRefiltered(true);
+                  }}
+                >
+                  Show light prep too
+                </Button>
+              )}
               <Button size="sm" variant="secondary" onClick={resetFilters}>Clear filters</Button>
             </div>
           </Empty>
@@ -215,7 +279,8 @@ export default function ZeroPrepPage() {
                 <span className="w-24 shrink-0 text-right">Asked</span>
                 <span aria-hidden className="w-5 shrink-0" />
               </div>
-              <ul className="divide-y divide-border">
+              {/* A filter or sort change re-keys the list so the new order settles in (but not on first load). */}
+              <ul key={`${prep}-${asked}-${importance}-${subject}-${sort}`} className={cn("divide-y divide-border", refiltered && "tab-in")}>
                 {shown.map((r) => <Row key={r.topic.id} row={r} showSubject={subject === "all"} />)}
               </ul>
             </Panel>
@@ -227,8 +292,10 @@ export default function ZeroPrepPage() {
                 {rows.length > FIRST_SHOWN && (
                   <Button size="sm" variant="secondary" onClick={() => setShowAll((v) => !v)}>{showAll ? "Show fewer" : "Show all"}</Button>
                 )}
-                <Button size="sm" variant="ghost" disabled={run.running} onClick={() => ratePrep({ again: true })}>
-                  <RotateCw size={14} /> Rate again
+                {/* The run's progress shows above the list, often off screen from here, so the button says it's working too. */}
+                <Button size="sm" variant="ghost" disabled={run.running} aria-busy={run.running} onClick={() => ratePrep({ again: true })}>
+                  <RotateCw size={14} aria-hidden className={cn(run.running && "animate-spin motion-reduce:animate-none")} />
+                  {run.running ? "Rating…" : "Rate again"}
                 </Button>
               </span>
             </div>
@@ -373,7 +440,8 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
   const done = topic.status !== "not-started";
   return (
     <li style={subjectStyle(subject.color)}>
-      <div className="flex items-center gap-3 px-4 transition-colors duration-150 hover:bg-surface-2/50 sm:px-5">
+      {/* The whole row washes on hover; an open row keeps a lighter wash, so it reads as the head of its details. */}
+      <div className={cn("group flex items-center gap-3 px-4 transition-colors duration-150 hover:bg-surface-2/60 sm:px-5", open && "bg-surface-2/40")}>
         <Tick
           done={done}
           label={done ? `Mark ${topic.title} not started` : `Mark ${topic.title} studied`}
@@ -384,7 +452,8 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls={open ? id : undefined}
-          className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left"
+          // The focus ring is drawn inside the button, so the list's edges and the row above don't clip it.
+          className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left focus-visible:-outline-offset-2"
         >
           <span className="block min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
@@ -397,17 +466,12 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
               <Weight importance={prep.importance} className="sm:hidden" />
               {count > 0 && <Badge tone="accent" className="sm:hidden">{count}× asked</Badge>}
               {showSubject && (
-                // A long subject name is cut to one line rather than wrapping three times on a phone.
+                // The subject as on Important topics: its dot and code (or the name, cut to one line, where there's
+                // no code). A bordered chip beside the dot said the same thing twice.
                 <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={subject.name}>
                   <span aria-hidden className="subj-dot h-2 w-2 flex-none rounded-full" />
-                  {subject.code ? (
-                    <>
-                      <Badge>{subject.code}</Badge>
-                      <span className="sr-only">{subject.name}</span>
-                    </>
-                  ) : (
-                    <span className="truncate">{subject.name}</span>
-                  )}
+                  <span className="truncate font-medium">{subject.code || subject.name}</span>
+                  {subject.code && <span className="sr-only">{subject.name}</span>}
                 </span>
               )}
               {/* Alone, the staircase reads as a stray dash; it shows only beside what to learn first. */}
@@ -431,7 +495,11 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
               <span className="text-faint"><span aria-hidden>—</span><span className="sr-only">Not asked</span></span>
             )}
           </span>
-          <ChevronDown size={16} aria-hidden className={cn("w-5 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
+          <ChevronDown
+            size={16}
+            aria-hidden
+            className={cn("w-5 shrink-0 transition-[transform,color] duration-200 ease-snappy", open ? "rotate-180 text-text" : "text-muted group-hover:text-text")}
+          />
         </button>
       </div>
       {open && (
@@ -467,14 +535,23 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
   );
 }
 
-function RunStatus({ run }: { run: ReturnType<typeof usePrepRun> }) {
+/** A rating run in progress: what it's on, how many topics are done, and the bar. */
+function RunProgress({ run }: { run: ReturnType<typeof usePrepRun> }) {
   return (
-    <div role="status" className="space-y-2 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sheet">
+    <div role="status" className="space-y-2">
       <p className="flex justify-between gap-3 text-[13px] tabular-nums text-muted">
-        <span>{run.message}</span>
-        {run.total > 0 && <span>{run.done} of {run.total}</span>}
+        <span className="min-w-0">{run.message}</span>
+        {run.total > 0 && <span className="shrink-0">{run.done} of {run.total}</span>}
       </p>
       <Progress value={run.total ? (run.done / run.total) * 100 : 5} />
+    </div>
+  );
+}
+
+function RunStatus({ run }: { run: ReturnType<typeof usePrepRun> }) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface px-5 py-4 shadow-sheet">
+      <RunProgress run={run} />
     </div>
   );
 }

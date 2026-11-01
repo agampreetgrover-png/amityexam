@@ -2,13 +2,13 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { FileText, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { db } from "@/lib/db";
 import { aiModeFields, modeShort } from "@/lib/mode";
 import { retrieve } from "@/lib/retrieve";
 import type { GeneratedDoc } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
-import { Button, Card, Empty, Field, Section, Select } from "../ui";
+import { Badge, Button, Card, Empty, Field, Section, Select, cn } from "../ui";
 import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
 import { MAX_CONTEXT, noteTexts, OfflineHint, topicQuery, TopicSelect, topicTitles, useMaterials, useOnline, type TabProps } from "./shared";
 
@@ -90,18 +90,38 @@ export function NotesTab({ subject, units, topics, mode }: TabProps) {
         }}
       />
 
-      {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} />}
+      {viewing && <DocViewer doc={viewing} onDeleted={() => setViewing(null)} onClose={() => setViewing(null)} />}
 
       {/* Saved notes are a plain list on the page; only the generator above is a panel. */}
       <Section
         className="no-print"
-        title="Saved notes"
-        action={<TopicSelect units={units} topics={topics} value={filter === "all" ? "" : filter} onChange={(v) => setFilter(v || "all")} label="Filter saved notes by topic" className="h-8 w-auto max-w-[60%] text-xs" />}
+        title={docs?.length ? <span className="flex items-center gap-2">Saved notes <Badge>{docs.length}</Badge></span> : "Saved notes"}
+        // The topic filter only appears once there's something to filter.
+        action={!!docs?.length && (
+          <TopicSelect
+            units={units}
+            topics={topics}
+            value={filter === "all" ? "" : filter}
+            onChange={(v) => setFilter(v || "all")}
+            label="Filter saved notes by topic"
+            allLabel="All notes"
+            className={cn("h-8 w-auto max-w-[60%] text-xs pointer-coarse:h-10", filter !== "all" && "border-accent text-accent")}
+          />
+        )}
       >
         {!shown ? null : shown.length ? (
-          <DocList docs={shown} selected={viewing?.id} onSelect={setViewing} />
+          // Keyed by the filter, so a new filter visibly settles the shorter or longer list in.
+          <div key={filter} className="tab-in"><DocList docs={shown} selected={viewing?.id} onSelect={setViewing} /></div>
+        ) : docs?.length ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-2 text-sm text-muted">
+            <p>No saved notes for this topic yet.</p>
+            <Button variant="secondary" size="sm" onClick={() => setFilter("all")}>Show all notes</Button>
+          </div>
         ) : (
-          <Empty icon={<FileText size={20} />} title="Nothing saved yet">Write short notes or a cheat sheet above.</Empty>
+          // No icon card: the next step is the form right above, so this says what it makes and where it goes.
+          <Empty title="Nothing saved yet">
+            Pick a topic, or leave it on the whole syllabus, choose short notes or a cheat sheet, and press Write notes. Each one is saved here to read again or print.
+          </Empty>
         )}
       </Section>
     </div>

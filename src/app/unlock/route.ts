@@ -1,5 +1,5 @@
 import { appPassword, passwordMatches, sessionToken, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/access";
-import { safeNext, unlockPage } from "@/lib/unlock-page";
+import { safeNext, unlockClientKey, unlockPage } from "@/lib/unlock-page";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,11 +13,7 @@ const WINDOW_MS = 15 * 60_000;
 const failures = new Map<string, { n: number; reset: number }>();
 const EVERYONE = "*";
 
-/**
- * Who's guessing. X-Forwarded-For is whatever the client sends unless a proxy we trust overwrites it, and Vercel's
- * does (x-real-ip is its own copy). Anywhere else every guess shares one bucket, so changing the header buys nothing.
- */
-const clientKey = (req: Request) => (process.env.VERCEL && req.headers.get("x-real-ip")) || EVERYONE;
+const clientKey = (req: Request) => unlockClientKey(req.headers, EVERYONE);
 
 /** The bucket for `key`, started afresh once its window is over. */
 function bucket(key: string, now: number) {

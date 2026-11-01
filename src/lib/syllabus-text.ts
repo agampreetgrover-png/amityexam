@@ -7,8 +7,9 @@ export const newTopic = (subjectId: number, unitId: number, title: string): Topi
 });
 
 // "1.", "1)", "1.2", "2.3.1", "(a)", "a.", "ii.", "-", "*", "•" and similar markers pasted from a PDF or a list.
-// A marker never runs into a digit, so "X.25 protocol" keeps its name.
-const MARKER = /^\s*(?:[-*•▪◦–]|\(?[0-9]{1,3}(?:\.[0-9]{1,3})+[.)]?(?=\s)|\(?[0-9]{1,3}[.)](?!\d)|\(?[a-z][.)](?!\d)|[ivx]{1,4}[.)](?!\d))\s*/i;
+// A marker never runs into a digit, so "X.25 protocol" keeps its name, and a multi-level number starts with at most
+// two digits, so "802.11 Wireless LAN" isn't read as item 802.11.
+const MARKER = /^\s*(?:[-*•▪◦–]|\(?[0-9]{1,2}(?:\.[0-9]{1,3})+[.)]?(?=\s)|\(?[0-9]{1,3}[.)](?!\d)|\(?[a-z][.)](?!\d)|[ivx]{1,4}[.)](?!\d))\s*/i;
 
 /** Splits pasted syllabus text into topic titles: one per line, list markers, blanks and repeats dropped. */
 export function parseTopics(text: string): string[] {

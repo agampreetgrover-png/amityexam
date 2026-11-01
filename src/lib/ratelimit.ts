@@ -1,7 +1,9 @@
 import "server-only";
 import { createHmac, randomBytes } from "node:crypto";
+import { isIP } from "node:net";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+import { isVercel } from "@/lib/vercel";
 
 // Rate limits for the sign-in endpoints (and, later, AI, Drive and sync). On Vercel they live in Upstash Redis,
 // shared by every function instance; a limit kept in one instance's memory is no limit there, so the memory store
@@ -41,35 +43,62 @@ type Env = Record<string, string | undefined>;
  * these headers are whatever the client typed, so they are ignored and every request shares one "local" bucket.
  */
 export function clientIp(headers: Headers, env: Env = process.env): string {
-  if (!env.VERCEL) return "local";
+  if (!isVercel(env)) return "local";
   const raw = headers.get("x-vercel-forwarded-for") ?? headers.get("x-real-ip") ?? "";
   const ip = raw.split(",")[0].trim().slice(0, 64);
-  if (!ip) return "unknown";
-  return ip.includes(":") ? ipv6Prefix64(ip) : ip;
+  // Only a well-formed address (checked by Node's own parser) gets a key of its own; anything else shares "unknown".
+  if (isIP(ip) === 4) return ip;
+  return ipv6Prefix64(ip);
 }
 
 /**
  * An IPv6 address reduced to its /64 network ("2001:db8:1:2::/64"). One person usually gets a whole /64 and can
- * pick any address in it, so limiting single addresses would be no limit. Unparseable input is kept as it is.
+ * pick any address in it, so limiting single addresses would be no limit. The address is checked with Node's own
+ * parser first (node:net isIP), so anything malformed ("1.2.3.4::5", "1::2::3", junk) gets the shared "unknown" key.
  */
 export function ipv6Prefix64(ip: string): string {
   const addr = ip.replace(/^\[|\]$/g, "").split("%")[0].toLowerCase();
+  if (isIP(addr) !== 6) return "unknown";
+  const g = ipv6Groups(addr);
+  if (!g) return "unknown";
+  const zero = (from: number, to: number) => g.slice(from, to).every((x) => x === 0);
+  const v4 = () => `${g[6] >> 8}.${g[6] & 255}.${g[7] >> 8}.${g[7] & 255}`;
+  // Addresses that carry an IPv4 client: limited by that IPv4 address, not lumped in with everyone else.
+  if (zero(0, 5) && g[5] === 0xffff) return v4(); // IPv4-mapped, ::ffff:1.2.3.4 or ::ffff:102:304
+  if (zero(0, 4) && g[4] === 0xffff && g[5] === 0) return v4(); // IPv4-translated, ::ffff:0:1.2.3.4
+  if (zero(0, 6) && (g[6] !== 0 || g[7] > 1)) return v4(); // IPv4-compatible (deprecated), ::1.2.3.4
+  const hex = (x: number) => x.toString(16);
+  // The rest of 0::/64 (::, ::1 and other special addresses) isn't a network anyone is handed: each is its own key.
+  if (zero(0, 4)) return g.map(hex).join(":");
+  return `${g.slice(0, 4).map(hex).join(":")}::/64`;
+}
+
+/** The eight 16-bit groups of an IPv6 address (a dotted IPv4 tail counts as the last two), or null if malformed. */
+function ipv6Groups(addr: string): number[] | null {
   const halves = addr.split("::");
-  if (halves.length > 2) return addr;
-  const head = halves[0] ? halves[0].split(":") : [];
-  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
-  // An embedded IPv4 tail (::ffff:1.2.3.4) counts as two groups.
-  const groups = (g: string[]) => g.reduce((n, x) => n + (x.includes(".") ? 2 : 1), 0);
-  const missing = 8 - groups(head) - groups(tail);
-  if (missing < 0 || (halves.length === 1 && missing !== 0)) return addr;
-  const full = [...head, ...Array(missing).fill("0"), ...tail];
-  // IPv4-mapped (::ffff:1.2.3.4): an IPv4 client, limited by its own IPv4 address, not lumped in with all the others.
-  const last = full[full.length - 1];
-  if (last.includes(".") && full.length === 7 && full.slice(0, 5).every((g) => /^0{1,4}$/.test(g)) && full[5] === "ffff") {
-    return /^\d{1,3}(\.\d{1,3}){3}$/.test(last) ? last : addr;
-  }
-  if (!full.slice(0, 4).every((g) => /^[0-9a-f]{1,4}$/.test(g))) return addr;
-  return `${full.slice(0, 4).map((g) => parseInt(g, 16).toString(16)).join(":")}::/64`;
+  if (halves.length > 2) return null;
+  const parts = (s: string) => (s ? s.split(":") : []);
+  const toGroups = (p: string[]): number[] | null => {
+    const out: number[] = [];
+    for (let i = 0; i < p.length; i++) {
+      const x = p[i];
+      if (x.includes(".")) {
+        const o = x.split(".");
+        if (i !== p.length - 1 || o.length !== 4 || !o.every((n) => /^\d{1,3}$/.test(n) && Number(n) <= 255)) return null;
+        out.push((Number(o[0]) << 8) | Number(o[1]), (Number(o[2]) << 8) | Number(o[3]));
+      } else if (/^[0-9a-f]{1,4}$/.test(x)) out.push(parseInt(x, 16));
+      else return null;
+    }
+    return out;
+  };
+  const head = toGroups(parts(halves[0]));
+  const tail = halves.length === 2 ? toGroups(parts(halves[1])) : [];
+  if (!head || !tail) return null;
+  // A dotted IPv4 part may only end the address.
+  if (halves.length === 2 && tail.length === 0 && halves[0].includes(".")) return null;
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
+  return [...head, ...Array(missing).fill(0), ...tail];
 }
 
 let localSecret: string | null = null;
@@ -83,14 +112,14 @@ let localSecret: string | null = null;
 export function emailKey(email: string, secret: string | null, env: Env = process.env): string | null {
   let key = secret;
   if (!key || key.length < 32) {
-    if (env.VERCEL) return null;
+    if (isVercel(env)) return null;
     key = secret || (localSecret ??= randomBytes(32).toString("hex"));
   }
   return createHmac("sha256", key).update(email.trim().toLowerCase()).digest("hex");
 }
 
 /** Which deployment the counters belong to, so Preview and Production never share them (even in one database). */
-export const deploymentName = (env: Env = process.env) => env.VERCEL_ENV || (env.VERCEL ? "vercel" : "local");
+export const deploymentName = (env: Env = process.env) => env.VERCEL_ENV || (isVercel(env) ? "vercel" : "local");
 export const ratelimitPrefix = (bucket: Bucket, env: Env = process.env) => `amityexams:${deploymentName(env)}:rl:${bucket}`;
 
 interface Store {
@@ -106,7 +135,7 @@ const windowMs = (w: Window) => {
 export class MemoryStore implements Store {
   private hits = new Map<string, { count: number; resetAt: number }>();
   constructor(env: Env = process.env, private now: () => number = Date.now) {
-    if (env.VERCEL) throw new Error("The in-memory rate limiter is for local development only; Vercel needs Upstash.");
+    if (isVercel(env)) throw new Error("The in-memory rate limiter is for local development only; Vercel needs Upstash.");
   }
   async limit(bucket: Bucket, key: string) {
     const { limit, window } = LIMITS[bucket];
@@ -156,7 +185,7 @@ export function createStore(env: Env = process.env): Store | null {
   const url = env.UPSTASH_REDIS_REST_URL?.trim();
   const token = env.UPSTASH_REDIS_REST_TOKEN?.trim();
   if (url && token) return new UpstashStore(new Redis({ url, token, retry: false }), env);
-  if (env.VERCEL) return null;
+  if (isVercel(env)) return null;
   return new MemoryStore(env);
 }
 
@@ -179,8 +208,12 @@ export async function checkLimits(checks: { bucket: Bucket; key: string }[], tim
   const timeout = new Promise<"timeout">((resolve) => (timer = setTimeout(() => resolve("timeout"), timeoutMs)));
   // In order, stopping at the first refusal: a request one bucket turns away mustn't use up the next one (a single
   // IP over its own limit would otherwise keep spending the shared, global allowance).
+  // Once the answer has been given up on (timeout), the loop stops too: a slow first bucket that answers later must
+  // not go on to use up the next ones in the background.
+  let abandoned = false;
   const inOrder = async (): Promise<LimitResult> => {
     for (const c of checks) {
+      if (abandoned) return { ok: false, reason: "unavailable" };
       const a = await s.limit(c.bucket, c.key);
       if (a.timedOut) return { ok: false, reason: "unavailable" };
       if (!a.success) return { ok: false, reason: "limited", retryAfter: Math.max(1, Math.ceil((a.reset - Date.now()) / 1000)) };
@@ -189,7 +222,9 @@ export async function checkLimits(checks: { bucket: Bucket; key: string }[], tim
   };
   try {
     const result = await Promise.race([inOrder(), timeout]);
-    return result === "timeout" ? { ok: false, reason: "unavailable" } : result;
+    if (result !== "timeout") return result;
+    abandoned = true;
+    return { ok: false, reason: "unavailable" };
   } catch (e) {
     console.error("[ratelimit] store error:", e instanceof Error ? e.message : "unknown");
     return { ok: false, reason: "unavailable" };

@@ -11,12 +11,15 @@ import { examTypeLabel, urgency } from "@/lib/exams";
 import type { Exam, Subject } from "@/lib/types";
 import { Badge, cn, daysTone, subjectStyle } from "@/components/ui";
 
-/** One card in Today's right-hand rail: a title row and its body. */
+/**
+ * One card in Today's right-hand rail: a title row and its body. A container, so a header action can take a line of
+ * its own when the card is narrow (half a tablet column) instead of breaking the title over two lines.
+ */
 function RailCard({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="rounded-2xl border border-border bg-surface p-5 shadow-sheet">
-      <div className="mb-4 flex min-h-7 items-center justify-between gap-3">
-        <h2 className="text-[15px] font-bold tracking-[-0.01em]">{title}</h2>
+    <section className="@container rounded-2xl border border-border bg-surface p-5 shadow-sheet">
+      <div className="mb-4 flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <h2 className="whitespace-nowrap text-[15px] font-bold tracking-[-0.01em]">{title}</h2>
         {action}
       </div>
       {children}
@@ -57,21 +60,32 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
   const subject = (id: number) => subjects.find((s) => s.id === id);
   const inMonth = exams.filter((e) => isSameMonth(fromDay(e.date), month));
   const hasPractical = inMonth.some(isPractical);
-  const step = "grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-text";
+  // 28px arrows, widened to 40px on touch screens by an invisible ring.
+  const step =
+    "press relative grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-1.5 pointer-coarse:before:content-['']";
+  // What a marked day says to a screen reader and in its tooltip: the date, then each exam on it.
+  const dayLabel = (d: Date, list: Exam[]) => {
+    const left = daysBetween(today, toDay(d));
+    const when = left === 0 ? "today" : left === 1 ? "1 day left" : `${left} days left`;
+    const what = list.map((e) => `${subject(e.subjectId)?.name ?? "Exam"}, ${examTypeLabel(e.type).toLowerCase()}`).join("; ");
+    return `${format(d, "d MMMM")}: ${what} (${when})`;
+  };
 
   return (
     <RailCard
       title="Exam calendar"
       action={
-        <div className="flex items-center gap-1">
-          <button type="button" className={step} onClick={() => setOffset((o) => o - 1)} aria-label="Previous month"><ChevronLeft size={16} /></button>
-          <span className="min-w-[5.5rem] text-center text-[13px] font-semibold tabular-nums" aria-live="polite">{format(month, "MMMM yyyy")}</span>
-          <button type="button" className={step} onClick={() => setOffset((o) => o + 1)} aria-label="Next month"><ChevronRight size={16} /></button>
+        // Beside the title where the card is wide enough; otherwise a row of its own, arrows at either end.
+        <div className="flex w-full items-center justify-between gap-1 @[19rem]:w-auto @[19rem]:justify-end">
+          <button type="button" className={step} onClick={() => setOffset((o) => o - 1)} aria-label="Previous month"><ChevronLeft size={16} aria-hidden /></button>
+          <span className="min-w-[6.5rem] whitespace-nowrap text-center text-[13px] font-semibold tabular-nums" aria-live="polite">{format(month, "MMMM yyyy")}</span>
+          <button type="button" className={step} onClick={() => setOffset((o) => o + 1)} aria-label="Next month"><ChevronRight size={16} aria-hidden /></button>
         </div>
       }
     >
-      <div className="grid grid-cols-7 gap-y-1.5 text-center" aria-hidden>
-        {WEEKDAYS.map((d, i) => <span key={i} className={cn("pb-1 text-[11px] font-semibold", i > 4 ? "text-faint" : "text-muted")}>{d}</span>)}
+      {/* Only the marked days are read out (as links to their exam); the weekday letters and plain dates are hidden. */}
+      <div className="grid grid-cols-7 gap-y-1.5 text-center">
+        {WEEKDAYS.map((d, i) => <span key={i} aria-hidden className={cn("pb-1 text-[11px] font-semibold", i > 4 ? "text-faint" : "text-muted")}>{d}</span>)}
         {days.map((d) => {
           const key = toDay(d);
           const here = onDay.get(key);
@@ -79,23 +93,37 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
           const tone = urgency(daysBetween(today, key));
           // A day with a written paper and a practical shows as the paper; the dots underneath still list both.
           const practical = here?.every(isPractical);
+          const mark = cn(
+            "grid h-8 w-8 place-items-center text-[12.5px] tabular-nums",
+            !here && "rounded-full",
+            !here && (isSameMonth(d, month) ? "text-text" : "text-faint/70"),
+            here && "font-semibold",
+            here && !practical && cn("rounded-full", PAPER[tone]),
+            here && practical && cn("rounded-lg border-2 border-dashed", PRACTICAL[tone]),
+            isToday && !here && "font-semibold text-accent ring-2 ring-inset ring-accent",
+            isToday && here && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
+          );
           return (
-            <span key={key} className="flex flex-col items-center gap-1 py-0.5">
-              <span
-                className={cn(
-                  "grid h-8 w-8 place-items-center text-[12.5px] tabular-nums transition-colors duration-150",
-                  !here && "rounded-full",
-                  !here && (isSameMonth(d, month) ? "text-text" : "text-faint/70"),
-                  here && "font-semibold",
-                  here && !practical && cn("rounded-full", PAPER[tone]),
-                  here && practical && cn("rounded-lg border-2 border-dashed", PRACTICAL[tone]),
-                  isToday && !here && "font-semibold text-accent ring-2 ring-inset ring-accent",
-                  isToday && here && "ring-2 ring-accent ring-offset-2 ring-offset-surface",
-                )}
-              >
-                {format(d, "d")}
-              </span>
-              <span className="flex h-1.5 gap-0.5">
+            // gap-1.5: today's offset ring around an exam day reaches 4px out and would otherwise touch the dots.
+            <span key={key} aria-hidden={!here || undefined} className="flex flex-col items-center gap-1.5 py-0.5">
+              {here ? (
+                // An exam day opens its exam kit (the first one, when two fall on the same day).
+                <Link
+                  href={`/exams/view?id=${here[0].id}`}
+                  aria-label={dayLabel(d, here)}
+                  title={dayLabel(d, here)}
+                  className={cn(
+                    mark,
+                    "relative transition-[transform,box-shadow] duration-150 ease-snappy hover:scale-110 hover:shadow-lift active:scale-95",
+                    "pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']",
+                  )}
+                >
+                  {format(d, "d")}
+                </Link>
+              ) : (
+                <span className={mark}>{format(d, "d")}</span>
+              )}
+              <span aria-hidden className="flex h-1.5 gap-0.5">
                 {here?.slice(0, 3).map((e) => <span key={e.id} className="subj-dot h-1.5 w-1.5 rounded-full" style={subjectStyle(subject(e.subjectId)?.color)} />)}
               </span>
             </span>
@@ -148,13 +176,14 @@ export function QuickSheets({ subjects }: { subjects: Subject[] }) {
             <li key={d.id}>
               <Link
                 href={`/subjects/view?id=${d.subjectId}&tab=notes`}
-                className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-150 hover:bg-surface-2"
+                className="press group flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-surface-2 focus-visible:outline-offset-0"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent"><FileText size={16} aria-hidden /></span>
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{d.title}</span>
                   <span className="block truncate text-xs text-muted">{subject(d.subjectId)?.name ?? "Subject"}, {d.kind === "cheatsheet" ? "cheat sheet" : "short notes"}</span>
                 </span>
+                <ChevronRight size={15} aria-hidden className="shrink-0 text-faint transition-[transform,color] duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-accent" />
               </Link>
             </li>
           ))}

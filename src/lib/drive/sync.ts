@@ -60,11 +60,16 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   // Every folder is listed at most once this run, and the run lists a bounded number of folders (see CrawlRun).
   const run = newCrawlRun();
 
+  // A linked folder is crawled from inside (its own name isn't in the path), so nothing is dropped from the front
+  // of its paths when copies are compared below.
+  const fromLinked = new WeakSet<CrawledFile>();
   // Folders linked by hand come first, so their files go to that subject even if another one also matches.
   for (const link of req.links ?? []) {
     for (const folderId of link.folderIds) {
       try {
-        add(link.subjectId, await crawl(folderId, { skipFolder, signal, run }));
+        const files = await crawl(folderId, { skipFolder, signal, run });
+        for (const f of files) fromLinked.add(f);
+        add(link.subjectId, files);
       } catch (e) {
         yield { type: "error", subjectId: link.subjectId, message: `Linked folder: ${e instanceof Error ? e.message : "unavailable"}` };
       }
@@ -126,7 +131,9 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   const seen = new Set<string>();
   // A copy has the same name in the same place inside the subject's folder. The folder itself (path[0]) may be
   // named differently in each drive; below it, PYQs/2022/Major.pdf and PYQs/2023/Major.pdf are two papers.
-  const copyKey = (subjectId: number, f: CrawledFile) => `${subjectId}:${f.path.slice(1).map(sameName).join("/")}/${sameName(f.name)}`;
+  // A linked folder's paths already start below the subject's folder, so they are compared whole.
+  const copyKey = (subjectId: number, f: CrawledFile) =>
+    `${subjectId}:${(fromLinked.has(f) ? f.path : f.path.slice(1)).map(sameName).join("/")}/${sameName(f.name)}`;
   // Names of files imported on an earlier round count too, or the copy in the other drive would come in next time.
   for (const [subjectId, files] of found) for (const f of files) if (known.has(f.id)) seen.add(copyKey(subjectId, f));
   for (const [subjectId, files] of found) {

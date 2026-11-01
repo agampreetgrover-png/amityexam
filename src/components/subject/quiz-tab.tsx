@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, PenLine, Sparkles, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Loader2, PenLine, Sparkles, XCircle } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { refreshWeak } from "@/lib/weak";
@@ -111,8 +111,14 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
       }
       const score = percent(results);
       await db.quizzes.add({ subjectId, topicIds: quizTopicIds, questions, responses, score, createdAt: Date.now() });
-      await refreshWeak(quizTopicIds);
+      // Shown as soon as the attempt is saved: if the weak-topic refresh below fails, submitting again must not save
+      // a second copy of the same attempt.
       setGraded(results);
+      try {
+        await refreshWeak(quizTopicIds);
+      } catch (e) {
+        setError(e);
+      }
     } catch (e) {
       setError(e);
     } finally {
@@ -179,30 +185,34 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
           <span>{answered} answered</span>
         </div>
         <Progress value={((page + 1) / questions.length) * 100} />
-        <Card className="sm:p-6">
-          <div className="mb-5 flex items-start justify-between gap-3">
-            <p id={`q-${page}`} ref={qRef} tabIndex={-1} className="text-[18px] font-medium leading-snug outline-none">{q.question}</p>
+        {/* Keyed by the page, so each new question settles in rather than its text swapping in place. */}
+        <Card key={page} className="tab-in sm:p-6">
+          {/* Phones: the type badge sits above the question, so the question gets the card's full width. */}
+          <div className="mb-5 flex flex-col-reverse items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
+            <p id={`q-${page}`} ref={qRef} tabIndex={-1} className="min-w-0 break-words text-[18px] font-medium leading-snug outline-none">{q.question}</p>
             <Badge className="shrink-0">{q.type === "mcq" ? "Choose one" : "Short answer"}</Badge>
           </div>
           {q.type === "mcq" ? (
+            // Native radios, so Tab lands on the group and the arrow keys move the choice. The focus ring is drawn
+            // around the whole option rather than the small circle.
             <div role="radiogroup" aria-labelledby={`q-${page}`} className="space-y-2">
               {q.options!.map((o, oi) => (
                 <label
                   key={oi}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 text-[15px] leading-relaxed transition-colors duration-150",
+                    "press flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 text-[15px] leading-relaxed has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent has-[:disabled]:pointer-events-none has-[:disabled]:opacity-70 pointer-coarse:py-3.5",
                     responses[page] === o
-                      ? "border-accent bg-accent/5 font-medium text-text"
+                      ? "border-accent bg-accent/5 font-medium text-text shadow-[inset_0_0_0_1px_var(--accent)]"
                       : "border-border bg-surface text-text hover:border-line-strong hover:bg-surface-2",
                   )}
                 >
-                  <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} className="mt-1 accent-[var(--accent)]" />
-                  {o}
+                  <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} disabled={!!busy} className="mt-1 size-4 shrink-0 accent-[var(--accent)] focus-visible:outline-none" />
+                  <span className="min-w-0 break-words">{o}</span>
                 </label>
               ))}
             </div>
           ) : (
-            <Textarea aria-labelledby={`q-${page}`} placeholder="Write your answer" maxLength={MAX_ANSWER} value={responses[page]} onChange={(e) => set(e.target.value)} className="min-h-32" />
+            <Textarea aria-labelledby={`q-${page}`} placeholder="Write your answer" maxLength={MAX_ANSWER} value={responses[page]} onChange={(e) => set(e.target.value)} disabled={!!busy} className="min-h-32" />
           )}
         </Card>
         <AiErrorBox error={error} />
@@ -214,12 +224,15 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         )}
         {/* Phones: Previous drops to its icon so the last page's three buttons fit on one line. */}
         <div className="flex items-center justify-between gap-2 [&>button]:whitespace-nowrap">
-          <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0}><ChevronLeft size={16} /><span className="max-sm:sr-only">Previous</span></Button>
+          <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0 || !!busy}><ChevronLeft size={16} /><span className="max-sm:sr-only">Previous</span></Button>
           <Button variant="ghost" disabled={!!busy} onClick={() => confirm("Leave this quiz? Your answers won't be saved.") && reset()}>Leave quiz</Button>
           {page < questions.length - 1 ? (
-            <Button variant="secondary" onClick={() => setPage(page + 1)}>Next <ChevronRight size={16} /></Button>
+            <Button variant="secondary" onClick={() => setPage(page + 1)} disabled={!!busy}>Next <ChevronRight size={16} /></Button>
           ) : (
-            <Button onClick={submit} disabled={!!busy || (needsAi && !online)}>{busy || "Submit answers"}</Button>
+            <Button onClick={submit} disabled={!!busy || (needsAi && !online)}>
+              {busy && <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden />}
+              {busy || "Submit answers"}
+            </Button>
           )}
         </div>
       </div>
@@ -259,7 +272,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                         onClick={() => toggle(t.id!)}
                         className={cn(
                           // rounded-lg, not a pill: a long topic name wraps to two lines on a phone.
-                          "inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-3 py-1 text-left text-[13px] transition-colors duration-150 pointer-coarse:min-h-10",
+                          "press inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-3 py-1 text-left text-[13px] pointer-coarse:min-h-10",
                           picked.includes(t.id!)
                             ? "border-accent bg-accent-soft font-medium text-accent"
                             : "border-border bg-surface text-muted hover:bg-surface-2 hover:text-text",
@@ -289,7 +302,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
             </Select>
           </Field>
           <Button onClick={start} disabled={!picked.length || !!busy || !online || !materials} className="col-span-2 sm:col-span-1 sm:justify-self-end">
-            <Sparkles size={16} /> {busy || (picked.length ? `Start quiz on ${picked.length} topic${picked.length === 1 ? "" : "s"}` : "Pick topics to start")}
+            {busy ? <Loader2 size={16} className="animate-spin motion-reduce:animate-none" aria-hidden /> : <Sparkles size={16} />}{" "}
+            {busy || (picked.length ? `Start quiz on ${picked.length} topic${picked.length === 1 ? "" : "s"}` : "Pick topics to start")}
           </Button>
         </div>
         <div className="mt-3 space-y-2 empty:hidden"><OfflineHint online={online} /><AiErrorBox error={error} /></div>
@@ -297,7 +311,10 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 
       <Section title="Past attempts">
         {!attempts ? null : attempts.length === 0 ? (
-          <Empty icon={<ClipboardList size={18} />} title="No quizzes taken yet" />
+          // No icon card: the quiz builder above is the next step; this says what a finished quiz leaves here.
+          <Empty title="No quizzes taken yet">
+            Pick topics above and start a quiz. Each score is kept here; open one to see which answers you missed.
+          </Empty>
         ) : (
           <Panel as="ul" className="divide-y divide-border">
             {attempts.map((a) => (
@@ -307,7 +324,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   onClick={() => setReviewing(a)}
                   disabled={!a.questions.length}
                   aria-label={`Review the ${a.score}% quiz from ${new Date(a.createdAt).toLocaleDateString()}`}
-                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 disabled:pointer-events-none sm:px-5"
+                  // The ring sits inside the row: the Panel's rounded clip would cut an outside one off.
+                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 focus-visible:-outline-offset-2 disabled:pointer-events-none sm:px-5"
                 >
                   <span className={cn("numeral w-16 shrink-0 text-[28px]", scoreColor(a.score))}>{a.score}%</span>
                   {/* Phones: the count and date go under the topics, so the topics get the row's width. */}

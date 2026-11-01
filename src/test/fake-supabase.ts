@@ -1,13 +1,16 @@
 // Test-only (never imported by the app): a fake Supabase Auth server reached through a stubbed fetch, so tests run
 // the REAL @supabase/ssr and @supabase/auth-js code (cookie chunking, retries, error mapping) instead of a mock of
-// them. Every reply is scripted per endpoint; "hang" never answers until the request is aborted.
+// them. Every reply is scripted per endpoint; "hang" never answers until the request is aborted, and "network" fails
+// the way fetch does when the network is down.
 import { createServerClient } from "@supabase/ssr";
 
-export type Reply = { status: number; body?: unknown } | "hang";
+export type Reply = { status: number; body?: unknown } | "hang" | "network";
 type Endpoint = "refresh" | "password" | "user" | "other";
 
-export const SUPABASE_URL = "https://devref.supabase.co";
-export const COOKIE = "sb-devref-auth-token";
+/** A development project ref in Supabase's real format (20 lowercase letters or digits). */
+export const DEV_REF = "devrefaaaaaaaaaaaaaa";
+export const SUPABASE_URL = `https://${DEV_REF}.supabase.co`;
+export const COOKIE = `sb-${DEV_REF}-auth-token`;
 const USER_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -36,6 +39,7 @@ export function fakeSupabase() {
     const endpoint: Endpoint = url.includes("grant_type=refresh_token") ? "refresh" : url.includes("grant_type=password") ? "password" : url.includes("/auth/v1/user") ? "user" : "other";
     calls.push({ at: Date.now(), endpoint });
     const reply = queues[endpoint]?.shift() ?? { status: 404, body: { code: "not_found", msg: "no reply scripted" } };
+    if (reply === "network") return Promise.reject(new TypeError("fetch failed"));
     if (reply === "hang") {
       return new Promise((_, reject) => {
         const signal = init?.signal;

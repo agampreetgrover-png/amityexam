@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, BookOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { db, deleteSubject, getSettings } from "@/lib/db";
 import { modeShort, topicsInScope } from "@/lib/mode";
 import { hotThreshold, papersForMode, questionsOf } from "@/lib/pyq/group";
 import { coverage, SUBJECT_COLORS } from "@/lib/stats";
 import type { ExamMode, PyqQuestion, Subject, Topic } from "@/lib/types";
-import { Badge, Button, CoverageBar, Empty, Field, Input, Menu, Modal, PageHeader, subjectStyle, type BadgeTone } from "@/components/ui";
+import { Badge, Button, CoverageBar, Empty, Field, Input, Menu, Modal, PageHeader, Panel, subjectStyle, type BadgeTone } from "@/components/ui";
 import { SubjectPicker, subjectKey } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
@@ -17,7 +17,7 @@ import { useCourseCatalog } from "@/lib/drive/use-catalog";
 
 export default function SubjectsPage() {
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
-  // Everything the cards count, in one query, so they draw once at their real values instead of sweeping up from zero.
+  // Everything the rows count, in one query, so they draw once at their real values instead of sweeping up from zero.
   const data = useLiveQuery(async () => {
     const [units, topics, papers, questions, settings] = await Promise.all([
       db.units.toArray(),
@@ -48,9 +48,9 @@ export default function SubjectsPage() {
         </Empty>
       )}
       {!!subjects?.length && data && (
-        <ul className="space-y-3">
+        <Panel as="ul" className="@container divide-y divide-border">
           {subjects.map((s) => (
-              <SubjectCard
+              <SubjectRow
                 key={s.id}
                 subject={s}
                 topics={data.topics.filter((t) => t.subjectId === s.id)}
@@ -60,7 +60,7 @@ export default function SubjectsPage() {
                 onEdit={() => setEditing(s)}
               />
             ))}
-        </ul>
+        </Panel>
       )}
       <Modal open={adding || !!editing} onClose={() => { setAdding(false); setEditing(null); }} title={editing ? "Edit subject" : "Add subject"}>
         <SubjectForm
@@ -91,11 +91,13 @@ const QUICK_LINKS = [
 ];
 
 /**
- * One subject in its own box. On wide screens the box is a single row whose columns have fixed widths, so the
- * figures line up from box to box; narrower, it stacks. Only the name links to the subject, since the box also
- * holds a menu; the quick links jump straight to its syllabus, past papers or a quiz.
+ * One subject as a row of the list. The whole row opens the subject: its name is the link, stretched over the row,
+ * while the section links and the menu sit above that as targets of their own. The row lays itself out by the list's
+ * width rather than the window's: stacked on a phone; name, links and menu over a line of figures on a tablet or a
+ * desk beside the sidebar; and one line, every figure in its own column, once the list is wide enough for the name
+ * to keep its room.
  */
-function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit }: {
+function SubjectRow({ subject: s, topics: ts, questions, mode, imported, onEdit }: {
   subject: Subject;
   topics: Topic[];
   questions: PyqQuestion[];
@@ -118,29 +120,52 @@ function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit
   const timed = left.filter((t) => t.prep);
   const mins = timed.reduce((a, t) => a + t.prep!.mins, 0);
   const href = `/subjects/view?id=${s.id}`;
+  // The name's last word, kept with the arrow. A very long one is left free to break, so it can't widen a phone row.
+  const name = s.name.trim();
+  const cutAt = name.lastIndexOf(" ") + 1;
+  const [head, last] = name.length - cutAt <= 16 ? [name.slice(0, cutAt), name.slice(cutAt)] : [name, ""];
 
   return (
     <li
       style={subjectStyle(s.color)}
-      className="relative rounded-2xl border border-border bg-surface p-4 shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift sm:p-5 xl:grid xl:grid-cols-[minmax(0,1fr)_7rem_10rem_13rem_15rem_2rem] xl:items-center xl:gap-x-8"
+      // The wash follows the row's own link (data-row), so pointing at a section link or the menu doesn't light the row.
+      className="relative p-4 transition-colors duration-150 ease-snappy has-[a[data-row]:hover]:bg-surface-2/60 has-[a[data-row]:active]:bg-surface-2 sm:p-5 @xl:grid @xl:grid-cols-[minmax(0,1fr)_auto_auto] @xl:items-center @xl:gap-x-5 @5xl:grid-cols-[minmax(0,1.4fr)_6rem_9rem_minmax(0,1fr)_13.5rem_1.75rem] @5xl:gap-x-6"
     >
-      <div className="min-w-0 pr-10 xl:pr-0">
+      <div className="min-w-0 pr-10 @xl:col-start-1 @xl:row-start-1 @xl:pr-0">
         <h2 className="text-[16px] font-semibold leading-snug tracking-[-0.01em]">
-          <Link href={href} className="inline-flex max-w-full items-start gap-2.5 rounded-md transition-colors duration-150 hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))]">
+          {/* Its ::after covers the row, so a click anywhere on it opens the subject; the focus ring is drawn round the row. */}
+          <Link
+            href={href}
+            data-row
+            className="group/link flex items-start gap-2.5 transition-colors duration-150 after:absolute after:inset-0 after:rounded-xl hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-4 focus-visible:after:outline-accent"
+          >
             <span aria-hidden className="subj-dot mt-[0.45em] size-2 shrink-0 rounded-full" />
-            <span className="line-clamp-2 break-words">{s.name}</span>
+            {/* The full name, wrapping rather than cut short. The arrow is held to the last word so it never sits
+                alone on a line of its own. */}
+            <span className="min-w-0 break-words">
+              {head}
+              <span className="whitespace-nowrap">
+                {last}
+                <ArrowRight
+                  size={15}
+                  aria-hidden
+                  className="ml-1.5 inline-block align-[-0.15em] text-faint transition-[color,translate] duration-200 ease-snappy group-hover/link:translate-x-0.5 group-hover/link:text-muted"
+                />
+              </span>
+            </span>
           </Link>
         </h2>
         <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-[18px]">
           {s.code && <Badge>{s.code}</Badge>}
           {s.credits ? <Badge>{s.credits} credit{s.credits === 1 ? "" : "s"}</Badge> : null}
-          {/* "In progress" would be on nearly every box, so only the states worth noticing get a badge. */}
+          {/* "In progress" would be on nearly every row, so only the states worth noticing get a badge. */}
           {st.label !== "In progress" && <Badge tone={st.tone}>{st.label}</Badge>}
         </div>
       </div>
 
-      {/* Every figure has a small label over it, so each box reads on its own without column headings. */}
-      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 pl-[18px] sm:grid-cols-[7rem_10rem_minmax(0,1fr)] xl:contents">
+      {/* Every figure has a small label over it, so each row reads on its own without column headings. On the
+          widest list the figures drop into the row's own columns. */}
+      <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 pl-[18px] @xl:col-span-full @xl:row-start-2 @xl:grid-cols-[6rem_9rem_minmax(0,1fr)] @5xl:contents">
         <div className="min-w-0">
           <dt className="text-xs text-muted">{mode ? `${modeShort(mode)} topics` : "Topics"}</dt>
           <dd className="mt-1 flex flex-wrap items-baseline gap-x-2">
@@ -156,7 +181,7 @@ function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit
           </dd>
         </div>
         {/* Emerald, as progress is everywhere: revised topics in full, studied ones paler at half their share. */}
-        <div className="col-span-2 min-w-0 sm:col-span-1">
+        <div className="col-span-2 min-w-0 @xl:col-span-1">
           <dt className="flex justify-between gap-3 text-xs text-muted">
             <span className="tabular-nums">{revised} of {ts.length} revised</span>
             {timed.length > 0 && (
@@ -172,15 +197,16 @@ function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit
         </div>
       </dl>
 
+      {/* Above the row's link (z-10), so each goes to its own tab. A solid fill keeps them reading as controls on the hover wash. */}
       <nav
         aria-label={`${s.name} sections`}
-        className="mt-5 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-lg border border-border xl:mt-0"
+        className="relative z-10 mt-4 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-lg border border-border bg-surface @xl:col-start-2 @xl:row-start-1 @xl:mt-0 @xl:w-[13.5rem] @5xl:col-start-5"
       >
         {QUICK_LINKS.map((l) => (
           <Link
             key={l.tab}
             href={`${href}&tab=${l.tab}`}
-            className="flex h-9 items-center justify-center text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:-outline-offset-2"
+            className="flex h-9 items-center justify-center text-[13px] font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text focus-visible:-outline-offset-2 active:bg-surface-3 pointer-coarse:h-10"
           >
             {l.label}
           </Link>
@@ -189,7 +215,7 @@ function SubjectCard({ subject: s, topics: ts, questions, mode, imported, onEdit
 
       <Menu
         label={`Actions for ${s.name}`}
-        className="absolute right-3 top-3.5 sm:right-4 sm:top-4.5 xl:static"
+        className="absolute right-3 top-3.5 z-10 sm:right-4 sm:top-4.5 @xl:relative @xl:right-auto @xl:top-auto @xl:col-start-3 @xl:row-start-1 @5xl:col-start-6"
         items={[
           { label: "Edit", icon: <Pencil size={15} />, onSelect: onEdit },
           {

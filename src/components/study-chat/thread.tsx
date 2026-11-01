@@ -380,72 +380,85 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   return (
     <div className="flex h-full min-h-0 w-full flex-col" style={subjectStyle(subject?.color)}>
       {/* The workspace's bar: which subject answers come from, how near that exam is, what's indexed, and how
-          answers are shaped. */}
-      <header className="shrink-0 border-b border-border py-2.5 md:px-6">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <div className={cn("flex min-w-0 max-w-full items-center gap-1.5", renaming !== null && "flex-1")}>
+          answers are shaped. Laid out by its own width (a container query), not the screen's: the history panel and the app's sidebar
+          take different shares at each size. Wide: the subject over its facts on the left, the answer style and
+          the chat's menu on the right. Narrow: the subject and menu on one line, the facts under them, the answer
+          style on a line of its own (full width on a phone, where it's a thumb-sized pair of buttons). */}
+      <header className="@container shrink-0 border-b border-border py-3 md:px-6">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-3 @2xl:grid-cols-[minmax(0,1fr)_auto_auto] @2xl:items-center">
+          <div className="flex min-w-0 items-start gap-1.5 [grid-column:1] [grid-row:1]">
             {/* Phones: opens the history list. Wider screens: only while the panel is folded away, to unfold it. */}
-            <Button variant="ghost" size="icon" className={cn("-ml-1.5 shrink-0", !historyHidden && "md:hidden")} onClick={onShowHistory} aria-label="Show history" title="Show history (Ctrl+B)" aria-keyshortcuts="Control+B Meta+B">
+            <Button variant="ghost" size="icon" className={cn("-ml-1.5 shrink-0 pointer-coarse:mt-0.5", !historyHidden && "md:hidden")} onClick={onShowHistory} aria-label="Show history" title="Show history (Ctrl+B)" aria-keyshortcuts="Control+B Meta+B">
               <History size={16} className="md:hidden" />
               <PanelLeftOpen size={17} className="hidden md:block" />
             </Button>
-            {base.chat && renaming !== null ? (
-              <form className="flex min-w-0 flex-1 items-center gap-1" onSubmit={(e) => { e.preventDefault(); rename(); }}>
-                <Input autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setRenaming(null)} aria-label="Chat name" className="h-8 min-w-0 flex-1 text-[14px]" />
-                <Button type="submit" variant="ghost" size="icon" aria-label="Save name"><Check size={15} /></Button>
-                <Button type="button" variant="ghost" size="icon" onClick={() => setRenaming(null)} aria-label="Cancel"><X size={15} /></Button>
-              </form>
-            ) : base.chat ? (
-              // A saved chat keeps its subject.
-              <span className="inline-flex h-8 min-w-0 max-w-full items-center gap-2 rounded-full border border-border bg-surface px-3 text-[13px] font-medium" title="This chat's subject">
-                <span aria-hidden className="subj-dot h-2 w-2 shrink-0 rounded-full" />
-                <span className="min-w-0 truncate">{subject && subjectLabel(subject)}</span>
-              </span>
-            ) : (
-              // A new one picks it here; the dot shows the chosen subject's colour.
-              <div className="relative flex min-w-0 max-w-full items-center">
-                <span aria-hidden className="subj-dot pointer-events-none absolute left-3 z-10 h-2 w-2 rounded-full" />
-                <Select
-                  value={subjectId ?? ""}
-                  onChange={(e) => setPicked(Number(e.target.value))}
-                  aria-label="Subject"
-                  disabled={busy}
-                  className="h-8 w-auto min-w-0 max-w-full rounded-full border-border pl-7 text-[13px] font-medium shadow-none hover:border-line-strong sm:max-w-[22rem]"
-                >
-                  {base.subjects.map((s) => <option key={s.id} value={s.id}>{subjectLabel(s)}</option>)}
-                </Select>
-              </div>
-            )}
-          </div>
-          {renaming === null && (
-            <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
-              {days != null && (
-                <Badge tone={daysTone(days)}>
-                  <Zap aria-hidden />
-                  {days === 0 ? "Exam today" : days === 1 ? "Exam tomorrow" : `Exam in ${days} days`}
-                </Badge>
+            <div className="min-w-0 flex-1">
+              {base.chat && renaming !== null ? (
+                <form className="flex min-w-0 items-center gap-1" onSubmit={(e) => { e.preventDefault(); rename(); }}>
+                  <Input autoFocus value={renaming} onChange={(e) => setRenaming(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setRenaming(null)} aria-label="Chat name" className="h-8 min-w-0 flex-1 text-[14px]" />
+                  <Button type="submit" variant="ghost" size="icon" aria-label="Save name"><Check size={15} /></Button>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => setRenaming(null)} aria-label="Cancel"><X size={15} /></Button>
+                </form>
+              ) : base.chat ? (
+                // A saved chat keeps its subject, so it's a label, not a control. Padded like the picker below (dot at
+                // 12px, name at 28px) so nothing shifts when a new chat is saved and the picker becomes this.
+                <p className="flex h-8 min-w-0 items-center gap-2 border border-transparent px-3 pointer-coarse:h-9 text-[14px] font-semibold tracking-[-0.01em]" title={subject ? `This chat's subject: ${subjectLabel(subject)}` : undefined}>
+                  <span aria-hidden className="subj-dot h-2 w-2 shrink-0 rounded-full" />
+                  <span className="min-w-0 truncate">{subject && subjectLabel(subject)}</span>
+                </p>
+              ) : (
+                // A new one picks it here; the dot shows the chosen subject's colour.
+                <div className="relative flex min-w-0 max-w-full items-center">
+                  <span aria-hidden className="subj-dot pointer-events-none absolute left-3 z-10 h-2 w-2 rounded-full" />
+                  <Select
+                    value={subjectId ?? ""}
+                    onChange={(e) => setPicked(Number(e.target.value))}
+                    aria-label="Subject"
+                    disabled={busy}
+                    title={subject ? subjectLabel(subject) : undefined}
+                    className="h-8 w-auto min-w-0 max-w-full rounded-full border-border pl-7 text-[13px] font-medium shadow-none hover:border-line-strong pointer-coarse:h-9 @2xl:max-w-[26rem]"
+                  >
+                    {base.subjects.map((s) => <option key={s.id} value={s.id}>{subjectLabel(s)}</option>)}
+                  </Select>
+                </div>
               )}
-              {scope && (
-                <Badge className="min-w-0 max-w-full">
-                  <BookOpen aria-hidden />
-                  <span className="min-w-0 truncate" title={season}>{indexed ? `${indexed} indexed` : "No notes or past papers yet"}</span>
-                </Badge>
+              {/* The facts answers stand on: how near the exam is, and how much of the subject is indexed. */}
+              {renaming === null && (days != null || scope) && (
+                <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                  {days != null && (
+                    <Badge tone={daysTone(days)}>
+                      <Zap aria-hidden />
+                      {days === 0 ? "Exam today" : days === 1 ? "Exam tomorrow" : `Exam in ${days} days`}
+                    </Badge>
+                  )}
+                  {scope && (
+                    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-xs text-muted">
+                      <BookOpen size={13} aria-hidden className="shrink-0" />
+                      <span className="min-w-0 truncate" title={season}>{indexed ? `${indexed} indexed` : "No notes or past papers yet"}</span>
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-          )}
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <Segmented size="sm" label="Answer style" value={style} onChange={setStyle} options={STYLES} />
-            {base.chat && !busy && renaming === null && (
-              <Menu
-                label="Chat actions"
-                className="h-8 w-8"
-                items={[
-                  { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(base.chat!.title) },
-                  { label: "Delete", icon: <Trash2 size={14} />, onSelect: remove, danger: true },
-                ]}
-              />
-            )}
           </div>
+          {base.chat && !busy && renaming === null && (
+            <Menu
+              label="Chat actions"
+              className="h-8 w-8 [grid-column:2] [grid-row:1] @2xl:[grid-column:3]"
+              items={[
+                { label: "Rename", icon: <Pencil size={14} />, onSelect: () => setRenaming(base.chat!.title) },
+                { label: "Delete", icon: <Trash2 size={14} />, onSelect: remove, danger: true },
+              ]}
+            />
+          )}
+          <Segmented
+            size="sm"
+            label="Answer style"
+            value={style}
+            onChange={setStyle}
+            options={STYLES}
+            className="flex w-full justify-self-start [grid-column:1/-1] [grid-row:2] [&>button]:flex-1 @md:inline-flex @md:w-auto @md:[&>button]:flex-none @2xl:[grid-column:2] @2xl:[grid-row:1]"
+          />
         </div>
       </header>
 
@@ -456,7 +469,6 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           {!shown ? null : shown.length === 0 && !busy ? (
             subject && scope && (
               <Starters
-                subjectName={subject.name}
                 grounding={
                   indexed
                     ? `Answers come from your ${[notesCount, papersCount].filter(Boolean).join(" and ")} for this subject${mode ? `, pitched at your ${modeShort(mode).toLowerCase()} exam` : ""}.`
@@ -536,13 +548,15 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
                         onClick={() => setImages((cur) => cur.filter((_, j) => j !== i))}
                         aria-label={`Remove image ${i + 1}`}
                         title="Remove"
-                        className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-control hover:text-text pointer-coarse:size-6"
+                        // The ::before widens the tap target on touch screens to about 40px without changing the look.
+                        className="press absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border border-border bg-surface text-muted shadow-control hover:border-line-strong hover:text-text pointer-coarse:size-6 pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']"
                       >
                         <X size={12} aria-hidden />
                       </button>
                     </li>
                   ))}
-                  {attaching && <li aria-label="Adding image" className="size-16 animate-pulse rounded-lg border border-border bg-surface-2" />}
+                  {/* Pulses only while a picked photo is being shrunk; still under reduced motion. */}
+                  {attaching && <li aria-label="Adding image" className="size-16 rounded-lg border border-border bg-surface-2 motion-safe:animate-pulse" />}
                 </ul>
               )
             }
@@ -604,6 +618,22 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
 }) {
   const round = "h-9 w-9 rounded-full pointer-coarse:h-10 pointer-coarse:w-10";
   const [dragging, setDragging] = useState(false);
+  // A file dropped anywhere else on the page would make the browser open it in place of the app, losing the
+  // conversation (and an answer that is still coming in). Where this dock takes files, the page itself refuses
+  // file drops; the dock above still takes them when it can.
+  const takesFiles = !!onFiles;
+  useEffect(() => {
+    if (!takesFiles) return;
+    const refuse = (e: globalThis.DragEvent) => {
+      if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", refuse);
+    window.addEventListener("drop", refuse);
+    return () => {
+      window.removeEventListener("dragover", refuse);
+      window.removeEventListener("drop", refuse);
+    };
+  }, [takesFiles]);
   const dropProps = onFiles && !busy
     ? {
         onDragOver: (e: DragEvent) => {
@@ -658,7 +688,8 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
       <div className="flex items-center gap-1.5 px-2 pb-2">
         {leading && <div className="flex min-w-0 items-center gap-1.5">{leading}</div>}
         <div className="ml-auto flex shrink-0 items-center gap-3">
-          {!touch && <span className="hidden text-xs text-faint md:inline">Shift+Enter for new line</span>}
+          {/* Touch keyboards have no Shift+Enter (Enter adds the line there), so the hint is for keyboards only. */}
+          {!touch && <span className="hidden text-xs text-faint md:inline pointer-coarse:hidden">Shift+Enter for new line</span>}
           {busy ? (
             // A filled square: an outlined one read as an empty checkbox.
             <Button type="button" variant="secondary" size="icon" className={round} onClick={onStop} aria-label="Stop" title="Stop">
@@ -719,32 +750,43 @@ export function Bubble({ role, content, images, live, sources, onRegenerate }: {
     }
   };
   // The ::before widens the tap target on touch screens to about 40px without changing the look.
-  const action = "relative inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 pointer-coarse:before:inset-x-0 pointer-coarse:before:content-[''] [&_svg]:size-3.5";
+  const action = "press relative inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 pointer-coarse:before:inset-x-0 pointer-coarse:before:content-[''] [&_svg]:size-3.5";
   // The answer is set straight on the page, full column width, like a handout; only the question sits in a bubble.
   // A bubble around a long answer with tables and code was a box inside a box and narrowed every line.
   return (
     <div className="min-w-0">
       <div aria-busy={live || undefined}>
         <Markdown className="prose-wide">{content}</Markdown>
+        {/* While words are still arriving, the same dots as before the first word, under the last line, so a pause
+            mid-answer doesn't look like the end. The status line by the composer speaks it. */}
+        {live && (
+          <span aria-hidden className="mt-3 flex text-faint">
+            <span className="thinking-dots"><span /><span /><span /></span>
+          </span>
+        )}
         {/* Once it's done: the files and papers it was given, as small tags rather than a list, then its actions. */}
         {!live && (
           <>
+            {/* Named as sources, so the tags don't read as topics or tags the student set. */}
             {!!sources?.length && (
-              <ul aria-label="Sources" className="mt-4 flex min-w-0 flex-wrap gap-1.5">
-                {sources.map((s, i) => (
-                  <li key={i} className="min-w-0 max-w-full">
-                    <Badge className="max-w-[16rem]">
-                      {/* An svg's aria-label isn't read reliably, so the kind is spoken as text. */}
-                      {s.kind === "notes" ? <FileText aria-hidden /> : <Target aria-hidden />}
-                      <span className="sr-only">{s.kind === "notes" ? "Notes: " : "Past paper: "}</span>
-                      <span className="min-w-0 truncate font-normal" title={s.label}>{s.label}</span>
-                    </Badge>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-4 flex min-w-0 items-start gap-2">
+                <span aria-hidden className="shrink-0 py-0.5 text-xs leading-[1.125rem] text-faint">Sources</span>
+                <ul aria-label="Sources" className="flex min-w-0 flex-wrap gap-1.5">
+                  {sources.map((s, i) => (
+                    <li key={i} className="min-w-0 max-w-full">
+                      <Badge className="max-w-[16rem]">
+                        {/* An svg's aria-label isn't read reliably, so the kind is spoken as text. */}
+                        {s.kind === "notes" ? <FileText aria-hidden /> : <Target aria-hidden />}
+                        <span className="sr-only">{s.kind === "notes" ? "Notes: " : "Past paper: "}</span>
+                        <span className="min-w-0 truncate font-normal" title={s.label}>{s.label}</span>
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
             <div className="-ml-2 mt-2 flex items-center gap-0.5">
-              <button type="button" onClick={copy} aria-label={copied ? "Copied" : "Copy answer"} title="Copy answer" className={action}>
+              <button type="button" onClick={copy} aria-label={copied ? "Copied" : "Copy answer"} title="Copy answer" className={cn(action, copied && "text-good hover:text-good")}>
                 {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
                 {copied ? "Copied" : "Copy"}
               </button>

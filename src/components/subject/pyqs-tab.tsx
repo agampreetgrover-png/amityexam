@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, FileQuestion, Flame, Loader2, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ChevronDown, ExternalLink, Flame, Loader2, RefreshCw, Search, Sparkles, X } from "lucide-react";
 import { db } from "@/lib/db";
 import { modeShort, pyqMode, topicsInScope, unitInScope } from "@/lib/mode";
 import { analyseSubject, remapSubject, retryPapers, setPaperExam, usePaperFailures, usePyqAnalysis } from "@/lib/pyq/analyse";
@@ -59,7 +59,7 @@ export function PyqsTab({ subject, mode }: TabProps) {
   if (!papers) return null;
   if (!papers.length) {
     return (
-      <Empty icon={<FileQuestion />} title="No past papers yet">
+      <Empty title="No past papers yet">
         Past papers come in from your Google Drive folders automatically (Settings → Google Drive → Sync now). You can also upload them in
         Materials as &ldquo;Previous year paper&rdquo;. Each one is then split into questions and sorted by year and by topic.
       </Empty>
@@ -79,7 +79,7 @@ export function PyqsTab({ subject, mode }: TabProps) {
             <p className="mt-1 text-[13px] text-muted" role="status">
               {analysis.running ? (
                 <span className="inline-flex items-center gap-1.5 tabular-nums text-accent">
-                  <Loader2 size={14} className="animate-spin" /> {analysis.message}
+                  <Loader2 size={14} className={spin} aria-hidden /> {analysis.message}
                   {analysis.total > 1 && ` (${analysis.done}/${analysis.total})`}
                 </span>
               ) : pending ? (
@@ -94,45 +94,75 @@ export function PyqsTab({ subject, mode }: TabProps) {
             </p>
           </div>
           {(pending > 0 || canMap) ? (
+            // While the analyser runs the button says so, rather than only greying out.
             <Button onClick={() => analyseSubject(subjectId)} disabled={!online || analysis.running}>
-              <Sparkles size={16} /> Analyse now
+              {analysis.running ? <><Loader2 size={16} className={spin} aria-hidden /> Analysing…</> : <><Sparkles size={16} /> Analyse now</>}
             </Button>
           ) : failedIds.length > 0 && (
             <Button variant="secondary" onClick={() => retryPapers(subjectId, failedIds)} disabled={!online || analysis.running}>
-              <RefreshCw size={16} /> Retry {failedIds.length === 1 ? "paper" : `${failedIds.length} papers`}
+              {analysis.running ? <Loader2 size={16} className={spin} aria-hidden /> : <RefreshCw size={16} />} Retry {failedIds.length === 1 ? "paper" : `${failedIds.length} papers`}
             </Button>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <Segmented label="Sort questions" value={view} onChange={setView} options={[{ value: "year", label: "Year-wise" }, { value: "topic", label: "Topic-wise" }]} />
           <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search questions" className="pl-9" aria-label="Search questions" />
+            <Search size={15} className={cn("pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transition-colors duration-150", query ? "text-accent" : "text-muted")} aria-hidden />
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              // Escape empties the box, as in the search palette; the browser's own clear cross is swapped for ours.
+              onKeyDown={(e) => { if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); } }}
+              placeholder="Search questions"
+              className="appearance-none pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden"
+              aria-label="Search questions"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                title="Clear search"
+                className="press absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']"
+              >
+                <X size={14} aria-hidden />
+              </button>
+            )}
           </div>
         </div>
         <div className="empty:hidden"><OfflineHint online={online} /></div>
       </div>
 
       {!scoped.length ? (
-        <Empty icon={<FileQuestion />} title={`No ${modeShort(mode).toLowerCase()} papers yet`}>
+        <Empty title={`No ${modeShort(mode).toLowerCase()} papers yet`}>
           {unknown.length
             ? "Some papers don't say which exam they were for. Sort them below and they'll show up in the right exam."
             : `Only ${modeShort(mode).toLowerCase()} papers are shown here. Switch the exam mode to see the others.`}
         </Empty>
       ) : query.trim() && !shown.length ? (
-        <p className="py-6 text-sm text-muted">No questions match &ldquo;{query.trim()}&rdquo;.</p>
-      ) : view === "year" ? (
-        <YearView papers={scoped} questions={shown} topicById={topicById} searching={!!query.trim()} />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 py-6 text-sm text-muted">
+          <p className="min-w-0 break-words">No questions match &ldquo;{query.trim()}&rdquo;.</p>
+          <Button variant="secondary" size="sm" onClick={() => setQuery("")}>Clear search</Button>
+        </div>
       ) : (
-        <TopicView
-          questions={shown}
-          units={modeUnits}
-          topics={modeTopics}
-          papers={scoped}
-          searching={!!query.trim()}
-          onRemap={() => remapSubject(subjectId)}
-          remapDisabled={!online || analysis.running || !modeTopics.length}
-        />
+        // Keyed by the view, so switching Year-wise / Topic-wise visibly settles the new list in rather than swapping in place.
+        <div key={view} className="tab-in">
+          {view === "year" ? (
+            <YearView papers={scoped} questions={shown} topicById={topicById} searching={!!query.trim()} />
+          ) : (
+            <TopicView
+              questions={shown}
+              units={modeUnits}
+              topics={modeTopics}
+              papers={scoped}
+              searching={!!query.trim()}
+              onRemap={() => remapSubject(subjectId)}
+              remapDisabled={!online || analysis.running || !modeTopics.length}
+              remapping={analysis.running}
+            />
+          )}
+        </div>
       )}
 
       {unknown.length > 0 && <UnknownExamPapers papers={unknown} />}
@@ -143,40 +173,52 @@ export function PyqsTab({ subject, mode }: TabProps) {
 /** Papers nothing says the exam of: kept out of both modes until the student marks them. */
 function UnknownExamPapers({ papers }: { papers: Material[] }) {
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<number | null>(null);
+  const [busy, setBusy] = useState<{ id: number; exam: "mid-term" | "end-term" } | null>(null);
   const mark = async (id: number, exam: "mid-term" | "end-term") => {
-    setBusy(id);
+    setBusy({ id, exam });
     try {
       await setPaperExam(id, exam);
     } finally {
       setBusy(null);
     }
   };
+  const markButton = (p: Material, exam: "mid-term" | "end-term", label: string) => (
+    <Button size="sm" variant="secondary" disabled={busy?.id === p.id} onClick={() => mark(p.id!, exam)}>
+      {busy && busy.id === p.id && busy.exam === exam && <Loader2 size={14} className={spin} aria-hidden />}
+      {label}
+    </Button>
+  );
   return (
     <Card
       title={
-        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-2 text-left">
+        // The whole heading line toggles, with a hover wash, so it reads as the control it is.
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="group -mx-2 -my-1 flex items-center gap-2 rounded-lg px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2 pointer-coarse:py-2"
+        >
           Exam type unknown <Badge tone="warn">{papers.length}</Badge>
-          <ChevronDown size={16} className={cn("text-muted transition-transform duration-150", open && "rotate-180")} />
+          <ChevronDown size={16} className={cn("text-muted transition-transform duration-200 ease-snappy group-hover:text-text", open && "rotate-180")} aria-hidden />
         </button>
       }
     >
       {!open ? (
         <p className="text-sm leading-relaxed text-muted">These papers don&apos;t say whether they were a mid-sem or a major, so they&apos;re hidden from both. Open to sort them.</p>
       ) : (
-        <List className="border-b-0">
+        <List className="tab-in border-b-0">
           {papers.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-2 py-3">
               <div className="min-w-0 flex-1 basis-48">
-                <p className="break-words text-[15px] font-medium">{p.fileName}</p>
+                <p className="break-words text-[15px] font-medium [overflow-wrap:anywhere]">{p.fileName}</p>
                 <p className="mt-1 flex flex-wrap gap-1.5">
                   <Badge>{paperYear(p) ?? "Year unknown"}</Badge>
                   {!p.analysedAt && <Badge>Not analysed yet</Badge>}
                 </p>
               </div>
               {p.source && <DriveLink url={p.source.url} />}
-              <Button size="sm" variant="secondary" disabled={busy === p.id} onClick={() => mark(p.id!, "end-term")}>Mark as Major</Button>
-              <Button size="sm" variant="secondary" disabled={busy === p.id} onClick={() => mark(p.id!, "mid-term")}>Mark as Mid-sem</Button>
+              {markButton(p, "end-term", "Mark as Major")}
+              {markButton(p, "mid-term", "Mark as Mid-sem")}
             </li>
           ))}
         </List>
@@ -191,11 +233,15 @@ const DriveLink = ({ url }: { url: string }) => isDriveUrl(url) && (
     target="_blank"
     rel="noopener noreferrer"
     aria-label="Open in Google Drive"
-    className="press inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-text"
+    title="Open in Google Drive"
+    className="press relative inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-3 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-1 pointer-coarse:before:content-['']"
   >
-    <ExternalLink size={14} />
+    <ExternalLink size={14} aria-hidden />
   </a>
 );
+
+/** A spinner that answers a press; under reduced motion it holds still instead of flickering through 1ms turns. */
+const spin = "animate-spin motion-reduce:animate-none";
 
 const examBadge = (p: Pick<Material, "pyqExam" | "fileName">) => {
   const e = pyqMode(p);
@@ -246,7 +292,7 @@ function YearView({ papers, questions, topicById, searching }: {
                           Couldn&apos;t read this paper. <span className="text-muted">{failures.get(paper.id!)}</span>
                         </p>
                         <Button size="sm" variant="secondary" onClick={() => retryPapers(paper.subjectId, [paper.id!])} disabled={!online || analysis.running}>
-                          <RefreshCw size={14} /> Retry
+                          <RefreshCw size={14} aria-hidden className={cn(analysis.running && spin)} /> Retry
                         </Button>
                       </div>
                     </div>
@@ -273,7 +319,7 @@ function YearView({ papers, questions, topicById, searching }: {
 
 const marksOf = (qs: PyqQuestion[]) => qs.reduce((a, q) => a + (q.marks ?? 0), 0);
 
-function TopicView({ questions, units, topics, papers, searching, onRemap, remapDisabled }: {
+function TopicView({ questions, units, topics, papers, searching, onRemap, remapDisabled, remapping }: {
   questions: PyqQuestion[];
   units: Unit[];
   topics: Topic[];
@@ -281,19 +327,20 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
   searching: boolean;
   onRemap: () => void;
   remapDisabled: boolean;
+  remapping: boolean;
 }) {
   const g = groupByTopic(questions, units, topics);
   const paperName = new Map(papers.map((p) => [p.id!, p.fileName]));
   const [showAllUnmatched, setShowAllUnmatched] = useState(false);
   const remap = (
     <Button variant="secondary" size="sm" onClick={onRemap} disabled={remapDisabled}>
-      <RefreshCw size={14} /> Re-match to syllabus
+      <RefreshCw size={14} aria-hidden className={cn(remapping && spin)} /> {remapping ? "Matching…" : "Re-match to syllabus"}
     </Button>
   );
 
   if (!topics.length) {
     return (
-      <Empty icon={<FileQuestion />} title="Add the syllabus to sort by topic">
+      <Empty title="Add the syllabus to sort by topic">
         Questions are matched to your syllabus topics. Add this year&apos;s syllabus in the Syllabus tab, then come back. Matching starts on its own.
       </Empty>
     );
@@ -350,28 +397,30 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
   const [open, setOpen] = useState(false);
   const { topic, count, years, marks, hot, questions } = stat;
   return (
-    <li>
+    // An open topic keeps a faint wash under its heading and its questions, so they read as one block.
+    <li className={cn("transition-colors duration-200 ease-snappy", open && "bg-surface-2/50")}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2 sm:px-5"
+        // The ring sits inside the row: the Panel's rounded clip would cut an outside one off.
+        className="group flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:-outline-offset-2 sm:px-5"
       >
-        <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
             <span className="min-w-0 break-words">{topic.title}</span>
             {hot && <Badge tone="warn"><Flame aria-hidden />Most asked</Badge>}
-          </p>
-          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums text-muted empty:hidden">
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums text-muted empty:hidden">
             {years && <Badge>{years[0] === years[1] ? years[0] : `${years[0]}–${years[1]}`}</Badge>}
             {marks ? <Badge>{marks} marks</Badge> : null}
-          </p>
-        </div>
+          </span>
+        </span>
         <Badge tone={hot ? "accent" : "neutral"} className="shrink-0">Asked {count}×</Badge>
-        <ChevronDown size={16} className={cn("shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
+        <ChevronDown size={16} aria-hidden className={cn("shrink-0 text-muted transition-[transform,color] duration-200 ease-snappy group-hover:text-text", open && "rotate-180")} />
       </button>
       {open && (
-        <ul className="tab-in mx-4 mb-3 divide-y divide-border border-l-2 border-accent/30 pl-4 sm:mx-5">
+        <ul className="tab-in mx-4 divide-y divide-border border-t border-border sm:mx-5">
           {questions.map((q) => <QuestionLine key={q.id} q={q} paperName={paperName.get(q.materialId)} />)}
         </ul>
       )}

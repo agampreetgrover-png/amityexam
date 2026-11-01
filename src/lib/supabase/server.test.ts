@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetAccountsConfigForTests } from "./env";
 import { createSupabaseServerClient, secureCookieOptions, timedFetch } from "./server";
+import type { AuthCallLog } from "./session-policy";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -52,6 +53,39 @@ describe("timedFetch (every Supabase call has a time limit)", () => {
     vi.stubGlobal("fetch", (_url: string, init: RequestInit) => new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason))));
     try {
       await expect(timedFetch(10_000, AbortSignal.timeout(50))("https://devref.supabase.co/auth/v1/user")).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("records every /token and /user answer (status and Supabase's code), in order, without using up the body", async () => {
+    const answer = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+    const replies = [answer(403, { code: "session_not_found", msg: "x" }), answer(200, { id: "u" }), answer(400, { error_code: "refresh_token_not_found" }), answer(500, { msg: "x" })];
+    vi.stubGlobal("fetch", async () => replies.shift()!);
+    try {
+      const log: AuthCallLog = { calls: [] };
+      const f = timedFetch(10_000, undefined, log);
+      const r1 = await f("https://devref.supabase.co/auth/v1/user");
+      expect(log.calls.at(-1)).toEqual({ endpoint: "user", status: 403, code: "session_not_found" });
+      expect(await r1.json()).toMatchObject({ code: "session_not_found" }); // auth-js can still read it
+      await f("https://devref.supabase.co/auth/v1/user");
+      expect(log.calls.at(-1)).toEqual({ endpoint: "user", status: 200, code: undefined });
+      await f("https://devref.supabase.co/auth/v1/token?grant_type=refresh_token");
+      expect(log.calls.at(-1)).toEqual({ endpoint: "token", status: 400, code: "refresh_token_not_found" });
+      await f("https://devref.supabase.co/rest/v1/anything");
+      expect(log.calls).toHaveLength(3); // the /rest call isn't logged; the three auth answers are all kept, in order
+      expect(log.calls.map((c) => c.status)).toEqual([403, 200, 400]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("records no answer (status 0) for a network failure or a call after the deadline", async () => {
+    vi.stubGlobal("fetch", async () => Promise.reject(new TypeError("fetch failed")));
+    try {
+      const log: AuthCallLog = { calls: [] };
+      await expect(timedFetch(10_000, undefined, log)("https://devref.supabase.co/auth/v1/user")).rejects.toThrow("fetch failed");
+      expect(log.calls.at(-1)).toEqual({ endpoint: "user", status: 0 });
+      await timedFetch(10_000, AbortSignal.abort(), log)("https://devref.supabase.co/auth/v1/token?grant_type=refresh_token");
+      expect(log.calls.at(-1)).toEqual({ endpoint: "token", status: 0 });
     } finally {
       vi.unstubAllGlobals();
     }

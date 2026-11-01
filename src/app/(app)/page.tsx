@@ -90,12 +90,13 @@ export default function TodayPage() {
     // data-wide: the layout gives this page a wider column for its right-hand rail.
     <div data-wide className="space-y-8">
       {/* The date and the exam-mode switch live in the top bar above every page. */}
-      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+      <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 sm:gap-y-4">
         <h1 className="min-w-0 font-display text-[28px] leading-[1.1] md:text-[34px]">
           {mode === "mid-term" ? "Mid-sem dashboard" : mode === "end-term" ? "Major exam dashboard" : "Study dashboard"}
         </h1>
-        {/* Overall readiness: coverage of this exam mode's whole syllabus, every subject together. */}
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface py-2 pl-2 pr-4 shadow-sheet">
+        {/* Overall readiness: coverage of this exam mode's whole syllabus, every subject together. On phones it wraps
+            under the title as a plain line, flush with it; beside the title (sm and up) it sits in its own box. */}
+        <div className="flex items-center gap-3 sm:rounded-xl sm:border sm:border-border sm:bg-surface sm:py-2 sm:pl-2 sm:pr-4 sm:shadow-sheet">
           <ReadinessRing value={readiness} />
           <div>
             <p className="text-[12px] font-medium text-muted">Overall readiness</p>
@@ -108,28 +109,31 @@ export default function TodayPage() {
         <div className="min-w-0 space-y-8">
           {next ? (
             // The next exam, in the spotlight: the countdown on the left, what it covers and how ready you are on the right.
-            <section aria-labelledby="next-heading" style={HERO_BG} className="count-in rounded-2xl border border-accent/20 p-6 shadow-sheet sm:p-8">
+            // It splits into two columns by its own width, not the window's: beside the rail at 1280 it is narrower than
+            // on a tablet, and a squeezed right column cut the subject's name and stacked the buttons.
+            <section aria-labelledby="next-heading" style={HERO_BG} className="count-in @container rounded-2xl border border-accent/20 p-6 shadow-sheet sm:p-8">
               <h2 id="next-heading" className="sr-only">Next exam</h2>
-              <div className="grid gap-x-10 gap-y-7 md:grid-cols-[auto_minmax(0,1fr)]">
+              <div className="grid gap-x-10 gap-y-7 @[34rem]:grid-cols-[fit-content(15rem)_minmax(0,1fr)]">
                 <div>
-                  <p className="numeral text-[88px] text-text md:text-[112px]">
+                  <p className="numeral text-[88px] text-text @[34rem]:text-[112px]">
                     <span className={urgentMark(nextDays)}>{nextDays === 0 ? "Today" : nextDays}</span>
                   </p>
                   {nextDays > 0 && <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{nextDays === 1 ? "Day left" : "Days left"}</p>}
-                  <ul className="mt-5 flex flex-wrap gap-2">
+                  {/* In a row under the countdown on phones; stacked in the narrow left column beside the details. */}
+                  <ul className="mt-5 flex flex-wrap gap-2 @[34rem]:flex-col @[34rem]:items-start">
                     {facts.map(({ icon: Icon, text }) => (
-                      <li key={text} className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[12.5px] font-medium text-text">
-                        <Icon size={13} className="text-muted" aria-hidden />
-                        <span className="tabular-nums">{text}</span>
+                      <li key={text} title={text} className="inline-flex h-7 min-w-0 max-w-full items-center @[34rem]:max-w-[15rem] gap-1.5 rounded-md border border-border bg-surface px-2.5 text-[12.5px] font-medium text-text">
+                        <Icon size={13} className="shrink-0 text-muted" aria-hidden />
+                        <span className="truncate tabular-nums">{text}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
 
-                <div className="flex min-w-0 flex-col md:pt-2">
+                <div className="flex min-w-0 flex-col @[34rem]:pt-2">
                   <div style={subjectStyle(nextSubject?.color)} className="flex items-start gap-2.5">
                     <span aria-hidden className="subj-dot mt-2 h-2.5 w-2.5 shrink-0 rounded-full" />
-                    <h3 className="line-clamp-2 break-words text-xl font-bold leading-snug tracking-[-0.015em] md:text-2xl">{nextSubject?.name ?? "Exam"}</h3>
+                    <h3 className="line-clamp-2 break-words text-xl font-bold leading-snug tracking-[-0.015em] @[34rem]:text-2xl">{nextSubject?.name ?? "Exam"}</h3>
                   </div>
                   <p className="mt-2 flex flex-wrap items-center gap-2 pl-5 text-sm text-muted">
                     {nextSubject?.code && <Badge className="font-semibold text-text">{nextSubject.code}</Badge>}
@@ -144,11 +148,13 @@ export default function TodayPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 flex flex-wrap gap-2.5 md:mt-auto md:pt-6">
-                    <Link href={`/subjects/view?id=${next.subjectId}&tab=syllabus`} className={buttonClass("primary", "md", "h-10 px-4")}>
-                      Resume revision <ChevronRight size={16} aria-hidden />
+                  {/* Stacked (phones), the pair spans the card's width, wrapping to one per line when even that is too tight;
+                      beside the countdown, each button keeps its own width. */}
+                  <div className="mt-6 flex flex-wrap gap-2.5 @[34rem]:mt-auto @[34rem]:pt-6">
+                    <Link href={`/subjects/view?id=${next.subjectId}&tab=syllabus`} className={buttonClass("primary", "md", "group h-10 flex-1 whitespace-nowrap px-4 @[34rem]:flex-none")}>
+                      Resume revision <ChevronRight size={16} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
                     </Link>
-                    <Link href={`/exams/view?id=${next.id}`} className={buttonClass("secondary", "md", "h-10 px-4")}>Exam kit</Link>
+                    <Link href={`/exams/view?id=${next.id}`} className={buttonClass("secondary", "md", "h-10 flex-1 whitespace-nowrap px-4 @[34rem]:flex-none")}>Exam kit</Link>
                   </div>
                 </div>
               </div>
@@ -167,7 +173,7 @@ export default function TodayPage() {
             <section aria-labelledby="upcoming-heading">
               <div className="mb-4 flex items-baseline justify-between gap-3">
                 <h2 id="upcoming-heading" className="text-[17px] font-bold tracking-[-0.01em]">Upcoming exams</h2>
-                <Link href="/exams" className="group inline-flex items-center gap-0.5 text-sm font-medium text-accent">
+                <Link href="/exams" className="group relative inline-flex items-center gap-0.5 rounded text-sm font-medium text-accent transition-colors duration-150 hover:text-accent-hover pointer-coarse:before:absolute pointer-coarse:before:-inset-x-2 pointer-coarse:before:-inset-y-2.5 pointer-coarse:before:content-['']">
                   All exams <ChevronRight size={15} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
                 </Link>
               </div>
@@ -182,7 +188,7 @@ export default function TodayPage() {
                       <Link
                         href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
                         style={subjectStyle(s?.color)}
-                        className="group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift"
+                        className="press group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet hover:border-line-strong hover:shadow-lift"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-2">
@@ -198,11 +204,12 @@ export default function TodayPage() {
                         <p className="mt-1 pl-[18px] text-[13px] tabular-nums text-muted">
                           {format(fromDay(e.date), "d MMM, EEEE")}{e.time && `, ${e.time}`}
                         </p>
-                        <div className="mt-5 flex items-center gap-3" style={MASTERY}>
+                        {/* Pushed to the foot, so bars and links line up across a row when one name runs to two lines. */}
+                        <div className="mt-auto flex items-center gap-3 pt-5" style={MASTERY}>
                           <CoverageBar topics={et} />
                           <span className="w-10 shrink-0 text-right text-[13px] font-semibold tabular-nums">{pct}%</span>
                         </div>
-                        <span className="mt-5 inline-flex items-center gap-1 border-t border-border pt-4 text-[13px] font-medium text-accent">
+                        <span className="mt-5 inline-flex items-center gap-1 border-t border-border pt-4 text-[13px] font-medium text-accent transition-colors duration-150 group-hover:text-accent-hover">
                           View topics <ChevronRight size={14} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
                         </span>
                       </Link>
@@ -219,7 +226,7 @@ export default function TodayPage() {
               <ol className="grid gap-1 sm:grid-cols-2">
                 {steps.map((s, i) => (
                   <li key={i}>
-                    <Link href={s.href} className="flex items-center gap-3 rounded-xl px-1.5 py-1.5 text-sm transition-colors duration-150 hover:bg-surface/80">
+                    <Link href={s.href} className="press flex items-center gap-3 rounded-xl px-1.5 py-1.5 text-sm hover:bg-surface/80 focus-visible:outline-offset-0 pointer-coarse:py-2.5">
                       <span
                         className={cn(
                           "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums",

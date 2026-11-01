@@ -98,7 +98,8 @@ function Subject({ subjectId }: { subjectId: number }) {
     <div>
       <Link
         href="/subjects"
-        className="group no-print mb-5 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text"
+        // On touch screens an invisible ring makes the small link a thumb-sized target without moving anything.
+        className="group no-print relative mb-5 inline-flex items-center gap-1 rounded-md text-sm font-medium text-muted transition-colors duration-150 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-x-2 pointer-coarse:before:-inset-y-2.5 pointer-coarse:before:content-['']"
       >
         <ArrowLeft size={14} className="transition-transform duration-200 ease-snappy group-hover:-translate-x-0.5" /> Subjects
       </Link>
@@ -107,7 +108,7 @@ function Subject({ subjectId }: { subjectId: number }) {
       <header style={subjectStyle(subject.color)} className="no-print mb-8">
         <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
           <div className="min-w-0 flex-1 basis-80">
-            <h1 className="subj-ink break-words font-display text-[28px] leading-[1.1] md:text-[34px]">{subject.name}</h1>
+            <h1 className="subj-ink text-balance break-words font-display text-[28px] leading-[1.1] md:text-[34px]">{subject.name}</h1>
             <p className="mt-3 flex flex-wrap items-center gap-1.5">
               {subject.code && <Badge className="subj-line bg-surface text-text/80">{subject.code}</Badge>}
               {subject.credits ? <Badge>{subject.credits} credit{subject.credits === 1 ? "" : "s"}</Badge> : null}

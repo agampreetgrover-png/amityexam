@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Briefcase, Check, Clock, FileSpreadsheet, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { Briefcase, Check, ChevronRight, Clock, FileSpreadsheet, GraduationCap, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { db, deleteExam } from "@/lib/db";
 import { daysBetween, prettyDay } from "@/lib/dates";
@@ -10,7 +10,7 @@ import { useToday } from "@/lib/use-today";
 import { byWhen, DEFAULT_CHECKLIST, EXAM_TYPES, examTypeLabel, urgency, type Urgency } from "@/lib/exams";
 import { examInMode, examSyllabus, examTypeMode, modeShort, unitInScope, useExamMode } from "@/lib/mode";
 import type { Exam, ExamMode, ExamType } from "@/lib/types";
-import { Badge, Button, Empty, Field, Input, Menu, Modal, PageHeader, Progress, Section, Select, buttonClass, cn, subjectStyle } from "@/components/ui";
+import { Badge, Button, Empty, Field, Input, Menu, Modal, PageHeader, Progress, Section, Select, cn, subjectStyle } from "@/components/ui";
 import { DatesheetImport, type ImportDraft } from "@/components/exams/datesheet-import";
 import { toast } from "@/components/toast";
 import { ExamSyllabusInput } from "@/components/exam-syllabus-input";
@@ -78,10 +78,16 @@ export default function ExamsPage() {
     const name = s?.name ?? "this";
     const Name = isPast ? "h4" : "h3"; // under the day's heading, which sits a level lower in "Past exams"
     return (
+      // The whole card opens the exam kit: the subject name's link is stretched over it (its ::after), and the
+      // controls inside (room, syllabus, menu) are positioned so they sit above that layer and keep their own clicks.
       <li
         key={e.id}
         style={subjectStyle(s?.color)}
-        className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sheet @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center"
+        className={cn(
+          "group/exam relative grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 transition-[border-color,box-shadow] duration-150 ease-snappy hover:border-line-strong hover:shadow-lift @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center",
+          // Past papers sit flat, a step quieter than the ones still to come.
+          isPast ? "shadow-none" : "shadow-sheet",
+        )}
       >
         <div className={cn("flex h-[4.25rem] flex-col items-center justify-center rounded-lg border text-center", COUNTDOWN[u])}>
           {days < 0 ? (
@@ -96,8 +102,17 @@ export default function ExamsPage() {
 
         <div className="min-w-0 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span aria-hidden className="subj-dot size-2 shrink-0 rounded-full" />
-            <Name className={cn("min-w-0 break-words text-[15px] font-semibold tracking-[-0.01em]", isPast && "font-medium text-muted")}>{s?.name ?? "Unknown subject"}</Name>
+            {/* The dot stays with the first line of the name when a long name wraps, instead of sitting alone above it. */}
+            <Name className={cn("flex min-w-0 items-start gap-2 text-[15px] font-semibold leading-[1.4] tracking-[-0.01em]", isPast && "font-medium text-muted")}>
+              <span aria-hidden className="subj-dot mt-[7px] size-2 shrink-0 rounded-full" />
+              <Link
+                href={`/exams/view?id=${e.id}`}
+                className="min-w-0 break-words focus-visible:outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-accent"
+              >
+                {s?.name ?? "Unknown subject"}
+                <span className="sr-only">, open the exam kit</span>
+              </Link>
+            </Name>
             {s?.code && <Badge>{s.code}</Badge>}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-muted">
@@ -118,20 +133,27 @@ export default function ExamsPage() {
             <Link
               href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
               title="Open the syllabus to tick topics off"
-              className="group -mx-1.5 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-surface-2"
+              className="group relative -mx-1.5 min-w-0 flex-1 basis-28 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-surface-2 @2xl:flex-none @2xl:basis-auto"
             >
               <span className="block text-[12px] tabular-nums text-muted group-hover:text-text">
                 <strong className="font-semibold text-text">{revised}/{scope.length}</strong> topics revised
               </span>
-              <Progress value={(revised / scope.length) * 100} className="mt-1.5 w-32" label={`${revised} of ${scope.length} topics revised`} />
+              <Progress value={(revised / scope.length) * 100} className="mt-1.5 w-full max-w-56 @2xl:w-32" label={`${revised} of ${scope.length} topics revised`} />
             </Link>
           ) : (
             <span className="text-[12px] text-faint">No syllabus yet</span>
           )}
           <div className="flex items-center gap-1">
-            <Link href={`/exams/view?id=${e.id}`} className={buttonClass("secondary", "sm")}>
-              <Briefcase size={14} className="text-muted" aria-hidden /> Exam kit
-            </Link>
+            {/* Looks like a button but is only a label for the card's link: clicks pass through it to the stretched
+                layer. It answers the card's hover, and its arrow nudges toward the kit. */}
+            <span
+              aria-hidden
+              className="pointer-events-none inline-flex h-8 select-none items-center gap-1 rounded-lg border border-border bg-surface pl-2.5 pr-2 text-[13px] font-medium text-text shadow-control transition-colors duration-150 group-hover/exam:border-line-strong group-hover/exam:bg-surface-2"
+            >
+              <Briefcase size={14} className="text-muted" />
+              Exam kit
+              <ChevronRight size={14} className="text-muted transition-transform duration-200 ease-snappy group-hover/exam:translate-x-0.5" />
+            </span>
             <Menu
               label={`Actions for the ${name} exam`}
               items={[
@@ -176,7 +198,8 @@ export default function ExamsPage() {
     <div className="min-w-0 rounded-xl border border-border bg-surface px-2.5 py-2.5 shadow-sheet sm:px-4 sm:py-3.5">
       <p className="truncate text-[11px] text-muted sm:text-[13px]">{label}</p>
       <p className="mt-1 text-[16px] font-semibold tabular-nums tracking-[-0.02em] sm:text-[22px]">{value}</p>
-      {sub && <p className="mt-0.5 truncate text-[11px] text-muted sm:text-[12px]">{sub}</p>}
+      {/* Two lines on a phone's narrow tile rather than a one-word stub ("Major, still to…"); one line from sm up. */}
+      {sub && <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted sm:line-clamp-1 sm:text-[12px]">{sub}</p>}
     </div>
   );
 
@@ -261,6 +284,7 @@ export default function ExamsPage() {
 /**
  * The exam's room as a badge, or an "Add room" chip when the date sheet didn't have one. Either opens a small
  * field in place: Enter saves straight to the exam, Escape cancels, and clicking away keeps what was typed.
+ * Positioned above the card's stretched link; on touch screens an invisible ring widens the chip for a thumb.
  */
 function RoomField({ exam }: { exam: Exam }) {
   const [open, setOpen] = useState(false);
@@ -301,30 +325,44 @@ function RoomField({ exam }: { exam: Exam }) {
             setOpen(false);
           }
         }}
-        className="h-7 w-40 px-2 py-0 text-xs"
+        // Positioned, like the chips below, so it sits above the card link stretched under it.
+        className="relative h-7 w-40 px-2 py-0 text-xs"
       />
     );
   }
+  const chipRing = "relative pointer-coarse:before:absolute pointer-coarse:before:-inset-x-1 pointer-coarse:before:-inset-y-2.5 pointer-coarse:before:content-['']";
   const start = () => {
     done.current = false;
     setValue(exam.venue ?? "");
     setOpen(true);
   };
   return exam.venue ? (
-    <button type="button" autoFocus={refocus} onClick={start} title="Change room" aria-label={`Room ${exam.venue}, change`} className="rounded-md transition-colors duration-150 hover:opacity-80">
-      <Badge><MapPin aria-hidden /> {exam.venue}</Badge>
+    <button type="button" autoFocus={refocus} onClick={start} title="Change room" aria-label={`Room ${exam.venue}, change`} className={cn("group/room press rounded-md", chipRing)}>
+      <Badge className="transition-colors duration-150 group-hover/room:border-line-strong group-hover/room:text-text"><MapPin aria-hidden /> {exam.venue}</Badge>
     </button>
   ) : (
     <button
       type="button"
       autoFocus={refocus}
       onClick={start}
-      className="inline-flex items-center gap-1 rounded-md border border-dashed border-line-strong px-2 py-0.5 text-xs font-medium text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
+      className={cn("press inline-flex items-center gap-1 rounded-md border border-dashed border-line-strong px-2 py-0.5 text-xs font-medium text-muted hover:border-accent hover:text-accent", chipRing)}
     >
       <Plus size={12} aria-hidden /> Add room
     </button>
   );
 }
+
+/** A checkbox row in the syllabus picker: the whole line is the target, washed on hover, a step taller on touch. */
+const checkRow =
+  "flex cursor-pointer items-start gap-2.5 rounded-md px-1.5 py-1 text-sm leading-5 transition-colors duration-150 hover:bg-surface-2 pointer-coarse:py-2 [&>input]:mt-0.5";
+
+/**
+ * A dialog's action row, pinned to the foot of its scroll area (the Modal body's padding is pulled back so it sits
+ * flush), so the main button stays in reach under long content or with the phone keyboard up. On phones (a bottom
+ * sheet) it also covers the home-indicator strip. Mirrors the Modal body's padding; the import review has the same row.
+ */
+const dialogFoot =
+  "sticky z-10 -mx-5 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface px-5 pt-3 bottom-[calc(-1.5rem_-_env(safe-area-inset-bottom))] mb-[calc(-1.5rem_-_env(safe-area-inset-bottom))] pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] sm:-bottom-6 sm:-mx-6 sm:-mb-6 sm:rounded-b-[15px] sm:px-6 sm:pb-3";
 
 function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: ExamMode; onDone: (savedType?: ExamType) => void }) {
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
@@ -339,6 +377,7 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
   const [scope, setScope] = useState<Set<number>>(new Set(initial?.topicIds ?? []));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [dateMissing, setDateMissing] = useState(false);
 
   // The picker shows the syllabus of the exam's season (by type; "other" follows the app mode),
   // plus any unit that already has ticked topics so nothing saved is ever hidden.
@@ -389,34 +428,61 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
             {EXAM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </Select>
         </Field>
-        <Field label="Date"><Input type="date" required value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+        <Field label="Date">
+          <Input
+            type="date"
+            required
+            value={date}
+            aria-invalid={dateMissing || undefined}
+            aria-describedby={dateMissing ? "exam-date-error" : undefined}
+            // The browser's own bubble says "fill in this field"; the field also turns red and says what's missing.
+            onInvalid={() => setDateMissing(true)}
+            onChange={(e) => {
+              setDate(e.target.value);
+              if (e.target.value) setDateMissing(false);
+            }}
+          />
+          {dateMissing && <span id="exam-date-error" className="block text-xs text-bad">Pick the exam date</span>}
+        </Field>
         <Field label="Start time"><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
-        <Field label="Duration (min)"><Input type="number" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} /></Field>
+        <Field label="Duration (min)"><Input type="number" inputMode="numeric" min={0} value={duration} onChange={(e) => setDuration(e.target.value)} /></Field>
       </div>
       {/* A fieldset, not <Field>: Field is a <label>, and a label around many checkboxes toggles the first one on any click. */}
       <fieldset className="space-y-1.5">
         <legend className="mb-1.5 text-[13px] font-medium text-text/85">Syllabus for this exam</legend>
-        <div className="max-h-48 space-y-2.5 overflow-y-auto rounded-xl border border-border bg-surface-2/50 p-3">
+        <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-border bg-surface-2/50 p-1.5">
           {!hasSyllabus && (
-            <p className="text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus for this subject yet. Type or paste it below.</p>
+            <p className="p-1.5 text-sm text-muted">No {season === "mid-term" ? "mid-sem" : "major"} syllabus for this subject yet. Type or paste it below.</p>
           )}
           {shownUnits?.map((u) => {
             const ts = topics?.filter((t) => t.unitId === u.id) ?? [];
             if (!ts.length) return null;
             const all = ts.every((t) => scope.has(t.id!));
+            const some = !all && ts.some((t) => scope.has(t.id!));
             return (
               <div key={u.id}>
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input type="checkbox" className="accent-[var(--accent)]" checked={all} onChange={() => setScope((s) => {
-                    const n = new Set(s);
-                    for (const t of ts) if (all) n.delete(t.id!); else n.add(t.id!);
-                    return n;
-                  })} />
-                  {u.title}
+                {/* Each row is a full-width target with a hover wash; taller on touch screens. */}
+                <label className={cn(checkRow, "font-medium text-text")}>
+                  <input
+                    type="checkbox"
+                    className="size-4 shrink-0"
+                    checked={all}
+                    // Part of the unit ticked shows as a dash, not as empty.
+                    ref={(el) => {
+                      if (el) el.indeterminate = some;
+                    }}
+                    onChange={() => setScope((s) => {
+                      const n = new Set(s);
+                      for (const t of ts) if (all) n.delete(t.id!); else n.add(t.id!);
+                      return n;
+                    })}
+                  />
+                  <span className="min-w-0 break-words">{u.title}</span>
                 </label>
                 {ts.map((t) => (
-                  <label key={t.id} className="ml-5 flex items-center gap-2 text-sm text-muted transition-colors duration-150 hover:text-text">
-                    <input type="checkbox" className="accent-[var(--accent)]" checked={scope.has(t.id!)} onChange={() => toggle(t.id!)} /> {t.title}
+                  <label key={t.id} className={cn(checkRow, "pl-7", scope.has(t.id!) ? "text-text" : "text-muted hover:text-text")}>
+                    <input type="checkbox" className="size-4 shrink-0" checked={scope.has(t.id!)} onChange={() => toggle(t.id!)} />
+                    <span className="min-w-0 break-words">{t.title}</span>
                   </label>
                 ))}
               </div>
@@ -438,7 +504,10 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
         )}
       </fieldset>
       {saveError && <p className="text-sm text-bad" role="alert">Couldn&apos;t save the exam. Try again.</p>}
-      <div className="flex justify-end pt-1"><Button type="submit" disabled={saving}>Save exam</Button></div>
+      {/* Pinned to the foot of the dialog's scroll area, so Save stays in reach under a long syllabus or the phone keyboard. */}
+      <div className={dialogFoot}>
+        <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save exam"}</Button>
+      </div>
     </form>
   );
 }

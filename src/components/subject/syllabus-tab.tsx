@@ -9,7 +9,7 @@ import type { SyllabusResult } from "@/lib/ai/schemas";
 import type { ExamMode, Topic, TopicStatus, Unit } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { toast } from "../toast";
-import { Badge, Button, Card, Empty, Input, Modal, Panel, Textarea, cn } from "../ui";
+import { Badge, Button, Card, Empty, Input, Menu, Modal, Panel, Textarea, cn } from "../ui";
 import { unitInScope } from "@/lib/mode";
 import { newTopic, parseSyllabus, parseTopics } from "@/lib/syllabus-text";
 import { MAX_TEXT, OfflineHint, useOnline, type TabProps } from "./shared";
@@ -136,8 +136,9 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
   // A unit is one sheet: its heading and controls, its topics as ruled rows, and a line to add more at the foot.
   return (
     <Panel as="section">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border py-3 pl-5 pr-3">
-        <h2 className="min-w-0 flex-1 basis-56 text-[15px] font-semibold tracking-[-0.01em]">
+      {/* The rename and delete buttons hold the right edge; on a phone the name and its counts wrap beside them. */}
+      <div className="flex items-center justify-between gap-3 border-b border-border py-3 pl-5 pr-3">
+        <h2 className="min-w-0 flex-1 text-[15px] font-semibold tracking-[-0.01em]">
           {editing ? (
             <InlineRename heading name={unit.title} label="Unit name" onSave={(title) => db.units.update(unit.id, { title })} onDone={() => setEditing(false)} />
           ) : (
@@ -167,22 +168,26 @@ function UnitSection({ unit, topics }: { unit: Unit; topics: Topic[] }) {
           if (newT.trim()) addTopics([newT.trim()]);
         }}
       >
-        <Plus size={15} className="ml-1.5 shrink-0 text-faint" aria-hidden />
-        <Input
-          placeholder="Add a topic, or paste a list"
-          aria-label={`Add a topic to ${unit.title}`}
-          value={newT}
-          onChange={(e) => setNewT(e.target.value)}
-          // A one-line input would squash a pasted list into one topic; add each line instead.
-          onPaste={(e) => {
-            const lines = parseTopics(e.clipboardData.getData("text"));
-            if (lines.length < 2) return;
-            e.preventDefault();
-            addTopics(lines);
-          }}
-          className="h-9 border-transparent bg-transparent px-1.5 shadow-none hover:border-transparent focus:border-accent focus:bg-surface"
-        />
-        <Button size="sm" variant="secondary" type="submit" className="shrink-0" disabled={!newT.trim()}>Add</Button>
+        {/* A label round the plus and the field, so a tap on the plus starts typing too. The field shows its edge on
+            hover, so the quiet line still reads as a place to type. */}
+        <label className="flex min-w-0 flex-1 cursor-text items-center gap-2">
+          <Plus size={15} className="ml-1.5 shrink-0 text-faint" aria-hidden />
+          <Input
+            placeholder="Add a topic, or paste a list"
+            aria-label={`Add a topic to ${unit.title}`}
+            value={newT}
+            onChange={(e) => setNewT(e.target.value)}
+            // A one-line input would squash a pasted list into one topic; add each line instead.
+            onPaste={(e) => {
+              const lines = parseTopics(e.clipboardData.getData("text"));
+              if (lines.length < 2) return;
+              e.preventDefault();
+              addTopics(lines);
+            }}
+            className="h-9 border-transparent bg-transparent px-1.5 shadow-none hover:border-border hover:bg-surface focus:border-accent focus:bg-surface"
+          />
+        </label>
+        <Button size="sm" variant="secondary" type="submit" className="shrink-0" disabled={!newT.trim() || adding}>Add</Button>
       </form>
     </Panel>
   );
@@ -204,6 +209,12 @@ function InlineRename({ name, label, heading, onSave, onDone }: {
   return (
     <form
       className="flex gap-2"
+      // Escape leaves the name as it was, as it would in any other field edited in place.
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        onDone();
+      }}
       onSubmit={async (e) => {
         e.preventDefault();
         if (title.trim()) {
@@ -230,18 +241,35 @@ const STATUS_TONE: Record<TopicStatus, { pill: string; dot: string }> = {
   revised: { pill: "border-good/20 bg-good/10 text-good", dot: "bg-good" },
 };
 
-/** A topic's status as a small pill: grey until studied, indigo when studied, green when revised. */
+/**
+ * A topic's status as a small pill: grey until studied, indigo when studied, green when revised. A change made here
+ * eases the pill into its new colour and grows its dot back in, so the click is answered on the spot; a status that
+ * arrives any other way (loading, another tab) just shows.
+ */
 function StatusSelect({ status, name, onChange }: { status: TopicStatus; name: string; onChange: (s: TopicStatus) => void }) {
   const tone = STATUS_TONE[status];
+  // Bumped on each change made here; the dot is keyed by it, so it mounts afresh and its starting scale plays.
+  const [changes, setChanges] = useState(0);
   return (
     <span className="relative inline-flex">
-      <span aria-hidden className={cn("pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full transition-colors duration-200", tone.dot)} />
+      <span
+        key={changes}
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full transition-[background-color,scale] duration-200 ease-snappy",
+          changes > 0 && "starting:scale-0",
+          tone.dot,
+        )}
+      />
       <select
         value={status}
-        onChange={(e) => onChange(e.target.value as TopicStatus)}
+        onChange={(e) => {
+          setChanges((n) => n + 1);
+          onChange(e.target.value as TopicStatus);
+        }}
         aria-label={`Status of ${name}`}
         className={cn(
-          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium pointer-coarse:h-9 transition-[color,background-color,border-color,box-shadow] duration-200 hover:border-line-strong focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
+          "select-chevron h-7 rounded-full border pl-6 text-xs font-medium pointer-coarse:h-9 transition-[color,background-color,border-color,box-shadow] duration-200 ease-snappy hover:border-line-strong focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_oklab,var(--accent)_18%,transparent)] focus-visible:outline-none",
           tone.pill,
         )}
       >
@@ -253,8 +281,9 @@ function StatusSelect({ status, name, onChange }: { status: TopicStatus; name: s
   );
 }
 
-// Rename and delete wait in the wings on a mouse, showing on hover or keyboard focus; on touch they're always there.
-const rowActions = "flex transition-opacity duration-150 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100";
+// Rename and delete wait in the wings on a mouse, showing on hover or keyboard focus. On touch they fold into one ⋯
+// menu instead: two always-there icons beside the pill left a phone's topic names a hundred pixels to wrap in.
+const rowActions = "flex transition-opacity duration-150 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:none)]:hidden";
 // On a mouse they float over the title's end, left of the pill, so they hold no space and every pill meets the
 // unit's right edge, in line with its header icons and Add button. Not while renaming: they'd cover the Save button.
 const rowActionsOverlay = "[@media(hover:hover)]:absolute [@media(hover:hover)]:right-full [@media(hover:hover)]:mr-2 [@media(hover:hover)]:rounded-lg [@media(hover:hover)]:bg-surface-2";
@@ -285,6 +314,14 @@ function TopicRow({ topic }: { topic: Topic }) {
           <Button variant="ghost" size="icon" onClick={() => setEditing(!editing)} aria-label={`Rename ${topic.title}`} title="Rename"><Pencil size={13} /></Button>
           <Button variant="danger" size="icon" onClick={remove} aria-label={`Delete ${topic.title}`} title="Delete"><Trash2 size={13} /></Button>
         </span>
+        <Menu
+          label={`Actions for ${topic.title}`}
+          className="[@media(hover:hover)]:hidden"
+          items={[
+            { label: "Rename", icon: <Pencil size={15} />, onSelect: () => setEditing(true) },
+            { label: "Delete", icon: <Trash2 size={15} />, danger: true, onSelect: remove },
+          ]}
+        />
       </div>
     </li>
   );

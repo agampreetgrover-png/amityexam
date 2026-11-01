@@ -258,7 +258,8 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
 // ---- Public API ------------------------------------------------------------------------------
 
 let running = false;
-let allQueued = false; // analyseAll (or a re-tag) was asked for while another run was busy
+let allQueued = false; // analyseAll, a subject's analysis or a re-tag was asked for while another run was busy
+const remapsQueued = new Set<number>(); // subjects whose topic matches were reset while another run was busy
 
 /** Run `fn` unless another analysis is already going; resets the status line when done. */
 async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -273,8 +274,13 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
   } finally {
     running = false;
     set({ running: false });
-    // Whatever run just ended (a subject's, from the PYQs tab, or a full one), work queued meanwhile goes next.
-    if (allQueued) {
+    // Whatever run just ended (a subject's, from the PYQs tab, or a full one), work queued meanwhile goes next:
+    // re-matches first (each run's end starts the next), then one full run, which covers any subject's papers.
+    const [remap] = remapsQueued;
+    if (remap !== undefined) {
+      remapsQueued.delete(remap);
+      setTimeout(() => void remapSubject(remap), 0);
+    } else if (allQueued) {
       allQueued = false;
       setTimeout(() => void analyseAll(), 0);
     }
@@ -295,12 +301,17 @@ const finalMessage = (papers: number, mapped: number, stopped: boolean, mapError
   });
 
 /** Analyse a subject's new papers, then match their questions to topics. */
-export const analyseSubject = (subjectId: number, { max = 8 } = {}) =>
-  exclusive(async () => {
+export const analyseSubject = (subjectId: number, { max = 8 } = {}) => {
+  if (running) {
+    allQueued = true; // a Retry or an upload during another run isn't lost: the full run after it covers this subject
+    return Promise.resolve(undefined);
+  }
+  return exclusive(async () => {
     const a = await analysePapersStep(subjectId, max);
     const m = a.stopped ? { mapped: 0, stopped: true, error: undefined } : await mapTopicsStep(subjectId);
     finalMessage(a.analysed, m.mapped, a.stopped || m.stopped, m.error);
   });
+};
 
 /** Every subject: new papers first (newest year first, capped per run), then topic matching. */
 export const analyseAll = async ({ max = 12 } = {}): Promise<void> => {
@@ -329,11 +340,16 @@ export const analyseAll = async ({ max = 12 } = {}): Promise<void> => {
 };
 
 /** Forget every topic match for a subject and match again (after the syllabus changed). */
-export const remapSubject = (subjectId: number) =>
-  exclusive(async () => {
+export const remapSubject = (subjectId: number) => {
+  if (running) {
+    remapsQueued.add(subjectId); // the syllabus changed mid-run: match again once the run ends
+    return Promise.resolve(undefined);
+  }
+  return exclusive(async () => {
     await db.pyqQuestions.where({ subjectId }).modify((q) => {
       delete q.topicId;
     });
     const m = await mapTopicsStep(subjectId);
     finalMessage(0, m.mapped, m.stopped, m.error);
   });
+};

@@ -3,13 +3,13 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { ArrowLeft, Copy, MessagesSquare, PanelLeftClose, Pencil, Pin, PinOff, Plus, Search, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { db, deleteChat } from "@/lib/db";
 import { daysBetween } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
 import type { Chat } from "@/lib/types";
 import { toast } from "../toast";
-import { Badge, Button, Input, Menu, cn, subjectStyle } from "../ui";
+import { Button, Input, Menu, cn, subjectStyle } from "../ui";
 
 const GROUPS = ["Pinned", "Today", "Yesterday", "Previous 7 days", "Older"] as const;
 const groupOf = (c: Chat, age: number) => (c.pinned ? "Pinned" : GROUPS[age <= 0 ? 1 : age === 1 ? 2 : age <= 7 ? 3 : 4]);
@@ -46,7 +46,20 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
     return () => clearInterval(t);
   }, []);
 
+  // Set once a rename has been saved or cancelled, so the blur that follows (Escape unmounts the field, Enter
+  // closes it) can't save it again, or save a name the student just backed out of.
+  const renameDone = useRef(false);
+  const startRename = (c: Chat) => {
+    renameDone.current = false;
+    setRenaming({ id: c.id!, title: c.title });
+  };
+  const cancelRename = () => {
+    renameDone.current = true;
+    setRenaming(null);
+  };
   const saveName = async () => {
+    if (renameDone.current) return;
+    renameDone.current = true;
     const title = renaming?.title.replace(/\s+/g, " ").trim();
     if (renaming && title) await db.chats.update(renaming.id, { title: title.slice(0, 120) });
     setRenaming(null);
@@ -106,13 +119,16 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
         ) : (
           GROUPS.filter((g) => grouped.has(g)).map((g) => (
             <section key={g} className="mb-2">
-              <h3 className="px-2.5 pb-1 pt-2.5 text-[12px] font-medium text-faint">{g}</h3>
+              <h3 className="flex items-center gap-1.5 px-2.5 pb-1 pt-2.5 text-[12px] font-medium text-faint">
+                {g === "Pinned" && <Pin size={11} aria-hidden className="shrink-0" />}
+                {g}
+              </h3>
               <ul className="space-y-px">
                 {grouped.get(g)!.map((c) => {
                   const subject = data.subjects.get(c.subjectId);
                   const on = c.id === selected;
                   return (
-                    <li key={c.id} style={subjectStyle(subject?.color)} className={cn("group relative rounded-lg transition-colors duration-150", on ? "bg-nav-active" : "hover:bg-surface-2")}>
+                    <li key={c.id} style={subjectStyle(subject?.color)} className={cn("group relative rounded-lg transition-colors duration-150", on ? "bg-nav-active" : "hover:bg-surface-2 active:bg-surface-3")}>
                       {renaming && renaming.id === c.id ? (
                         <form className="p-1.5" onSubmit={(e) => { e.preventDefault(); saveName(); }}>
                           <Input
@@ -120,7 +136,7 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
                             value={renaming.title}
                             onChange={(e) => setRenaming({ id: c.id!, title: e.target.value })}
                             onBlur={saveName}
-                            onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+                            onKeyDown={(e) => e.key === "Escape" && cancelRename()}
                             aria-label="Chat name"
                             className="h-8 text-[13.5px]"
                           />
@@ -130,17 +146,20 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
                           type="button"
                           onClick={() => onOpen(c.id!)}
                           aria-current={on ? "true" : undefined}
-                          // Right padding leaves room for the ⋯ button.
-                          className="press flex w-full min-w-0 flex-col items-start gap-1 rounded-lg py-2 pl-2.5 pr-9 text-left"
+                          // The full name on hover, since a long one is cut to the panel's width.
+                          title={c.title}
+                          // Right padding leaves room for the ⋯ button. The focus ring is drawn inside, so the
+                          // scrolling list doesn't clip it.
+                          className="flex w-full min-w-0 flex-col items-start gap-0.5 rounded-lg py-2 pl-2.5 pr-9 text-left focus-visible:-outline-offset-2 pointer-coarse:py-2.5"
                         >
                           <span className="flex w-full min-w-0 items-center gap-2">
                             <span aria-hidden className="subj-dot h-1.5 w-1.5 shrink-0 rounded-full" />
                             <span className={cn("truncate text-[13.5px] leading-snug", on ? "font-semibold text-nav-active-ink" : "font-medium")}>{c.title}</span>
                           </span>
-                          <span className="flex w-full min-w-0 items-center gap-2 pl-3.5 text-[12px] text-muted">
-                            <Badge className="min-w-0 px-1.5 py-0 text-[11px]">
-                              <span className="truncate">{subject?.code || subject?.name || "Subject"}</span>
-                            </Badge>
+                          {/* The subject in words beside when it was last used: the dot above already carries its colour. */}
+                          <span className="flex w-full min-w-0 items-center gap-1.5 pl-3.5 text-[12px] text-muted">
+                            <span className="min-w-0 truncate">{subject?.code || subject?.name || "Subject"}</span>
+                            <span aria-hidden className="text-faint">·</span>
                             <span className="shrink-0 tabular-nums">{ago(c.updatedAt)}</span>
                           </span>
                         </button>
@@ -154,7 +173,7 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
                             !on && "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100",
                           )}
                           items={[
-                            { label: "Rename", icon: <Pencil size={15} />, onSelect: () => setRenaming({ id: c.id!, title: c.title }) },
+                            { label: "Rename", icon: <Pencil size={15} />, onSelect: () => startRename(c) },
                             c.pinned
                               ? { label: "Unpin", icon: <PinOff size={15} />, onSelect: () => db.chats.update(c.id!, { pinned: false }) }
                               : { label: "Pin to top", icon: <Pin size={15} />, onSelect: () => db.chats.update(c.id!, { pinned: true }) },

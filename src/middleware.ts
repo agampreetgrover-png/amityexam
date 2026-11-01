@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { appPassword, isValidSession, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/access";
 import { refreshSession } from "@/lib/supabase/middleware";
+import { isVercel } from "@/lib/vercel";
 import { safeNext, unlockPage } from "@/lib/unlock-page";
 
 // Guards the API routes, which spend the AI keys:
@@ -47,12 +48,14 @@ export async function middleware(req: NextRequest) {
   if ((api || (pathname === "/unlock" && req.method === "POST")) && crossSite(req, host)) {
     return deny("Cross-site requests aren't allowed.", 403);
   }
+  // Without a password, an expiring session is refreshed now and its cookies ride on every response below, the
+  // refusals included. With APP_PASSWORD set, nothing (not even a refresh, which costs a call to Supabase) happens
+  // until the password has been checked: see the end.
+  const apply = password ? (res: NextResponse) => res : await refreshSession(req);
+  const out = (r: Response) => apply(r instanceof NextResponse ? r : new NextResponse(r.body, r));
   // A Vercel copy is on the public internet: without a password anyone with the URL (or a script) could spend the
   // AI keys, so its API stays shut until APP_PASSWORD is set.
-  // Refreshed session cookies (if any) ride on every response below, the refusals and the unlock page included.
-  const apply = await refreshSession(req);
-  const out = (r: Response) => apply(r instanceof NextResponse ? r : new NextResponse(r.body, r));
-  if (api && !password && process.env.VERCEL) {
+  if (api && !password && isVercel()) {
     return out(deny("This deployment has no APP_PASSWORD, so the AI and Drive features are off. Set APP_PASSWORD in the project's environment variables and redeploy.", 503));
   }
   // With a password, rebinding is already ruled out (the attacker has no session cookie), so the host list only
@@ -72,6 +75,8 @@ export async function middleware(req: NextRequest) {
     if (!navigation || api) return out(deny("This app is locked. Reload the page and enter the password.", 401));
     return out(unlockPage(safeNext(pathname + search), "", 401));
   }
+  // Unlocked: now the session may be refreshed. (Before NextResponse.next, which takes the request's cookies as they are.)
+  const applyUnlocked = await refreshSession(req);
   const res = NextResponse.next({ request: req });
   // Sliding expiry: a device in regular use stays signed in.
   if (navigation) {
@@ -80,7 +85,7 @@ export async function middleware(req: NextRequest) {
       secure: req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https",
     });
   }
-  return out(res);
+  return applyUnlocked(res);
 }
 
 export const config = {

@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ChevronDown, ChevronRight, Flame, Search } from "lucide-react";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useId, useMemo, useState, useSyncExternalStore } from "react";
 import { db, getSettings } from "@/lib/db";
 import { modeShort } from "@/lib/mode";
 import { importantTopics, type ImportantTopic } from "@/lib/pyq/group";
 import { QuestionLine } from "@/components/pyq-question-line";
 import { Badge, Button, buttonClass, Empty, Input, PageHeader, Panel, Select, cn, subjectStyle, tableHead } from "@/components/ui";
 
-const link = "font-medium text-accent underline underline-offset-2";
 // Enough to open the page quickly on a big question bank; the rest is a tap away.
 const FIRST_SHOWN = 60;
 // From here the list and the chosen topic's questions sit side by side; narrower, a row opens in place.
@@ -37,6 +36,7 @@ export default function ImportantTopicsPage() {
   const [showAll, setShowAll] = useState(false);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<number | null>(null);
+  const [refiltered, setRefiltered] = useState(false);
   const wide = useSideBySide();
 
   // Everything in one query, so the ranking draws once rather than reshuffling as each table loads.
@@ -66,9 +66,13 @@ export default function ImportantTopicsPage() {
     return (
       <>
         <PageHeader title="Important topics" />
-        <Empty icon={<Flame size={28} />} title="Nothing ranked yet">
-          Add <Link href="/subjects" className={link}>subjects</Link>, then sync or upload past papers. Their questions are matched to your syllabus and the
-          most-asked topics show up here.
+        <Empty title="Nothing ranked yet">
+          Add subjects, then sync or upload past papers. Their questions are matched to your syllabus and the most-asked topics show up here.
+          <div className="mt-4">
+            <Link href="/subjects" className={buttonClass("primary", "md", "group")}>
+              Go to Subjects <ChevronRight size={16} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
+            </Link>
+          </div>
         </Empty>
       </>
     );
@@ -101,8 +105,9 @@ export default function ImportantTopicsPage() {
               onChange={(e) => {
                 setSubjectId(e.target.value === "all" ? "all" : Number(e.target.value));
                 setShowAll(false);
+                setRefiltered(true);
               }}
-              className="h-9 w-44 text-[13px]"
+              className="h-9 w-full text-[13px] sm:w-44"
               aria-label="Filter by subject"
             >
               <option value="all">All subjects</option>
@@ -113,9 +118,14 @@ export default function ImportantTopicsPage() {
       />
 
       {!rows.length ? (
-        <Empty icon={<Flame size={28} />} title={`No ranked ${seasonName} topics yet`}>
+        <Empty title={`No ranked ${seasonName} topics yet`}>
           Once your {seasonName} past papers are split into questions and matched to the syllabus, the most-asked topics appear here. Check a subject&apos;s{" "}
           <span className="font-medium text-text">PYQs</span> tab to see how the analysis is going, or switch the exam mode for the other season.
+          <div className="mt-4">
+            <Link href="/subjects" className={buttonClass("secondary", "md", "group")}>
+              Go to Subjects <ChevronRight size={16} aria-hidden className="transition-transform duration-200 ease-snappy group-hover:translate-x-0.5" />
+            </Link>
+          </div>
         </Empty>
       ) : (
         <div className="space-y-6">
@@ -128,6 +138,13 @@ export default function ImportantTopicsPage() {
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                // Escape clears in every browser, not only those that build it into search fields.
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && query) {
+                    e.preventDefault();
+                    setQuery("");
+                  }
+                }}
                 placeholder="Search topics"
                 aria-label="Search topics"
                 className="pl-9"
@@ -151,7 +168,8 @@ export default function ImportantTopicsPage() {
                   {!wide && <span aria-hidden className="w-4 shrink-0" />}
                 </div>
                 {shown.length ? (
-                  <ul className="divide-y divide-border">
+                  // Changing the subject re-keys the list so it settles in, marking the change (but not on first load).
+                  <ul key={String(filter)} className={cn("divide-y divide-border", refiltered && "tab-in")}>
                     {shown.map(({ stat, rank }) => (
                       <Row
                         key={stat.topic.id}
@@ -183,7 +201,7 @@ export default function ImportantTopicsPage() {
               )}
             </div>
 
-            {wide && selected && <Detail stat={selected} />}
+            {wide && selected && <Detail stat={selected} animate={picked !== null} />}
           </div>
         </div>
       )}
@@ -208,15 +226,23 @@ function Summary({ rows }: { rows: ImportantTopic[] }) {
     { label: plural(papers, "Paper"), value: papers, note: span(years.length ? [Math.min(...years), Math.max(...years)] : null) ?? undefined },
   ].filter((t) => !!t);
   return (
-    <dl className="grid grid-cols-2 gap-3 lg:auto-cols-fr lg:grid-flow-col lg:grid-cols-none">
-      {tiles.map((t) => (
-        <div key={t.label} className="flex flex-col rounded-xl border border-border bg-surface px-4 py-3.5 shadow-sheet">
-          <dt className="text-[13px] text-muted">{t.label}</dt>
-          <dd className="order-first numeral pb-1.5 text-[28px] text-text">{t.value}</dd>
-          {t.note && <dd className="mt-1 text-xs tabular-nums text-faint">{t.note}</dd>}
-        </div>
-      ))}
-    </dl>
+    // One sheet ruled into cells (the 1px gaps show the border colour through), as on Zero prep, rather than a
+    // grid of separate cards. Two across on phones and tablets, one row from lg.
+    <Panel>
+      <dl className="grid grid-cols-2 gap-px bg-border lg:auto-cols-fr lg:grid-flow-col lg:grid-cols-none">
+        {tiles.map((t, i) => (
+          <div
+            key={t.label}
+            // An odd last figure spans the row on two columns, so no empty cell shows the rule colour.
+            className={cn("flex min-w-0 flex-col bg-surface px-4 py-4 sm:px-5", i === tiles.length - 1 && i % 2 === 0 && "col-span-2 lg:col-span-1")}
+          >
+            <dt className="text-[13px] text-muted">{t.label}</dt>
+            <dd className="order-first numeral pb-2 text-[26px] text-text sm:text-[28px]">{t.value}</dd>
+            {t.note && <dd className="mt-1 text-xs tabular-nums text-muted">{t.note}</dd>}
+          </div>
+        ))}
+      </dl>
+    </Panel>
   );
 }
 
@@ -233,11 +259,14 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
   const { topic, subject, count, years, marks, hot } = stat;
   const when = span(years);
   const expanded = !wide && open;
+  const panelId = useId();
   return (
     <li style={subjectStyle(subject.color)}>
       <div
         className={cn(
           "group relative flex items-center transition-colors duration-150 hover:bg-surface-2/60 focus-within:bg-surface-2/60",
+          // The open row keeps its wash, so it reads as the head of the questions under it.
+          expanded && "bg-surface-2/40",
           selected && "bg-accent-soft hover:bg-accent-soft focus-within:bg-accent-soft",
         )}
       >
@@ -245,16 +274,18 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
         <button
           type="button"
           onClick={() => (wide ? onSelect() : setOpen((o) => !o))}
-          {...(wide ? { "aria-pressed": selected } : { "aria-expanded": open })}
-          className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-4 text-left focus-visible:-outline-offset-2 sm:px-5"
+          {...(wide ? { "aria-pressed": selected } : { "aria-expanded": open, "aria-controls": open ? panelId : undefined })}
+          className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 pr-4 text-left transition-colors duration-150 focus-visible:-outline-offset-2 active:bg-surface-2 sm:px-5"
         >
-          <span className="numeral w-6 shrink-0 text-[15px] text-muted sm:w-7">{rank}</span>
+          <span className={cn("numeral w-6 shrink-0 text-[15px] transition-colors duration-150 sm:w-7", selected || expanded ? "text-text" : "text-muted")}>{rank}</span>
           <div className="min-w-0 flex-1">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
               <span className="min-w-0 break-words">{topic.title}</span>
               {hot && <Badge tone="warn"><Flame aria-hidden />Most asked</Badge>}
             </p>
-            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] tabular-nums text-muted empty:hidden">
+            {/* Phones fold the Asked, Marks and Years columns in here, so the title keeps the row's full width. */}
+            <p className={cn("mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] tabular-nums text-muted", !showSubject && "sm:hidden")}>
+              <Badge tone={hot ? "accent" : "neutral"} className="sm:hidden">{count}× asked</Badge>
               {showSubject && (
                 <span className="inline-flex min-w-0 max-w-full items-center gap-1.5" title={subject.name}>
                   <span aria-hidden className="subj-dot h-2 w-2 flex-none rounded-full" />
@@ -267,7 +298,7 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
               {marks > 0 && <span className="sm:hidden">{marks} marks</span>}
             </p>
           </div>
-          <span className="shrink-0 sm:w-24">
+          <span className="hidden w-24 shrink-0 sm:block">
             <Badge tone={hot ? "accent" : "neutral"}>{count}× asked</Badge>
           </span>
           {hasMarks && (
@@ -275,10 +306,23 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
               {marks > 0 ? marks : <span className="font-normal text-faint">—</span>}
             </span>
           )}
-          <span className="hidden w-28 shrink-0 pl-3 sm:block">
+          {/* The Revise button below lands over this cell; the years give way to it rather than show through. */}
+          <span
+            className={cn(
+              "hidden w-28 shrink-0 pl-3 transition-opacity duration-150 sm:block",
+              "pointer-fine:group-hover:opacity-0 group-focus-within:opacity-0",
+              selected && "opacity-0",
+            )}
+          >
             {when ? <Badge>{when}</Badge> : <span className="text-[13px] text-faint">—</span>}
           </span>
-          {!wide && <ChevronDown size={16} aria-hidden className={cn("w-4 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />}
+          {!wide && (
+            <ChevronDown
+              size={16}
+              aria-hidden
+              className={cn("w-4 shrink-0 transition-[transform,color] duration-200 ease-snappy", open ? "rotate-180 text-text" : "text-muted group-hover:text-text")}
+            />
+          )}
         </button>
         {/* Floats over the row's right end rather than holding a column, so the topic keeps the width. Shown on
             mouse hover, on keyboard focus anywhere in the row, and on the picked row, whose years the panel beside
@@ -301,7 +345,8 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
         </Link>
       </div>
       {expanded && (
-        <div className="tab-in mx-4 mb-3 border-l-2 border-accent/30 pl-4 sm:mx-5">
+        // Inset under the row, lined up with the topic title from sm (phones keep the width for the question text).
+        <div id={panelId} className="tab-in border-t border-border bg-surface-2/40 px-4 pb-4 sm:pl-[3.75rem] sm:pr-5">
           <ul className="divide-y divide-border">
             {stat.questions.map((q) => <QuestionLine key={q.id} q={q} />)}
           </ul>
@@ -322,12 +367,20 @@ function ReviseLink({ stat }: { stat: ImportantTopic }) {
 }
 
 /** Side by side: the chosen topic's past-paper questions, kept in view while the list scrolls. */
-function Detail({ stat }: { stat: ImportantTopic }) {
+function Detail({ stat, animate }: { stat: ImportantTopic; animate: boolean }) {
   const { topic, subject, count, marks, years } = stat;
   const when = span(years);
   return (
     <Panel className="sticky top-6">
-      <div aria-label={`Questions on ${topic.title}`} role="region" style={subjectStyle(subject.color)} className="flex max-h-[calc(100dvh-3rem)] flex-col">
+      {/* Keyed by topic: picking another row swaps the panel in with a short settle (not on first load), and its
+          questions start again from the top. */}
+      <div
+        key={topic.id}
+        aria-label={`Questions on ${topic.title}`}
+        role="region"
+        style={subjectStyle(subject.color)}
+        className={cn("flex max-h-[calc(100dvh-3rem)] flex-col", animate && "tab-in")}
+      >
         <header className="border-b border-border px-5 py-4">
           <p className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-muted">
             <span aria-hidden className="subj-dot h-2 w-2 flex-none rounded-full" />

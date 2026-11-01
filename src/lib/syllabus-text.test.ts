@@ -16,6 +16,10 @@ describe("parseTopics", () => {
     expect(parseTopics("C++ basics\nI/O systems\n3NF and BCNF")).toEqual(["C++ basics", "I/O systems", "3NF and BCNF"]);
   });
 
+  it("keeps a topic that starts with a long dotted number", () => {
+    expect(parseTopics("802.11 Wireless LAN\n1.2 Keys\n10.3.1 Joins")).toEqual(["802.11 Wireless LAN", "Keys", "Joins"]);
+  });
+
   it("removes repeats regardless of case", () => {
     expect(parseTopics("Deadlocks\ndeadlocks\nPaging")).toEqual(["Deadlocks", "Paging"]);
   });

@@ -10,5 +10,14 @@ export function stripFence(raw: string): string {
     if (s.slice(0, 4).toLowerCase() === "json") s = s.slice(4);
   }
   if (s.endsWith("```")) s = s.slice(0, -3);
-  return s.trim();
+  s = s.trim();
+  // A sentence around the JSON ("Here you go: ```json {…} ``` Hope it helps"): keep the outermost object or array.
+  if (!s.startsWith("{") && !s.startsWith("[")) {
+    const brace = s.indexOf("{");
+    const bracket = s.indexOf("[");
+    const start = brace < 0 ? bracket : bracket < 0 ? brace : Math.min(brace, bracket);
+    const end = start < 0 ? -1 : s.lastIndexOf(s[start] === "{" ? "}" : "]");
+    if (end > start) s = s.slice(start, end + 1);
+  }
+  return s;
 }

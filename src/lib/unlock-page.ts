@@ -1,4 +1,14 @@
 // The password form shown for APP_PASSWORD, by /unlock and by the middleware for a locked page load.
+import { isVercel } from "./vercel";
+
+/**
+ * Who's guessing a password, for /unlock's attempt limit. X-Forwarded-For is whatever the client sends unless a proxy
+ * we trust overwrites it, and Vercel's does (x-real-ip is its own copy). Anywhere else every guess shares one
+ * bucket (`everyone`), so changing the header buys nothing. Vercel is detected the shared way (VERCEL or VERCEL_ENV).
+ */
+export function unlockClientKey(headers: Headers, everyone: string, env: Record<string, string | undefined> = process.env): string {
+  return (isVercel(env) && headers.get("x-real-ip")) || everyone;
+}
 
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /**

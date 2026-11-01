@@ -2,20 +2,21 @@ import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleware } from "./middleware";
 import { resetAccountsConfigForTests } from "./lib/supabase/env";
-import { refreshSession } from "./lib/supabase/middleware";
+import { LIMIT_TIMEOUT_MS, MIN_REFRESH_MS, refreshSession } from "./lib/supabase/middleware";
 import { MemoryStore, setStoreForTests } from "./lib/ratelimit";
 import { createServerClient } from "@supabase/ssr";
 import { verifyUser } from "./lib/auth";
+import { SESSION_COOKIE, sessionToken } from "./lib/access";
 import { COOKIE, cookieHeader, fakeSupabase, sessionBody, signedInCookies, SUPABASE_URL, type Reply } from "./test/fake-supabase";
 
 // The fake project is an approved development project here; the committed list is empty (src/lib/supabase/env.test.ts).
-vi.mock("./lib/supabase/projects", () => ({ SUPABASE_PROJECTS: { development: ["devref"], production: [] } }));
+vi.mock("./lib/supabase/projects", () => ({ SUPABASE_PROJECTS: { development: ["devrefaaaaaaaaaaaaaa"], production: [], local: [] } }));
 
 // These run the REAL @supabase/ssr and @supabase/auth-js (cookie chunking, retries, error mapping) against a fake
 // Supabase server reached through a stubbed fetch, so what's tested is what would happen in production.
 
 const ACCOUNTS = {
-  SUPABASE_URL: "https://devref.supabase.co",
+  SUPABASE_URL: "https://devrefaaaaaaaaaaaaaa.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
   SUPABASE_ENV: "development",
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: "0x4AAAAAAAtest",
@@ -62,7 +63,7 @@ describe("when Supabase is contacted", () => {
     const limit = vi.fn(allow.limit);
     setStoreForTests({ limit });
     const expiring = await signedInCookies(30);
-    const otherProject = cookieHeader(expiring.map((c) => ({ ...c, name: c.name.replace("devref", "otherref") })));
+    const otherProject = cookieHeader(expiring.map((c) => ({ ...c, name: c.name.replace("devrefaaaaaaaaaaaaaa", "otherrefaaaaaaaaaaaa") })));
     for (const cookie of [undefined, "theme=dark", `${COOKIE}=x`, `${COOKIE}.0=aaa`, otherProject]) {
       const res = await middleware(request("http://127.0.0.1:3000/subjects", { cookie }));
       expect(res.headers.get("x-middleware-next")).toBe("1");
@@ -172,12 +173,67 @@ describe("what reaches the browser", () => {
     expect(setCookies(res).some((c) => c.startsWith(`${COOKIE}=base64-`))).toBe(true);
   });
 
-  it("rides on the APP_PASSWORD unlock page (401)", async () => {
+  it("with APP_PASSWORD set, a locked visitor gets the unlock page and causes NO call to Supabase", async () => {
     stub({ ...ACCOUNTS, APP_PASSWORD: "a long random password" });
+    const limit = vi.fn(allow.limit);
+    setStoreForTests({ limit });
     server.reply("refresh", { status: 200, body: sessionBody(3600) });
     const res = await middleware(request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) }));
     expect(res.status).toBe(401);
     expect(res.headers.get("content-type")).toContain("text/html");
+    expect(server.calls).toHaveLength(0);
+    expect(limit).not.toHaveBeenCalled(); // not even the refresh limits are spent
+    expect(setCookies(res)).toEqual([]);
+  });
+
+  it("with APP_PASSWORD set, an unlocked visitor's expiring session is refreshed", async () => {
+    stub({ ...ACCOUNTS, APP_PASSWORD: "a long random password" });
+    server.reply("refresh", { status: 200, body: sessionBody(3600) });
+    const unlocked = `${SESSION_COOKIE}=${await sessionToken("a long random password")}`;
+    const old = await signedInCookies(30);
+    const oldValue = old.find((c) => c.name === COOKIE)!.value;
+    const res = await middleware(request("http://127.0.0.1:3000/subjects", { cookie: `${unlocked}; ${cookieHeader(old)}` }));
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+    expect(refreshCalls()).toHaveLength(1);
+    // The new session cookie, as sent to the browser…
+    const newValue = setCookies(res)
+      .find((c) => c.startsWith(`${COOKIE}=`))
+      ?.slice(COOKIE.length + 1)
+      .split(";")[0];
+    expect(newValue).toMatch(/^base64-/);
+    expect(newValue).not.toBe(oldValue);
+    // …is what this request's pages and route handlers now see, in place of the old one (both values are long and
+    // distinct, so neither can match the other by accident).
+    const forwarded = res.headers.get("x-middleware-request-cookie") ?? "";
+    expect(forwarded).toContain(`${COOKIE}=${newValue}`);
+    expect(forwarded).not.toContain(oldValue);
+    expect(forwarded).toContain(unlocked); // the unlock cookie is passed on unchanged
+  });
+
+  it("/token answering 200 without a session: auth-js wipes it, but that is NOT passed on; the cookies stay", async () => {
+    stub(ACCOUNTS);
+    server.reply("refresh", { status: 200, body: {} });
+    const res = await middleware(request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(-10)) }));
+    expect(refreshCalls()).toHaveLength(1);
+    expect(setCookies(res)).toEqual([]);
+    expect(res.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("a page load the service worker sends with navigation preload is refreshed like any page load", async () => {
+    stub(ACCOUNTS);
+    server.reply("refresh", { status: 200, body: sessionBody(3600) });
+    const req = new NextRequest("http://127.0.0.1:3000/subjects", {
+      headers: {
+        host: "127.0.0.1:3000",
+        "sec-fetch-site": "same-origin",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+        "service-worker-navigation-preload": "true",
+        cookie: cookieHeader(await signedInCookies(30)),
+      },
+    });
+    const res = await middleware(req);
+    expect(refreshCalls()).toHaveLength(1);
     expect(setCookies(res).some((c) => c.startsWith(`${COOKIE}=base64-`))).toBe(true);
   });
 
@@ -216,36 +272,103 @@ describe("what reaches the browser", () => {
   });
 });
 
-describe("the deadline (real timers, short deadline)", () => {
+describe("the deadline (real timers)", () => {
   const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  // A deadline long enough that a refresh is started (more than MIN_REFRESH_MS left after the limit check).
+  const DEADLINE = 1500;
 
   it("Supabase not answering: gives up at the deadline, writes nothing, and makes no call after it", async () => {
     stub(ACCOUNTS);
     server.reply("refresh", "hang");
     const req = request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) });
     const started = Date.now();
-    const apply = await refreshSession(req, { deadlineMs: 300 });
+    const apply = await refreshSession(req, { deadlineMs: DEADLINE });
     const tookMs = Date.now() - started;
-    expect(tookMs).toBeLessThan(1000);
+    expect(tookMs).toBeGreaterThanOrEqual(DEADLINE - 50); // it really waited for Supabase…
+    expect(tookMs).toBeLessThan(DEADLINE + 500); // …and no longer than the deadline
     const res = apply(new (await import("next/server")).NextResponse(null));
     expect(setCookies(res)).toEqual([]);
-    const deadlineAt = started + 300;
-    await settle(1500); // auth-js would retry (200ms, 400ms, 800ms…) if its calls were allowed out
+    await settle(2000); // auth-js would retry (200ms, 400ms, 800ms…) if its calls were allowed out
     expect(refreshCalls()).toHaveLength(1);
-    expect(server.calls.every((c) => c.at <= deadlineAt + 50)).toBe(true);
+    expect(server.calls.every((c) => c.at <= started + DEADLINE + 50)).toBe(true);
   });
 
   it("Supabase failing with retryable errors (503): retries stop at the deadline instead of running ~30s", async () => {
     stub(ACCOUNTS);
-    server.reply("refresh", { status: 503, body: {} }, { status: 503, body: {} }, { status: 503, body: {} }, { status: 503, body: {} }, { status: 200, body: sessionBody(3600) });
+    server.reply("refresh", ...Array.from({ length: 8 }, () => ({ status: 503, body: {} })), { status: 200, body: sessionBody(3600) });
     const req = request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) });
     const started = Date.now();
-    const apply = await refreshSession(req, { deadlineMs: 500 });
+    const apply = await refreshSession(req, { deadlineMs: DEADLINE });
     const res = apply(new (await import("next/server")).NextResponse(null));
-    await settle(2000);
-    expect(server.calls.every((c) => c.at <= started + 550)).toBe(true); // nothing went out after the deadline
-    expect(refreshCalls().length).toBeLessThanOrEqual(3); // 0ms, ~200ms, ~600ms would be the 3rd: cut off
+    await settle(3000);
+    expect(server.calls.every((c) => c.at <= started + DEADLINE + 50)).toBe(true); // nothing went out after the deadline
+    // The refresh really ran and retried (it would pass vacuously if it never started), but was cut off: attempts at
+    // ~0, ~200, ~600 and ~1400ms; the next (~3000ms) falls after the deadline.
+    expect(refreshCalls().length).toBeGreaterThanOrEqual(2);
+    expect(refreshCalls().length).toBeLessThanOrEqual(4);
     expect(setCookies(res)).toEqual([]); // and a later success can't have been half-applied
+  });
+});
+
+// The two ways the rate-limit step can stop a refresh, told apart. Each test fails if its own guard is removed.
+describe("stopping at the rate-limit step", () => {
+  const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /**
+   * A store that allows everything, answering the FIRST bucket (session:ip) after `ms` and the second at once, so the
+   * whole check takes about `ms` (the buckets are checked one after the other). Records the buckets it answered.
+   */
+  const slowStore = (ms: number) => {
+    const answered: string[] = [];
+    return {
+      answered,
+      store: {
+        limit: (bucket: string) =>
+          new Promise<{ success: boolean; reset: number }>((r) =>
+            setTimeout(() => (answered.push(bucket), r({ success: true, reset: 0 })), bucket === "session:ip" ? ms : 0),
+          ),
+      },
+    };
+  };
+
+  it("path 1, the limits can't answer in time (LIMIT_TIMEOUT_MS): stops when the limit check gives up, no call to Supabase", async () => {
+    stub(ACCOUNTS);
+    server.reply("refresh", { status: 200, body: sessionBody(3600) });
+    const { store, answered } = slowStore(LIMIT_TIMEOUT_MS + 400); // well inside the 3s deadline, but past the limit timeout
+    setStoreForTests(store);
+    const req = request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) });
+    const started = Date.now();
+    const apply = await refreshSession(req); // the real 3000ms deadline
+    const tookMs = Date.now() - started;
+    expect(tookMs).toBeGreaterThanOrEqual(LIMIT_TIMEOUT_MS - 50);
+    expect(tookMs).toBeLessThan(LIMIT_TIMEOUT_MS + 300); // it gave up at the limit timeout, not when the store answered
+    expect(answered).toEqual([]); // the store hadn't answered yet: this is the "couldn't answer" path
+    await settle(600);
+    expect(server.calls).toHaveLength(0);
+    expect(setCookies(apply(new (await import("next/server")).NextResponse(null)))).toEqual([]);
+  });
+
+  it("path 2, the limits allow it but too little of the deadline is left (MIN_REFRESH_MS): no call to Supabase", async () => {
+    stub(ACCOUNTS);
+    server.reply("refresh", { status: 200, body: sessionBody(3600) });
+    const { store, answered } = slowStore(800); // answers within LIMIT_TIMEOUT_MS…
+    setStoreForTests(store);
+    const req = request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) });
+    const apply = await refreshSession(req, { deadlineMs: 1500 }); // …leaving ~700ms, less than MIN_REFRESH_MS
+    expect(answered).toEqual(["session:ip", "session:global"]); // both limits said yes: the "too little time left" path
+    await settle(1200); // past the deadline: a refresh started at ~800ms would have reached Supabase by now
+    expect(server.calls).toHaveLength(0);
+    expect(setCookies(apply(new (await import("next/server")).NextResponse(null)))).toEqual([]);
+  });
+
+  it("control: the limits allow it with enough time left: the refresh goes ahead", async () => {
+    stub(ACCOUNTS);
+    server.reply("refresh", { status: 200, body: sessionBody(3600) });
+    const { store } = slowStore(300);
+    setStoreForTests(store);
+    const req = request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) });
+    const apply = await refreshSession(req, { deadlineMs: 1500 + MIN_REFRESH_MS });
+    expect(refreshCalls()).toHaveLength(1);
+    expect(setCookies(apply(new (await import("next/server")).NextResponse(null))).some((c) => c.startsWith(`${COOKIE}=base64-`))).toBe(true);
   });
 });
 

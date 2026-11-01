@@ -58,6 +58,20 @@ function search(query: string, all: Entry[], exclude: Set<string>): Entry[] {
   return scored.sort((a, b) => a[0] - b[0] || Number(!!b[1].own) - Number(!!a[1].own) || a[1].name.localeCompare(b[1].name)).map(([, s]) => s);
 }
 
+/** The typed text inside a subject's name, in the selection tint, when it appears there as typed. */
+function Matched({ text, query }: { text: string; query: string }) {
+  const q = query.trim().toLowerCase();
+  const at = q ? text.toLowerCase().indexOf(q) : -1;
+  if (at < 0) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, at)}
+      <mark className="rounded-[3px] bg-[var(--selection)] text-inherit">{text.slice(at, at + q.length)}</mark>
+      {text.slice(at + q.length)}
+    </>
+  );
+}
+
 /**
  * Subject name field with a searchable list of common subjects.
  * Free text still works: the student can type any name that isn't listed.
@@ -170,11 +184,12 @@ export function SubjectPicker({ value, onChange, exclude = [], courses = [], aut
           role="listbox"
           aria-label="Subjects"
           // In flow rather than floating: the dialog body scrolls, which would clip an absolute dropdown.
-          className="mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-border bg-surface p-1"
+          className="count-in mt-1.5 max-h-64 overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface p-1"
         >
           {results.map((s, i) => (
             <li
-              key={s.name}
+              // Two courses can share a name under different programme codes, so the code is part of the key.
+              key={`${s.programme} / ${s.name}`}
               id={`${listId}-${i}`}
               role="option"
               aria-selected={i === active}
@@ -183,13 +198,16 @@ export function SubjectPicker({ value, onChange, exclude = [], courses = [], aut
                 e.preventDefault();
                 pick(s);
               }}
-              onMouseEnter={() => setActive(i)}
+              // Move, not enter: scrolling the list with the arrow keys slides rows under a resting pointer, and
+              // mouseenter would then steal the highlight from the keyboard.
+              onMouseMove={() => active !== i && setActive(i)}
               className={cn(
-                "flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-text transition-colors duration-150",
+                "flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm text-text transition-colors duration-100 pointer-coarse:py-2.5",
                 i === active && "bg-surface-2",
               )}
             >
-              <span className="min-w-0 truncate font-medium">{s.name}</span>
+              {/* Long names ("Computer Networks and Data Communication") wrap rather than lose their end. */}
+              <span className="min-w-0 font-medium"><Matched text={s.name} query={value} /></span>
               {s.programme && <Badge tone={s.own ? "accent" : "neutral"} className="shrink-0">{s.programme}</Badge>}
             </li>
           ))}

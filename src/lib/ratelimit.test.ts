@@ -39,9 +39,31 @@ describe("clientIp", () => {
     expect(v("0:0:0:0:0:ffff:203.0.113.9")).toBe("203.0.113.9");
     expect(v("::ffff:203.0.113.7")).not.toBe(v("::ffff:203.0.113.8"));
   });
-  it("keeps something unparseable as it is rather than guessing", () => {
-    expect(ipv6Prefix64("1::2::3")).toBe("1::2::3");
-    expect(ipv6Prefix64("zz:1:2:3:4:5:6:7")).toBe("zz:1:2:3:4:5:6:7");
+  it("special IPv6 forms that carry an IPv4 client are keyed by that IPv4 address", () => {
+    const v = (ip: string) => clientIp(h({ "x-vercel-forwarded-for": ip }), { VERCEL: "1" });
+    expect(v("::ffff:102:304")).toBe("1.2.3.4"); // IPv4-mapped, written in hex
+    expect(v("::ffff:cb00:7107")).toBe("203.0.113.7");
+    expect(v("::ffff:0:203.0.113.7")).toBe("203.0.113.7"); // IPv4-translated
+    expect(v("::203.0.113.7")).toBe("203.0.113.7"); // IPv4-compatible (deprecated)
+    expect(v("::ffff:102:304")).not.toBe(v("::ffff:102:305"));
+  });
+  it("::, ::1 and the rest of 0::/64 each get their own key instead of sharing 0:0:0:0::/64", () => {
+    const v = (ip: string) => clientIp(h({ "x-vercel-forwarded-for": ip }), { VERCEL: "1" });
+    expect(v("::")).toBe("0:0:0:0:0:0:0:0");
+    expect(v("::1")).toBe("0:0:0:0:0:0:0:1");
+    expect(v("::1")).not.toBe(v("::"));
+    expect(v("::1:0:0:1")).toBe("0:0:0:0:1:0:0:1");
+    expect(v("::1:0:0:1")).not.toBe(v("::1:0:0:2"));
+  });
+  it("rejects malformed addresses (checked by Node's own parser): they share one 'unknown' key instead of getting their own", () => {
+    for (const bad of ["1.2.3.4::5", "1::2::3", "zz:1:2:3:4:5:6:7", "1:2:3:4:5:6:7:8:9", "1.2.3.4:5::", "::1.2.3", "::256.1.1.1", "12345::", "::ffff:1.2.3.4.5", "", "not-an-ip"]) {
+      expect(ipv6Prefix64(bad), bad).toBe("unknown");
+    }
+    const v = (ip: string) => clientIp(h({ "x-vercel-forwarded-for": ip }), { VERCEL: "1" });
+    for (const bad of ["1.2.3.4::5", "256.1.1.1", "01.2.3.4", "1.2.3", "1.2.3.4.5", "999.999.999.999", "hello"]) {
+      expect(v(bad), bad).toBe("unknown");
+    }
+    expect(v("1.2.3.4")).toBe("1.2.3.4"); // a well-formed one still gets its own key
   });
   it("off Vercel, ignores forwarding headers (anyone can type them) and uses one local bucket", () => {
     expect(clientIp(h({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "5.6.7.8", "x-vercel-forwarded-for": "9.9.9.9" }), {})).toBe("local");
@@ -89,6 +111,26 @@ describe("rate-limit key prefixes", () => {
   });
 });
 
+describe("Vercel is detected the same way everywhere (VERCEL or VERCEL_ENV)", () => {
+  const onlyEnv = { VERCEL_ENV: "preview" };
+  it("client IP: with only VERCEL_ENV set, Vercel's own header is used (not one shared local bucket)", () => {
+    expect(clientIp(h({ "x-vercel-forwarded-for": "203.0.113.7" }), onlyEnv)).toBe("203.0.113.7");
+  });
+  it("store selection: with only VERCEL_ENV set, the memory store refuses to run and no store is chosen without Upstash", () => {
+    expect(() => new MemoryStore(onlyEnv)).toThrow(/local development only/);
+    expect(createStore(onlyEnv)).toBeNull();
+    expect(createStore({ VERCEL_ENV: "production" })).toBeNull();
+  });
+  it("email keys and key prefixes: with only VERCEL_ENV set, no stand-in secret and a Vercel prefix", () => {
+    expect(emailKey("a@b.test", null, onlyEnv)).toBeNull();
+    expect(ratelimitPrefix("login:ip", onlyEnv)).toBe("amityexams:preview:rl:login:ip");
+  });
+  it("neither variable set: this computer", () => {
+    expect(clientIp(h({ "x-vercel-forwarded-for": "203.0.113.7" }), {})).toBe("local");
+    expect(createStore({})).toBeInstanceOf(MemoryStore);
+  });
+});
+
 describe("stores", () => {
   it("the memory store refuses to run on Vercel", () => {
     expect(() => new MemoryStore({ VERCEL: "1" })).toThrow(/local development only/);
@@ -113,6 +155,18 @@ describe("checkLimits fails closed", () => {
   it("allows while under every limit", async () => {
     setStoreForTests(new MemoryStore({}));
     expect(await checkLimits([{ bucket: "signup:ip", key: "a" }, { bucket: "signup:email", key: "b" }])).toEqual({ ok: true });
+  });
+  it("after giving up on a slow answer (timeout), doesn't go on to use up later buckets in the background", async () => {
+    const asked: string[] = [];
+    setStoreForTests({
+      limit: (b) => {
+        asked.push(b);
+        return new Promise((r) => setTimeout(() => r({ success: true, reset: 0 }), b === "session:ip" ? 120 : 0));
+      },
+    });
+    expect(await checkLimits([{ bucket: "session:ip", key: "a" }, { bucket: "session:global", key: "all" }], 50)).toEqual({ ok: false, reason: "unavailable" });
+    await new Promise((r) => setTimeout(r, 200)); // the slow first answer arrives after the timeout
+    expect(asked).toEqual(["session:ip"]);
   });
   it("checks in order and stops at the first refusal, so later buckets aren't used up", async () => {
     const asked: string[] = [];

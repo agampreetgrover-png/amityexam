@@ -1,10 +1,10 @@
 import "server-only";
 import { combineChunks, stringFromBase64URL } from "@supabase/ssr";
-import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import type { NextRequest, NextResponse } from "next/server";
 import { checkLimits, clientIp } from "@/lib/ratelimit";
 import { accountsConfig } from "./env";
-import { createSupabaseServerClient } from "./server";
+import { callLogOf, createSupabaseServerClient } from "./server";
+import { classifyAuthError } from "./session-policy";
 
 // Keeps a signed-in session fresh when a page is loaded. It decides nothing about who is signed in: that is getUser()
 // in the route handlers (src/lib/auth.ts), which also refresh a session themselves when this one didn't.
@@ -25,11 +25,15 @@ import { createSupabaseServerClient } from "./server";
 // reaches the browser is decided by the result, not by which cookies were written:
 //   - no error: everything Supabase wrote, as one set: the rotated session, including deletion of chunk cookies
 //     that no longer exist when the session changes size, or the removal of an unusable cookie;
-//   - an error that means the session is definitely gone: its deletions;
-//   - any other error (rate limit, 408, 5xx, network) or the deadline: nothing, so the student's cookies stay and a
-//     later request tries again.
-// If the deadline cuts off a refresh that Supabase completed, the browser keeps the old refresh token; Supabase's
-// refresh-token reuse interval (keep it at its default of 10s or more) lets the next request use it once more.
+//   - an error that means the session is definitely gone (session-policy.ts, the same rule route handlers use): its
+//     deletions;
+//   - anything else (rate limit, 408, 5xx, network, a token answer without a session) or the deadline: nothing, so
+//     the student's cookies stay and a later request tries again.
+// Known gap: if the deadline cuts off a refresh that Supabase had already completed, the browser keeps the old,
+// now-used refresh token. Supabase's reuse interval (default 10s) only helps if the next refresh comes within it, and
+// with refreshes on page loads it usually comes later. Whether Supabase then hands back the session's current token
+// for that reused one, or signs the student out, is NOT yet verified: it is checked in the real dev-project run
+// (S1.8). The worst case is that the student signs in again; no data is lost (it stays on this device).
 
 export type ApplySession = (res: NextResponse) => NextResponse;
 const keep: ApplySession = (res) => res;
@@ -38,12 +42,11 @@ const keep: ApplySession = (res) => res;
 export const REFRESH_MARGIN_S = 90;
 /** The limit check plus every call to Supabase, together. */
 export const DEADLINE_MS = 3000;
-const LIMIT_TIMEOUT_MS = 1000;
+/** The rate-limit check gets at most this long. */
+export const LIMIT_TIMEOUT_MS = 1000;
+/** A refresh is only started with at least this much of the deadline left. */
+export const MIN_REFRESH_MS = 1000;
 
-/** Supabase answers that mean the session is gone for good, so its cookies should go too. */
-const DEFINITIVE_CODES = new Set(["refresh_token_not_found", "refresh_token_already_used", "session_expired", "user_not_found", "user_banned"]);
-// A revoked session (Supabase's "session_not_found") reaches us as AuthSessionMissingError, which has no code.
-const isDefinitive = (error: unknown) => isAuthSessionMissingError(error) || DEFINITIVE_CODES.has((error as { code?: string })?.code ?? "");
 
 /** The cookie Supabase's client keeps the session in: sb-<first label of the Supabase host>-auth-token. */
 export const sessionCookieName = (supabaseUrl: string) => `sb-${new URL(supabaseUrl).hostname.split(".")[0]}-auth-token`;
@@ -92,14 +95,19 @@ export async function refreshSession(req: NextRequest, { now = Date.now, deadlin
 
   // One deadline for everything from here on, shared by every call Supabase's client makes (retries included).
   const deadline = AbortSignal.timeout(deadlineMs);
+  const started = Date.now();
   const limit = await checkLimits(
     [
       { bucket: "session:ip", key: clientIp(req.headers) },
       { bucket: "session:global", key: "all" },
     ],
-    Math.min(LIMIT_TIMEOUT_MS, deadlineMs),
+    LIMIT_TIMEOUT_MS,
   );
-  if (!limit.ok || deadline.aborted) return keep;
+  // Two separate reasons to stop here: the limits refused or couldn't answer in time; or they allowed it, but too
+  // little of the deadline is left to start a refresh that could finish (one cut off midway can leave the browser
+  // holding a refresh token Supabase has already rotated).
+  if (!limit.ok) return keep;
+  if (deadlineMs - (Date.now() - started) < MIN_REFRESH_MS || deadline.aborted) return keep;
 
   const writes: CookieWrite[] = [];
   let headers: Record<string, string> = {};
@@ -119,7 +127,8 @@ export async function refreshSession(req: NextRequest, { now = Date.now, deadlin
     const result = await Promise.race([supabase.auth.getSession(), timedOut]);
     if (result !== "timeout") {
       if (!result.error) kept = [...writes];
-      else if (isDefinitive(result.error)) kept = [...writes];
+      // "no-session" can only mean auth-js found nothing usable in the cookie and cleared it: removing it is harmless.
+      else if (classifyAuthError(result.error, callLogOf(supabase)) !== "temporary") kept = [...writes];
     }
   } catch (e) {
     console.error("[accounts] session refresh failed:", e instanceof Error ? e.message : "unknown");

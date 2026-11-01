@@ -2,7 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { db } from "@/lib/db";
 import { retrieve } from "@/lib/retrieve";
 import { aiStream } from "@/lib/ai/client";
@@ -102,12 +102,14 @@ export function ChatTab({ subject, units, topics, mode }: TabProps) {
 
       <div className="flex min-h-[50dvh] flex-col gap-4 rounded-2xl border border-border bg-surface p-4 shadow-sheet sm:p-5 md:min-h-0 md:flex-1 md:overflow-y-auto">
         {!messages ? null : messages.length === 0 && streaming === null ? (
-          <div className="flex flex-1 flex-col items-start justify-center gap-1.5 px-1">
-            <span className="mb-2 grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent" aria-hidden><MessageCircle size={18} /></span>
-            <p className="text-[15px] font-semibold">Ask about anything in {subject.name}</p>
-            <p className="max-w-prose text-sm text-muted">
-              For example, &ldquo;Explain normalization with an example&rdquo; or &ldquo;Difference between TCP and UDP for 5 marks&rdquo;.
-            </p>
+          // No icon chip: set low in the box, just above the composer, where the eye already is when the tab opens.
+          <div className="flex flex-1 flex-col items-start justify-end px-1 pb-1">
+            <p className="text-[15px] font-semibold text-balance">Ask about anything in {subject.name}</p>
+            <p className="mt-1.5 text-sm text-muted">For example:</p>
+            <ul className="mt-2 space-y-1.5 text-sm leading-relaxed text-text/85">
+              <li>&ldquo;Explain normalization with an example&rdquo;</li>
+              <li>&ldquo;Difference between TCP and UDP for 5 marks&rdquo;</li>
+            </ul>
           </div>
         ) : (
           <>

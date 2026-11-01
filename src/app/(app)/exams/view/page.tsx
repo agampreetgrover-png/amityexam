@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeft, Check, MapPin, Moon, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, MapPin, Moon, Plus, Printer, Trash2 } from "lucide-react";
 import { Suspense, useState } from "react";
 import { db } from "@/lib/db";
 import { daysBetween, prettyDay } from "@/lib/dates";
@@ -70,6 +70,12 @@ function ExamKit({ id }: { id: number }) {
   // would remove the item that moved up into its place.
   const indexOf = (list: typeof checklist, item: (typeof checklist)[number], i: number) =>
     list[i]?.text === item.text ? i : list.findIndex((c) => c.text === item.text);
+  const toggleItem = (item: (typeof checklist)[number], i: number) =>
+    setChecklist((list) => {
+      const at = indexOf(list, item, i);
+      // Flips what is stored, not what was drawn: two quick taps then tick and untick instead of both ticking.
+      return list.map((c, j) => (j === at ? { ...c, done: !c.done } : c));
+    });
   const sheet = sheets?.length ? sheets[Math.min(sheetIdx, sheets.length - 1)] : undefined;
   const packed = checklist.filter((c) => c.done).length;
 
@@ -109,8 +115,11 @@ function ExamKit({ id }: { id: number }) {
         <Button variant="secondary" className="no-print" onClick={() => window.print()}><Printer size={16} /> Print kit</Button>
       </header>
 
-      <div className="space-y-6">
-        <Card title="Exam details">
+      {/* One column up to xl. From there the checklist moves to a narrow column beside the rest, level with the
+          details, so a wide screen isn't a stack of stretched cards. On phones it stays where it was, after the weak
+          topics and before the cheat sheet. */}
+      <div className="space-y-6 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(17rem,20rem)] xl:grid-rows-[repeat(4,auto)_1fr] xl:items-start xl:gap-6 xl:space-y-0">
+        <Card title="Exam details" className="xl:col-start-1">
           {/* Ruled label and value rows, like the particulars block on an admit card. */}
           <dl className="divide-y divide-border border-y border-border text-[15px]">
             {exam.time && (
@@ -122,10 +131,20 @@ function ExamKit({ id }: { id: number }) {
             {(exam.venue || exam.seat) && (
               <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 py-2.5">
                 <dt className="text-[13px] leading-6 text-muted">Venue</dt>
-                {/* Badges never wrap inside, so "A-117" can't split at its hyphen and read as two seats. */}
-                <dd className="flex min-w-0 flex-wrap items-center gap-1.5 leading-6">
-                  {exam.venue && <Badge className="max-w-full whitespace-normal break-words"><MapPin aria-hidden /> {exam.venue}</Badge>}
-                  {exam.seat && <Badge>Seat {exam.seat}</Badge>}
+                {/* Set at the same size as the other values: on exam day these are what you look up. The seat never
+                    wraps inside, so "A-117" can't split at its hyphen and read as two seats. */}
+                <dd className="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1">
+                  {exam.venue && (
+                    <span className="inline-flex min-w-0 items-baseline gap-1.5 break-words">
+                      <MapPin size={14} className="relative top-0.5 shrink-0 text-muted" aria-hidden />
+                      {exam.venue}
+                    </span>
+                  )}
+                  {exam.seat && (
+                    <span className="whitespace-nowrap">
+                      <span className="text-muted">Seat</span> <strong className="font-semibold tabular-nums">{exam.seat}</strong>
+                    </span>
+                  )}
                 </dd>
               </div>
             )}
@@ -147,7 +166,7 @@ function ExamKit({ id }: { id: number }) {
 
         {days <= 1 && days >= 0 && (
           <Card
-            className="border-mark/50 bg-mark-soft"
+            className="border-mark/50 bg-mark-soft xl:col-start-1"
             title={<span className="flex items-center gap-2"><Moon size={16} className="text-warn" aria-hidden /> The night before</span>}
           >
             <ul className="max-w-prose list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed marker:text-muted">
@@ -160,31 +179,41 @@ function ExamKit({ id }: { id: number }) {
           </Card>
         )}
 
-        <Card title="Weak topics" action={weak.length > 0 && <Badge tone="warn">{weak.length} weak</Badge>}>
+        <Card title="Weak topics" className="xl:col-start-1" action={weak.length > 0 && <Badge tone="warn">{weak.length} weak</Badge>}>
           {weak.length ? (
             <List className="border-b-0">
               {weak.map((t) => (
-                <li key={t.id} className="py-2.5 text-[15px]">
-                  <Link href={`/subjects/view?id=${exam.subjectId}`} className="min-w-0 break-words hover:text-accent hover:underline">{t.title}</Link>
+                <li key={t.id}>
+                  {/* The whole row opens the subject; the wash reaches a little past the text, the arrow nudges on hover. */}
+                  <Link
+                    href={`/subjects/view?id=${exam.subjectId}`}
+                    className="group -mx-2 flex items-center gap-3 rounded-md px-2 py-2.5 text-[15px] transition-colors duration-150 hover:bg-surface-2 focus-visible:-outline-offset-2"
+                  >
+                    <span className="min-w-0 flex-1 break-words">{t.title}</span>
+                    <ChevronRight size={16} aria-hidden className="no-print shrink-0 text-faint transition-[transform,color] duration-200 ease-snappy group-hover:translate-x-0.5 group-hover:text-muted" />
+                  </Link>
                 </li>
               ))}
             </List>
           ) : <p className="text-sm text-muted">No weak topics flagged.</p>}
         </Card>
 
-        <Card title="Checklist" action={<Badge tone={checklist.length && packed === checklist.length ? "good" : "neutral"}>{packed} of {checklist.length} packed</Badge>}>
+        <Card title="Checklist" className="xl:col-start-2 xl:row-span-5 xl:row-start-1" action={<Badge tone={checklist.length && packed === checklist.length ? "good" : "neutral"}>{packed} of {checklist.length} packed</Badge>}>
           <List className="border-t-0">
             {checklist.map((item, i) => (
               <li key={i} className="group flex items-center gap-3 py-2.5 text-[15px]">
-                <Tick
-                  done={item.done}
-                  label={item.done ? `Unpack ${item.text}` : `Pack ${item.text}`}
-                  onClick={() => setChecklist((list) => {
-                    const at = indexOf(list, item, i);
-                    return list.map((c, j) => (j === at ? { ...c, done: !item.done } : c));
-                  })}
-                />
-                <span className={cn("min-w-0 break-words transition-colors duration-150", item.done && "text-muted line-through decoration-muted/60")}>{item.text}</span>
+                <Tick done={item.done} label={item.done ? `Unpack ${item.text}` : `Pack ${item.text}`} onClick={() => toggleItem(item, i)} />
+                {/* The words tick it too, a bigger target than the circle (which stays the keyboard and screen-reader
+                    control). The strike eases in with the colour instead of snapping on. */}
+                <span
+                  onClick={() => toggleItem(item, i)}
+                  className={cn(
+                    "min-w-0 cursor-pointer select-none break-words decoration-transparent transition-[color,text-decoration-color] duration-200 ease-snappy line-through",
+                    item.done && "text-muted decoration-muted/60",
+                  )}
+                >
+                  {item.text}
+                </span>
                 <button
                   // Always visible on touch screens (tablets included); with a mouse it appears on hover or keyboard focus.
                   // On touch an invisible ring widens it for a thumb.
@@ -198,9 +227,15 @@ function ExamKit({ id }: { id: number }) {
                       return list.filter((_, j) => j !== at);
                     });
                     if (!removed) return; // a second tap on an item that's already gone
+                    // Undo puts it back once, however many times it is pressed.
+                    let restored = false;
                     toast(`Removed ${item.text}`, {
                       label: "Undo",
-                      onClick: () => void setChecklist((list) => [...list.slice(0, i), item, ...list.slice(i)]),
+                      onClick: () => {
+                        if (restored) return;
+                        restored = true;
+                        void setChecklist((list) => [...list.slice(0, i), item, ...list.slice(i)]);
+                      },
                     });
                   }}
                 >
@@ -220,11 +255,13 @@ function ExamKit({ id }: { id: number }) {
             }}
           >
             <Input value={newItem} onChange={(e) => setNewItem(e.target.value)} placeholder="Add an item" className="h-9" />
-            <Button type="submit" variant="secondary" className="w-9 shrink-0 px-0" aria-label="Add item"><Plus size={15} /></Button>
+            {/* Square at the field's height; on touch screens the icon size's invisible ring widens it for a thumb. */}
+            <Button type="submit" variant="secondary" size="icon" className="h-9 w-9" aria-label="Add item" disabled={!newItem.trim()}><Plus size={15} /></Button>
           </form>
         </Card>
 
         <Card
+          className="xl:col-start-1"
           title="Last-minute cheat sheet"
           action={sheets && sheets.length > 1 && (
             <Select
