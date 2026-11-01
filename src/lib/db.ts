@@ -5,6 +5,18 @@ import {
   type QuizAttempt, type Settings, type Subject, type Topic, type Unit,
 } from "./types";
 import { MAX_DRIVE_SOURCES } from "./drive/sources";
+import { dbNameOf, ownerOf, type Profile } from "./profile";
+
+/** The tables holding the student's data: what export, import and "clear all" work on. `meta` is never among them. */
+export const DATA_TABLES = [
+  "subjects", "units", "topics", "exams", "materials", "driveFiles", "pyqQuestions", "quizzes", "docs", "messages", "chats", "settings",
+] as const;
+
+/** Bookkeeping that belongs to this database itself, e.g. { key: "owner", value: "local" | userId }. */
+interface MetaRow {
+  key: string;
+  value: string;
+}
 
 class ExamDB extends Dexie {
   subjects!: EntityTable<Subject, "id">;
@@ -19,9 +31,10 @@ class ExamDB extends Dexie {
   messages!: EntityTable<ChatMessage, "id">;
   chats!: EntityTable<Chat, "id">;
   settings!: EntityTable<Settings, "id">;
+  meta!: EntityTable<MetaRow, "key">;
 
-  constructor() {
-    super("amityexams");
+  constructor(name: string) {
+    super(name);
     this.version(1).stores({
       subjects: "++id, name",
       units: "++id, subjectId, order",
@@ -41,10 +54,62 @@ class ExamDB extends Dexie {
     this.version(5).stores({ sessions: null, topics: "++id, subjectId, unitId, status" }); // the planner and spaced revision were removed
     // Study chat: saved conversations, and their messages found by chatId. Existing messages are untouched.
     this.version(6).stores({ chats: "++id, subjectId, updatedAt", messages: "++id, subjectId, createdAt, chatId" });
+    this.version(7).stores({ meta: "key" }); // which profile this database belongs to; existing tables are untouched
   }
 }
 
-export const db = new ExamDB();
+export class OwnerMismatchError extends Error {
+  constructor(public expected: string, public found: string) {
+    super("This browser database belongs to a different profile, so it wasn't opened.");
+  }
+}
+
+let current: ExamDB | null = null;
+
+/**
+ * Open the database for this page load (called once, by ProfileGate, in the browser). Its owner marker is written
+ * when it is first opened and checked on every open after that: a mismatch closes it without writing anything.
+ */
+export async function openDb(profile: Profile): Promise<void> {
+  const name = dbNameOf(profile);
+  if (current) {
+    if (current.name === name) return;
+    throw new Error("Another profile's database is already open; switching profiles needs a page reload.");
+  }
+  const instance = new ExamDB(name);
+  const expected = ownerOf(profile);
+  try {
+    const found = await instance.transaction("rw", instance.meta, async () => {
+      const row = await instance.meta.get("owner");
+      if (row) return row.value;
+      await instance.meta.add({ key: "owner", value: expected });
+      return expected;
+    });
+    if (found !== expected) throw new OwnerMismatchError(expected, found);
+  } catch (e) {
+    instance.close();
+    throw e;
+  }
+  current = instance;
+}
+
+/** For tests: forget the open database so another can be opened. */
+export function closeDbForTests() {
+  current?.close();
+  current = null;
+}
+
+// Every module imports `db`; it forwards to the database openDb() chose. Using it before that (on the server, or
+// before ProfileGate has finished) throws instead of quietly opening some default database.
+export const db = new Proxy({} as ExamDB, {
+  get(_target, prop) {
+    if (!current) throw new Error("DB not opened: the browser database is opened by ProfileGate before the app renders.");
+    const value = Reflect.get(current, prop, current);
+    return typeof value === "function" ? value.bind(current) : value;
+  },
+});
+
+const dataTables = () => DATA_TABLES.map((name) => db.table(name));
 
 export async function getSettings(): Promise<Settings> {
   return (await db.settings.get("settings")) ?? DEFAULT_SETTINGS;
@@ -83,7 +148,7 @@ export async function deleteExam(examId: number) {
 /** Full JSON backup of every table. */
 export async function exportAll() {
   const out: Record<string, unknown[]> = {};
-  for (const t of db.tables) out[t.name] = await t.toArray();
+  for (const t of dataTables()) out[t.name] = await t.toArray();
   return { app: "amityexams", version: 1, exportedAt: new Date().toISOString(), data: out };
 }
 
@@ -110,7 +175,7 @@ export function validateBackup(backup: unknown): Record<string, Record<string, u
     throw new Error("Not an Amity Exams backup file");
   }
   const data = Object.fromEntries(Object.entries(backup.data).filter(([k]) => !LEGACY_TABLES.has(k)));
-  const known = new Set(db.tables.map((t) => t.name));
+  const known = new Set<string>(DATA_TABLES); // "meta" is refused: a backup must never carry another profile's owner marker
   const unknown = Object.keys(data).filter((k) => !known.has(k));
   if (unknown.length) throw new Error(`Backup contains unknown data (${unknown.slice(0, 3).join(", ")}). Was it made by this app?`);
   let total = 0;
@@ -161,8 +226,8 @@ export function validateBackup(backup: unknown): Record<string, Record<string, u
 
 export async function importAll(backup: unknown) {
   const data = validateBackup(backup); // throws before any existing data is touched
-  await db.transaction("rw", db.tables, async () => {
-    for (const t of db.tables) {
+  await db.transaction("rw", dataTables(), async () => {
+    for (const t of dataTables()) {
       await t.clear();
       const rows = data[t.name];
       if (rows?.length) await t.bulkAdd(rows);
@@ -171,7 +236,7 @@ export async function importAll(backup: unknown) {
 }
 
 export async function clearAll() {
-  await db.transaction("rw", db.tables, async () => {
-    for (const t of db.tables) await t.clear();
+  await db.transaction("rw", dataTables(), async () => {
+    for (const t of dataTables()) await t.clear();
   });
 }
