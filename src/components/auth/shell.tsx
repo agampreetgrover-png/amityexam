@@ -1,10 +1,10 @@
 "use client";
 
-import { GraduationCap } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getSession, type SessionInfo } from "@/lib/auth/client";
 import { ACCOUNT_FACTS } from "@/lib/auth/copy";
+import { LogoMark } from "../logo";
 import { cn } from "../ui";
 
 // The frame every account screen sits in. It is the app's own welcome screen (components/mode-gate.tsx): the
@@ -15,7 +15,7 @@ export function Wordmark() {
   return (
     <Link href="/" className="inline-flex items-center gap-2.5 rounded-lg text-[15px] font-semibold tracking-[-0.02em]">
       <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-solid text-accent-ink" aria-hidden>
-        <GraduationCap size={16} />
+        <LogoMark size={17} />
       </span>
       Amity Exams
     </Link>
@@ -39,10 +39,11 @@ export function AuthShell({ title, lead, children, aside, icon, wide }: { title:
       <div className={cn("mx-auto w-full", aside ? "max-w-5xl" : wide ? "max-w-2xl" : "max-w-md")}>
         <Wordmark />
         <div className={cn("mt-10 md:mt-16", aside && "grid gap-12 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:gap-20")}>
-          <div className="min-w-0">
+          {/* stagger: the icon, heading, lead and form rise in one after another. */}
+          <div className="stagger min-w-0">
             {/* The same 40px tile as the app's other gate screens (profile-gate.tsx). */}
             {icon && (
-              <div aria-hidden className="mb-4 grid h-10 w-10 place-items-center rounded-xl bg-accent-soft text-accent">
+              <div aria-hidden className="icon-pop mb-4 grid h-10 w-10 place-items-center rounded-xl bg-accent-soft text-accent">
                 {icon}
               </div>
             )}

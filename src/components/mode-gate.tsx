@@ -1,7 +1,8 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ChevronRight, GraduationCap, Loader2 } from "lucide-react";
+import { ChevronRight, Loader2 } from "lucide-react";
+import { LogoMark } from "./logo";
 import { useState, type ReactNode } from "react";
 import { getSettings } from "@/lib/db";
 import { setExamMode } from "@/lib/mode";
@@ -64,10 +65,10 @@ function Welcome() {
 
   return (
     <main className="flex min-h-dvh flex-col justify-center bg-bg px-4 py-10 sm:px-6 md:py-16">
-      <div className="mx-auto w-full max-w-2xl">
+      <div className="stagger mx-auto w-full max-w-2xl">
         <span className="flex items-center gap-2.5 text-[15px] font-semibold tracking-[-0.02em]">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-solid text-accent-ink" aria-hidden>
-            <GraduationCap size={16} />
+            <LogoMark size={17} />
           </span>
           Amity Exams
         </span>

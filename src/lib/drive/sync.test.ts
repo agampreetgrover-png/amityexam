@@ -101,3 +101,64 @@ describe("syncDrive", () => {
     expect(events.find((e) => e.type === "plan")).toEqual({ type: "plan", total: 1, remaining: 0 });
   });
 });
+
+// Audit 1-2 Nov: a linked folder's PYQs/X.pdf and a source's mixed PYQs folder's X.pdf were keyed "pyqs/x.pdf"
+// and "/x.pdf", so both came in.
+describe("syncDrive: copies in a source's mixed past-papers folder", () => {
+  const paper = "Database Management Systems 2023.pdf";
+  const plan = async (
+    tree: Record<string, { id: string; name: string; folder?: boolean }[]>,
+    req: { known?: string[]; sources?: string[]; links?: string[] },
+  ) => {
+    vi.stubGlobal("fetch", async (url: string) => new Response(page(tree[new URL(url).searchParams.get("id")!] ?? [])));
+    for await (const ev of syncDrive({
+      subjects: [{ id: 1, name: "Database Management Systems" }],
+      known: req.known ?? [],
+      sources: (req.sources ?? []).map((id) => ({ id, label: id })),
+      links: req.links && [{ subjectId: 1, folderIds: req.links }],
+    })) {
+      if (ev.type === "plan") return ev;
+    }
+  };
+  // A source with a top-level "PYQs" folder holding papers of many subjects.
+  const mixed = {
+    sourceMixed: [{ id: "mixedPyqs01", name: "PYQs", folder: true }],
+    mixedPyqs01: [{ id: "fileMixed01", name: paper }],
+  };
+
+  it("treats a linked folder's PYQs/X.pdf and the mixed folder's X.pdf as one copy", async () => {
+    const tree = { ...mixed, linkedAaaaa: [{ id: "linkPyqs001", name: "PYQs", folder: true }], linkPyqs001: [{ id: "fileLinked1", name: paper }] };
+    expect(await plan(tree, { sources: ["sourceMixed"], links: ["linkedAaaaa"] })).toEqual({ type: "plan", total: 1, remaining: 0 });
+  });
+
+  it("doesn't bring the mixed folder's copy in once the linked folder's copy was imported", async () => {
+    const tree = { ...mixed, linkedAaaaa: [{ id: "linkPyqs001", name: "PYQs", folder: true }], linkPyqs001: [{ id: "fileLinked1", name: paper }] };
+    const out = await plan(tree, { known: ["fileLinked1"], sources: ["sourceMixed"], links: ["linkedAaaaa"] });
+    expect(out).toEqual({ type: "plan", total: 0, remaining: 0 });
+  });
+
+  it("treats a subject folder's PYQs/X.pdf in another source and the mixed folder's X.pdf as one copy", async () => {
+    const tree = {
+      ...mixed,
+      sourceSubject: [{ id: "subjFolder1", name: "Database Management Systems", folder: true }],
+      subjFolder1: [{ id: "subjPyqs001", name: "PYQs", folder: true }],
+      subjPyqs001: [{ id: "fileSubjct1", name: paper }],
+    };
+    expect(await plan(tree, { sources: ["sourceSubject", "sourceMixed"] })).toEqual({ type: "plan", total: 1, remaining: 0 });
+  });
+
+  it("still treats a loose top-level X.pdf in another source and the mixed folder's X.pdf as one copy", async () => {
+    const tree = { ...mixed, sourceLoose: [{ id: "fileLoose01", name: paper }] };
+    expect(await plan(tree, { sources: ["sourceLoose", "sourceMixed"] })).toEqual({ type: "plan", total: 1, remaining: 0 });
+  });
+
+  it("keeps a mixed folder's papers in different year folders apart", async () => {
+    const tree = {
+      sourceMixed: [{ id: "mixedPyqs01", name: "PYQs", folder: true }],
+      mixedPyqs01: [{ id: "mixed2022ff", name: "2022", folder: true }, { id: "mixed2023ff", name: "2023", folder: true }],
+      mixed2022ff: [{ id: "fileMix2022", name: "Database Management Systems Major.pdf" }],
+      mixed2023ff: [{ id: "fileMix2023", name: "Database Management Systems Major.pdf" }],
+    };
+    expect(await plan(tree, { sources: ["sourceMixed"] })).toEqual({ type: "plan", total: 2, remaining: 0 });
+  });
+});

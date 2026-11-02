@@ -351,7 +351,7 @@ export function Empty({ icon, title, children }: { icon?: ReactNode; title: stri
   return (
     <div className="flex flex-col items-start gap-1.5 rounded-2xl border border-dashed border-line-strong px-6 py-8">
       {icon && (
-        <div className="mb-2 grid h-10 w-10 place-items-center rounded-xl bg-accent-soft text-accent [&_svg]:h-[18px] [&_svg]:w-[18px]">
+        <div className="icon-pop mb-2 grid h-10 w-10 place-items-center rounded-xl bg-accent-soft text-accent [&_svg]:h-[18px] [&_svg]:w-[18px]">
           {icon}
         </div>
       )}
@@ -369,7 +369,7 @@ export function Progress({ value, className, label }: { value: number; className
       className={cn("h-1.5 w-full overflow-hidden rounded-full bg-track", className)}
       {...(label ? { role: "progressbar", "aria-label": label, "aria-valuenow": Math.round(v), "aria-valuemin": 0, "aria-valuemax": 100 } : { "aria-hidden": true })}
     >
-      <div className="h-full rounded-full bg-mastery transition-[width] duration-500 ease-snappy" style={{ width: `${v}%` }} />
+      <div className="bar-reveal h-full rounded-full bg-mastery transition-[width] duration-500 ease-snappy" style={{ width: `${v}%` }} />
     </div>
   );
 }
@@ -383,12 +383,15 @@ export function CoverageBar({ topics, className }: { topics: Pick<Topic, "status
   const revised = (topics.filter((t) => t.status === "revised").length / n) * 100;
   const studied = (topics.filter((t) => t.status === "studied").length / n) * 50; // counts half, as in coverage()
   return (
-    <div className={cn("flex h-1.5 w-full overflow-hidden rounded-full bg-track", className)} aria-hidden>
-      <div className="subj-dot h-full transition-[width] duration-500 ease-snappy" style={{ width: `${revised}%` }} />
-      <div
-        className="h-full bg-[color-mix(in_oklab,var(--subj,var(--accent))_40%,var(--surface))] transition-[width] duration-500 ease-snappy"
-        style={{ width: `${studied}%` }}
-      />
+    <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-track", className)} aria-hidden>
+      {/* Both bands draw in together, left to right, over the track. */}
+      <div className="bar-reveal flex h-full w-full">
+        <div className="subj-dot h-full transition-[width] duration-500 ease-snappy" style={{ width: `${revised}%` }} />
+        <div
+          className="h-full bg-[color-mix(in_oklab,var(--subj,var(--accent))_40%,var(--surface))] transition-[width] duration-500 ease-snappy"
+          style={{ width: `${studied}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -411,7 +414,7 @@ export function SyllabusStrip({ units, topics, className }: { units: Unit[]; top
     <div
       role="img"
       aria-label={`${revised} of ${topics.length} topics revised, ${studied} studied`}
-      className={cn("flex h-2 w-full gap-1.5", className)}
+      className={cn("bar-reveal flex h-2 w-full gap-1.5", className)}
     >
       {groups.map((g, i) => (
         // min-w-0 lets a big unit shrink to its share instead of pushing the strip past a phone's edge.
@@ -487,6 +490,8 @@ export function Menu({ label, items, className }: { label: string; items: MenuIt
       const below = b.bottom + 4 + height <= window.innerHeight - 8;
       el.style.top = `${below ? b.bottom + 4 : Math.max(8, b.top - 4 - height)}px`;
       el.style.left = `${Math.max(8, Math.min(b.right - width, window.innerWidth - width - 8))}px`;
+      // It grows out of the button's corner: the top right when it opens below, the bottom right above.
+      el.style.transformOrigin = below ? "top right" : "bottom right";
       el.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     };
     el.addEventListener("toggle", onToggle);
@@ -523,7 +528,7 @@ export function Menu({ label, items, className }: { label: string; items: MenuIt
         aria-label={label}
         onKeyDown={onKeyDown}
         // Fixed and placed on open (see above); the browser's default popover centring is switched off.
-        className="fixed inset-auto m-0 w-44 rounded-lg border border-border bg-surface p-1 text-text shadow-float"
+        className="menu-pop fixed inset-auto m-0 w-44 rounded-lg border border-border bg-surface p-1 text-text shadow-float"
       >
         {items.map((it) => (
           <button
@@ -567,13 +572,17 @@ export function Switch({ checked, onChange, disabled, labelledBy, describedBy }:
       onClick={() => onChange(!checked)}
       className={cn(
         // A 24px switch; on touch screens an invisible ring makes it a thumb-sized target.
-        "relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-45 pointer-coarse:before:absolute pointer-coarse:before:-inset-2.5 pointer-coarse:before:content-['']",
+        "group relative inline-flex h-6 w-10 shrink-0 items-center rounded-full transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-45 pointer-coarse:before:absolute pointer-coarse:before:-inset-2.5 pointer-coarse:before:content-['']",
         checked ? "bg-accent-solid enabled:hover:bg-accent-solid-hover" : "bg-surface-3 ring-1 ring-inset ring-line-control enabled:hover:bg-line-strong",
       )}
     >
+      {/* Pressed, the thumb stretches toward the side it's about to travel to, then slides there. */}
       <span
         aria-hidden
-        className={cn("h-[18px] w-[18px] rounded-full bg-accent-ink shadow-control transition-transform duration-150 ease-snappy", checked ? "translate-x-[19px]" : "translate-x-[3px]")}
+        className={cn(
+          "h-[18px] w-[18px] rounded-full bg-accent-ink shadow-control transition-[translate,width] duration-200 ease-snappy group-enabled:group-active:w-[22px]",
+          checked ? "translate-x-[19px] group-enabled:group-active:translate-x-[15px]" : "translate-x-[3px]",
+        )}
       />
     </button>
   );

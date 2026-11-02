@@ -6,7 +6,7 @@ import { db, getSettings } from "@/lib/db";
 import type { Material } from "@/lib/types";
 import type { SyncEvent } from "./sync";
 import { DEFAULT_DRIVE_SOURCES, MAX_DRIVE_SOURCES, MAX_SOURCE_LABEL } from "./sources";
-import { fitSyncRequest } from "./sync-request";
+import { fitSyncRequest, isSyncFolderId, knownIds } from "./sync-request";
 
 interface DriveSyncState {
   running: boolean;
@@ -74,7 +74,9 @@ async function sync(auto: boolean) {
 
   // An empty list is the student's choice (they removed every folder); only unset means the defaults.
   // Capped at what the sync route takes, labels included, so one folder too many can't fail every sync.
+  // A source id the route would refuse (too long, from an old backup) is left out rather than failing every sync.
   const sources = (settings.driveSources ?? DEFAULT_DRIVE_SOURCES)
+    .filter((s) => isSyncFolderId(s.id))
     .slice(0, MAX_DRIVE_SOURCES)
     .map((s) => ({ ...s, label: s.label.slice(0, MAX_SOURCE_LABEL) }));
   // Folders linked to a subject by hand are synced even with no source folders.
@@ -90,7 +92,8 @@ async function sync(auto: boolean) {
   const tried = new Set<string>();
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
-      const known = [...((await db.driveFiles.toCollection().primaryKeys()) as string[]), ...tried];
+      // Oldest first, so if there are more than the request carries it's the oldest that are left out.
+      const known = knownIds(await db.driveFiles.toArray(), tried);
       const res = await fetch("/api/drive/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

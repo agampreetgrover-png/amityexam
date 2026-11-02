@@ -52,6 +52,12 @@ const PRACTICAL = {
  */
 export function ExamCalendar({ today, exams, subjects }: { today: string; exams: Exam[]; subjects: Subject[] }) {
   const [offset, setOffset] = useState(0);
+  // Which way the last arrow went, so the new month slides in from that side. None on first show.
+  const [dir, setDir] = useState<"next" | "prev" | null>(null);
+  const stepTo = (by: 1 | -1) => {
+    setDir(by > 0 ? "next" : "prev");
+    setOffset((o) => o + by);
+  };
   const base = startOfMonth(fromDay(exams[0]?.date ?? today));
   const month = addMonths(base, offset);
   const days = eachDayOfInterval({ start: startOfWeek(startOfMonth(month), { weekStartsOn: 1 }), end: endOfWeek(endOfMonth(month), { weekStartsOn: 1 }) });
@@ -77,15 +83,20 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
       action={
         // Beside the title where the card is wide enough; otherwise a row of its own, arrows at either end.
         <div className="flex w-full items-center justify-between gap-1 @[19rem]:w-auto @[19rem]:justify-end">
-          <button type="button" className={step} onClick={() => setOffset((o) => o - 1)} aria-label="Previous month"><ChevronLeft size={16} aria-hidden /></button>
+          <button type="button" className={step} onClick={() => stepTo(-1)} aria-label="Previous month"><ChevronLeft size={16} aria-hidden /></button>
           <span className="min-w-[6.5rem] whitespace-nowrap text-center text-[13px] font-semibold tabular-nums" aria-live="polite">{format(month, "MMMM yyyy")}</span>
-          <button type="button" className={step} onClick={() => setOffset((o) => o + 1)} aria-label="Next month"><ChevronRight size={16} aria-hidden /></button>
+          <button type="button" className={step} onClick={() => stepTo(1)} aria-label="Next month"><ChevronRight size={16} aria-hidden /></button>
         </div>
       }
     >
       {/* Only the marked days are read out (as links to their exam); the weekday letters and plain dates are hidden. */}
-      <div className="grid grid-cols-7 gap-y-1.5 text-center">
+      {/* The weekday letters stay put; only the days below them move when the month changes. */}
+      <div className="grid grid-cols-7 text-center">
         {WEEKDAYS.map((d, i) => <span key={i} aria-hidden className={cn("pb-1 text-[11px] font-semibold", i > 4 ? "text-faint" : "text-muted")}>{d}</span>)}
+      </div>
+      {/* overflow-clip keeps the sliding days inside the card; the padding leaves room for today's ring and the hover lift. */}
+      <div className="-mx-1 -mb-1 overflow-clip px-1 pb-1 pt-1.5">
+      <div key={offset} className={cn("grid grid-cols-7 gap-y-1.5 text-center", dir === "next" && "month-next", dir === "prev" && "month-prev")}>
         {days.map((d) => {
           const key = toDay(d);
           const here = onDay.get(key);
@@ -129,6 +140,7 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
             </span>
           );
         })}
+      </div>
       </div>
       {/* What the two marks mean; the practical one only when this month has a practical. */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted" aria-hidden>

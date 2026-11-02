@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetAccountsConfigForTests } from "./env";
-import { createSupabaseServerClient, secureCookieOptions, timedFetch } from "./server";
+import { authEndpoint, createSupabaseServerClient, secureCookieOptions, timedFetch } from "./server";
 import type { AuthCallLog } from "./session-policy";
 
 afterEach(() => {
@@ -70,7 +70,7 @@ describe("timedFetch (every Supabase call has a time limit)", () => {
       await f("https://devref.supabase.co/auth/v1/user");
       expect(log.calls.at(-1)).toEqual({ endpoint: "user", status: 200, code: undefined });
       await f("https://devref.supabase.co/auth/v1/token?grant_type=refresh_token");
-      expect(log.calls.at(-1)).toEqual({ endpoint: "token", status: 400, code: "refresh_token_not_found" });
+      expect(log.calls.at(-1)).toEqual({ endpoint: "refresh", status: 400, code: "refresh_token_not_found" });
       await f("https://devref.supabase.co/rest/v1/anything");
       expect(log.calls).toHaveLength(3); // the /rest call isn't logged; the three auth answers are all kept, in order
       expect(log.calls.map((c) => c.status)).toEqual([403, 200, 400]);
@@ -85,7 +85,7 @@ describe("timedFetch (every Supabase call has a time limit)", () => {
       await expect(timedFetch(10_000, undefined, log)("https://devref.supabase.co/auth/v1/user")).rejects.toThrow("fetch failed");
       expect(log.calls.at(-1)).toEqual({ endpoint: "user", status: 0 });
       await timedFetch(10_000, AbortSignal.abort(), log)("https://devref.supabase.co/auth/v1/token?grant_type=refresh_token");
-      expect(log.calls.at(-1)).toEqual({ endpoint: "token", status: 0 });
+      expect(log.calls.at(-1)).toEqual({ endpoint: "refresh", status: 0 });
     } finally {
       vi.unstubAllGlobals();
     }
@@ -103,3 +103,59 @@ describe("timedFetch (every Supabase call has a time limit)", () => {
   });
 });
 
+
+// R2: /token is one URL for both refreshing the current session and signing in. Only the first is evidence about the
+// session the client holds; the call log tells them apart by grant_type.
+describe("authEndpoint: which answers are about the current session", () => {
+  const base = "https://devrefaaaaaaaaaaaaaa.supabase.co/auth/v1";
+  it("a refresh is grant_type=refresh_token, and nothing else", () => {
+    expect(authEndpoint(`${base}/token?grant_type=refresh_token`)).toBe("refresh");
+    expect(authEndpoint(`${base}/token?foo=1&grant_type=refresh_token`)).toBe("refresh");
+  });
+  it("every other grant, /verify and /signup are sign-ins (they can start a session)", () => {
+    for (const g of ["password", "pkce", "id_token", "web3"]) expect(authEndpoint(`${base}/token?grant_type=${g}`)).toBe("sign-in");
+    expect(authEndpoint(`${base}/verify`)).toBe("sign-in");
+    expect(authEndpoint(`${base}/signup`)).toBe("sign-in");
+  });
+  it("a /token call with a missing, empty, look-alike or repeated grant_type is NOT a refresh", () => {
+    expect(authEndpoint(`${base}/token`)).toBe("sign-in");
+    expect(authEndpoint(`${base}/token?grant_type=`)).toBe("sign-in");
+    expect(authEndpoint(`${base}/token?grant_type=refresh_token_x`)).toBe("sign-in");
+    expect(authEndpoint(`${base}/token?grant_type=password&grant_type=refresh_token`)).toBe("sign-in"); // the first value wins
+    expect(authEndpoint(`${base}/token?x=grant_type=refresh_token`)).toBe("sign-in"); // not fooled by a substring
+  });
+  it("/user is about the current session; everything else is not logged", () => {
+    expect(authEndpoint(`${base}/user`)).toBe("user");
+    for (const p of ["logout", "otp", "recover", "settings", "factors/x/verify"]) expect(authEndpoint(`${base}/${p}`)).toBeNull();
+    expect(authEndpoint("https://devrefaaaaaaaaaaaaaa.supabase.co/rest/v1/anything")).toBeNull();
+    expect(authEndpoint("not a url")).toBeNull();
+  });
+});
+
+describe("timedFetch: sign-in answers are logged apart, with whether they started a session", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const json = (status: number, body: object) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  it("marks only a sign-in that returned a session, and leaves the body readable", async () => {
+    const replies = [
+      json(200, { access_token: "a", refresh_token: "r", user: {} }),
+      json(400, { code: "invalid_credentials", msg: "x" }),
+      json(200, { user: {} }), // e.g. sign-up waiting for email confirmation: no session
+      json(200, { access_token: "a", refresh_token: "r" }), // a refresh with a session: logged as a refresh, never as a new start
+    ];
+    vi.stubGlobal("fetch", async () => replies.shift()!);
+    const log: AuthCallLog = { calls: [] };
+    const f = timedFetch(10_000, undefined, log);
+    const base = "https://devrefaaaaaaaaaaaaaa.supabase.co/auth/v1";
+    const r = await f(`${base}/token?grant_type=password`);
+    expect(await r.json()).toMatchObject({ access_token: "a" });
+    await f(`${base}/token?grant_type=password`);
+    await f(`${base}/signup`);
+    await f(`${base}/token?grant_type=refresh_token`);
+    expect(log.calls).toEqual([
+      { endpoint: "sign-in", status: 200, code: undefined, session: true },
+      { endpoint: "sign-in", status: 400, code: "invalid_credentials" },
+      { endpoint: "sign-in", status: 200, code: undefined },
+      { endpoint: "refresh", status: 200, code: undefined },
+    ]);
+  });
+});

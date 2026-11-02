@@ -139,7 +139,7 @@ function SubjectRow({ subject: s, topics: ts, questions, mode, imported, onEdit 
             data-row
             className="group/link flex items-start gap-2.5 transition-colors duration-150 after:absolute after:inset-0 after:rounded-xl hover:text-[color-mix(in_oklab,var(--subj)_72%,var(--text))] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-4 focus-visible:after:outline-accent"
           >
-            <span aria-hidden className="subj-dot mt-[0.45em] size-2 shrink-0 rounded-full" />
+            <span aria-hidden className="subj-dot mt-[0.45em] size-2 shrink-0 rounded-full transition-transform duration-200 ease-snappy group-hover/link:scale-150" />
             {/* The full name, wrapping rather than cut short. The arrow is held to the last word so it never sits
                 alone on a line of its own. */}
             <span className="min-w-0 break-words">

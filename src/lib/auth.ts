@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { callLogOf } from "./supabase/server";
-import { classifyAuthError } from "./supabase/session-policy";
+import { classifyAuthError, definitiveCode } from "./supabase/session-policy";
 
 // Who is signed in, decided on the server and only on the server.
 //   getUser()    asks Supabase Auth itself: catches revoked sessions, deleted and banned users. Used for every
@@ -26,10 +26,14 @@ export type Verification =
   /** Not confirmed either way (network, timeout, rate limit, 5xx, an unexpected answer). Nothing may be opened. */
   | { status: "unavailable" };
 
-export async function verifyUser(supabase: SupabaseClient): Promise<Verification> {
+/**
+ * `jwt`: check exactly this access token (e.g. the one whose claims the caller is about to read) instead of the
+ * session the client loads from the cookies.
+ */
+export async function verifyUser(supabase: SupabaseClient, jwt?: string): Promise<Verification> {
   let result: Awaited<ReturnType<SupabaseClient["auth"]["getUser"]>>;
   try {
-    result = await supabase.auth.getUser();
+    result = await supabase.auth.getUser(jwt);
   } catch {
     return { status: "unavailable" };
   }
@@ -39,8 +43,11 @@ export async function verifyUser(supabase: SupabaseClient): Promise<Verification
     // session is definitely gone, or there was none. Anything else (network, timeout, 408, 429, 5xx, an answer that
     // couldn't be read, an error we don't know) is unknown: telling a student they're signed out because Supabase was
     // busy would be wrong, and opening anything without a confirmed user would be worse.
-    const verdict = classifyAuthError(error, callLogOf(supabase));
-    if (verdict === "definitive") return { status: "signed-out", code: error.code ?? "session_not_found" };
+    // The code reported is the one Supabase actually gave (on this call, or on the refresh auth-js ran by itself), so
+    // expired, revoked, banned and deleted stay distinguishable.
+    const log = callLogOf(supabase);
+    const verdict = classifyAuthError(error, log);
+    if (verdict === "definitive") return { status: "signed-out", code: definitiveCode(error, log) ?? "session_not_found" };
     if (verdict === "no-session") return { status: "signed-out", code: "session_missing" };
     return { status: "unavailable" };
   }

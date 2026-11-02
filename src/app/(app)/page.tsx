@@ -11,6 +11,7 @@ import { byWhen, examTypeLabel, urgentMark } from "@/lib/exams";
 import { examInMode, examSyllabus, modeShort, topicsInScope, useExamMode } from "@/lib/mode";
 import { coverage } from "@/lib/stats";
 import type { Exam } from "@/lib/types";
+import { CountdownFigure } from "@/components/today/countdown";
 import { ExamCalendar, QuickSheets } from "@/components/today/rail";
 import { Badge, CoverageBar, buttonClass, cn, daysTone, subjectStyle } from "@/components/ui";
 
@@ -31,7 +32,8 @@ function ReadinessRing({ value }: { value: number }) {
       <circle
         cx="20" cy="20" r={r} fill="none" stroke="var(--mastery)" strokeWidth="5" strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={c * (1 - value / 100)}
-        className={cn("transition-[stroke-dashoffset] duration-700 ease-snappy", value === 0 && "opacity-0")}
+        style={{ "--ring-len": c } as React.CSSProperties}
+        className={cn("ring-draw transition-[stroke-dashoffset] duration-700 ease-snappy", value === 0 && "opacity-0")}
       />
     </svg>
   );
@@ -115,8 +117,8 @@ export default function TodayPage() {
               <h2 id="next-heading" className="sr-only">Next exam</h2>
               <div className="grid gap-x-10 gap-y-7 @[34rem]:grid-cols-[fit-content(15rem)_minmax(0,1fr)]">
                 <div>
-                  <p className="numeral text-[88px] text-text @[34rem]:text-[112px]">
-                    <span className={urgentMark(nextDays)}>{nextDays === 0 ? "Today" : nextDays}</span>
+                  <p className="numeral numeral-in text-[88px] text-text @[34rem]:text-[112px]">
+                    <CountdownFigure days={nextDays} playKey={`${next.id}:${t}`} markClass={urgentMark(nextDays)} />
                   </p>
                   {nextDays > 0 && <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{nextDays === 1 ? "Day left" : "Days left"}</p>}
                   {/* In a row under the countdown on phones; stacked in the narrow left column beside the details. */}
@@ -188,7 +190,7 @@ export default function TodayPage() {
                       <Link
                         href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
                         style={subjectStyle(s?.color)}
-                        className="press group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet hover:border-line-strong hover:shadow-lift"
+                        className="press lift group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet hover:border-line-strong hover:shadow-lift"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-2">

@@ -156,7 +156,7 @@ describe("verifyUser: evidence from the refresh that starts when the client is c
       const supabase = await client(-10);
       if (delay) await pause(delay);
       expect(await verifyUser(supabase)).toEqual({ status: "unavailable" });
-      expect(callLogOf(supabase)?.calls.map((c) => [c.endpoint, c.status])).toEqual([["token", 200]]);
+      expect(callLogOf(supabase)?.calls.map((c) => [c.endpoint, c.status])).toEqual([["refresh", 200]]);
     });
 
     it("a temporary network failure on refresh, checked " + when + " → unavailable", async () => {
@@ -216,7 +216,7 @@ describe("verifyUser: evidence from the refresh that starts when the client is c
     expect(await verifyUser(a)).toEqual({ status: "signed-out", code: "session_not_found" });
     expect(await verifyUser(b)).toEqual({ status: "unavailable" }); // A's "session_not_found" is not B's evidence
     expect(callLogOf(a)?.calls.map((x) => x.code)).toEqual(["session_not_found"]);
-    expect(callLogOf(b)?.calls.map((x) => x.endpoint)).toEqual(["token"]);
+    expect(callLogOf(b)?.calls.map((x) => x.endpoint)).toEqual(["refresh"]);
     expect(callLogOf(c)?.calls).toEqual([]);
   });
 });
@@ -254,4 +254,153 @@ describe("verifyUser: each definitive code signs out; temporary and unknown erro
   for (const [why, reply] of temporary) {
     it(why + " → unavailable, not signed out", async () => expect(await check(reply)).toEqual({ status: "unavailable" }));
   }
+});
+
+// R1: the refresh that starts when the client is created can get ANY definitive answer, not only session_not_found.
+// auth-js then removes the session itself, so a later getUser() reports only "Auth session missing!" and the code is
+// left in the call log. Each code is checked by name (never looped from the policy's own list), immediately and after
+// the route has awaited something else, and each must read as signed out with the code Supabase actually gave.
+describe("R1: a definitive refresh answer, seen by a verifyUser that runs after an await", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const run = async (reply: Reply, delay: number) => {
+    const server = fakeSupabase();
+    vi.stubGlobal("fetch", server.fetch);
+    server.reply("refresh", reply);
+    const cookies = await signedInCookies(-10); // expired: auth-js refreshes as soon as the client exists
+    const supabase = buildServerClient(SUPABASE_URL, "sb_publishable_test", { getAll: () => cookies, set: () => {} }, { https: false, deadline: AbortSignal.timeout(400) });
+    if (delay) await pause(delay);
+    const result = await verifyUser(supabase);
+    return { result, server, log: callLogOf(supabase)! };
+  };
+  const err = (status: number, code: string): Reply => ({ status, body: { code, msg: code } });
+
+  const definitive: [string, Reply][] = [
+    ["refresh_token_not_found", err(400, "refresh_token_not_found")],
+    ["refresh_token_already_used", err(400, "refresh_token_already_used")],
+    ["session_expired", err(403, "session_expired")],
+    ["session_not_found", err(403, "session_not_found")],
+    ["user_not_found", err(404, "user_not_found")],
+    ["user_banned", err(403, "user_banned")],
+    ["bad_jwt", err(401, "bad_jwt")],
+  ];
+  for (const delay of [0, 30]) {
+    const when = delay ? "after a " + delay + "ms await" : "immediately";
+    for (const [code, reply] of definitive) {
+      it(`/token → ${code}, checked ${when} → signed out (${code})`, async () => {
+        const { result, server, log } = await run(reply, delay);
+        expect(result).toEqual({ status: "signed-out", code });
+        expect(server.calls.filter((c) => c.endpoint === "refresh")).toHaveLength(1); // one answer, never retried
+        expect(log.calls.map((c) => c.code)).toEqual([code]);
+      });
+    }
+  }
+
+  // Negative controls: the same path, but with answers that don't say the session is gone. These must stay unavailable.
+  const temporary: [string, Reply][] = [
+    ["rate limited (429)", err(429, "over_request_rate_limit")],
+    ["timed out (408)", err(408, "request_timeout")],
+    ["server error (500)", err(500, "unexpected_failure")],
+    ["unavailable (503, no body)", { status: 503, body: {} }],
+    ["a validation error", err(400, "validation_failed")],
+    ["an unknown code", err(400, "some_new_code_supabase_adds_later")],
+    ["an error without a code", { status: 403, body: { msg: "forbidden" } }],
+    ["a 200 without a session", { status: 200, body: {} }],
+    ["the network failing", "network"],
+    ["no answer before the deadline", "hang"],
+  ];
+  for (const [why, reply] of temporary) {
+    it(`/token → ${why}, checked after a 30ms await → unavailable, not signed out`, async () => {
+      expect((await run(reply, 30)).result).toEqual({ status: "unavailable" });
+    });
+  }
+});
+
+// R2: a sign-in route's client may inherit a stale session from the cookies. auth-js refreshes that one as soon as the
+// client exists; the answer is about the OLD session. Once a sign-in starts a new session, only answers about the new
+// one may decide anything, and a sign-in's own answers are never evidence about a session.
+describe("R2: a client that inherits stale cookies, then signs in", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const NEW_USER = { id: "0f8fad5b-d9cb-469f-a165-70867728950e", aud: "authenticated", email: "a@example.test" };
+  const err = (status: number, code: string): Reply => ({ status, body: { code, msg: code } });
+  /** A client with `cookies` (stale or none) whose own startup refresh has settled, as a route would see it. */
+  const setup = async (stale: boolean, script: (s: ReturnType<typeof fakeSupabase>) => void) => {
+    const server = fakeSupabase();
+    script(server);
+    vi.stubGlobal("fetch", server.fetch);
+    const cookies = stale ? await signedInCookies(-10) : [];
+    const supabase = buildServerClient(SUPABASE_URL, "sb_publishable_test", { getAll: () => cookies, set: () => {} }, { https: false, deadline: AbortSignal.timeout(1500) });
+    await pause(30);
+    return { server, supabase };
+  };
+  const signIn = (supabase: SupabaseClient) => supabase.auth.signInWithPassword({ email: "a@example.test", password: "correct horse" });
+
+  it("the old session's refresh_token_not_found does NOT sign out the new session (whose refresh is merely unusable)", async () => {
+    const { supabase } = await setup(true, (s) => {
+      s.reply("refresh", err(400, "refresh_token_not_found"), { status: 200, body: {} }); // old session; then the new one's
+      s.reply("password", { status: 200, body: sessionBody(-10) }); // a new session that already needs a refresh (clock skew)
+    });
+    expect((await signIn(supabase)).error).toBeNull();
+    expect(await verifyUser(supabase)).toEqual({ status: "unavailable" });
+    expect(callLogOf(supabase)?.calls.map((c) => [c.endpoint, c.code ?? c.status, c.session ?? false])).toEqual([
+      ["refresh", "refresh_token_not_found", false],
+      ["sign-in", 200, true],
+      ["refresh", 200, false],
+    ]);
+  });
+
+  it("the new session's OWN definitive answer still signs out (refresh_token_already_used on its refresh)", async () => {
+    const { supabase } = await setup(true, (s) => {
+      s.reply("refresh", err(400, "refresh_token_not_found"), err(400, "refresh_token_already_used"));
+      s.reply("password", { status: 200, body: sessionBody(-10) });
+    });
+    expect((await signIn(supabase)).error).toBeNull();
+    expect(await verifyUser(supabase)).toEqual({ status: "signed-out", code: "refresh_token_already_used" });
+  });
+
+  it("after a good sign-in, /user decides: ok, unavailable on 503, signed out on session_not_found", async () => {
+    for (const [reply, expected] of [
+      [{ status: 200, body: NEW_USER }, { status: "ok" }],
+      [{ status: 503, body: {} }, { status: "unavailable" }],
+      [err(403, "session_not_found"), { status: "signed-out", code: "session_not_found" }],
+    ] as const) {
+      const { supabase } = await setup(true, (s) => {
+        s.reply("refresh", err(400, "refresh_token_not_found"));
+        s.reply("password", { status: 200, body: sessionBody(3600) });
+        s.reply("user", reply);
+      });
+      expect((await signIn(supabase)).error).toBeNull();
+      expect(await verifyUser(supabase)).toMatchObject(expected);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a FAILED sign-in leaves the old session's definitive answer in force → signed out (refresh_token_not_found)", async () => {
+    const { supabase } = await setup(true, (s) => {
+      s.reply("refresh", err(400, "refresh_token_not_found"));
+      s.reply("password", err(400, "invalid_credentials"));
+    });
+    expect((await signIn(supabase)).error?.code).toBe("invalid_credentials");
+    expect(await verifyUser(supabase)).toEqual({ status: "signed-out", code: "refresh_token_not_found" });
+  });
+
+  it("a FAILED sign-in after the old session's refresh was only rate limited → unavailable (still unknown)", async () => {
+    const { supabase } = await setup(true, (s) => {
+      s.reply("refresh", err(429, "over_request_rate_limit"));
+      s.reply("password", err(400, "invalid_credentials"));
+    });
+    await signIn(supabase);
+    expect(await verifyUser(supabase)).toEqual({ status: "unavailable" });
+  });
+
+  it("no cookies, and the sign-in is refused or fails → signed out (session_missing), not 'unavailable'", async () => {
+    for (const reply of [err(400, "invalid_credentials"), err(403, "user_banned"), err(429, "over_request_rate_limit"), "network" as const]) {
+      const { supabase, server } = await setup(false, (s) => s.reply("password", reply));
+      await signIn(supabase);
+      expect(await verifyUser(supabase)).toEqual({ status: "signed-out", code: "session_missing" });
+      expect(server.calls.map((c) => c.endpoint)).toEqual(["password"]); // nothing was asked about any session
+      vi.unstubAllGlobals();
+    }
+  });
 });

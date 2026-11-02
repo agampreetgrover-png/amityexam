@@ -84,7 +84,7 @@ export default function ExamsPage() {
         key={e.id}
         style={subjectStyle(s?.color)}
         className={cn(
-          "group/exam relative grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 transition-[border-color,box-shadow] duration-150 ease-snappy hover:border-line-strong hover:shadow-lift @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center",
+          "group/exam relative grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 lift hover:border-line-strong hover:shadow-lift @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center",
           // Past papers sit flat, a step quieter than the ones still to come.
           isPast ? "shadow-none" : "shadow-sheet",
         )}

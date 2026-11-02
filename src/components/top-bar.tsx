@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { format } from "date-fns";
-import { GraduationCap, Search, Settings as SettingsIcon } from "lucide-react";
+import { Search, Settings as SettingsIcon } from "lucide-react";
 import { fromDay } from "@/lib/dates";
 import { useToday } from "@/lib/use-today";
 import { openCommandPalette } from "./command-palette-loader";
+import { LogoMark } from "./logo";
 import { ModePill } from "./mode-pill";
 import { cn } from "./ui";
 
@@ -24,7 +25,7 @@ export function TopBar() {
     <header className="no-print h-14 border-b border-border md:h-16">
       <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between gap-3 px-4 group-has-[[data-wide]]/main:max-w-[88rem] group-has-[[data-full]]/main:max-w-none sm:px-6 md:px-8">
         <Link href="/" aria-label="Amity Exams, Today" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-solid text-accent-ink md:hidden">
-          <GraduationCap size={17} aria-hidden />
+          <LogoMark size={18} />
         </Link>
         <p className="hidden text-sm font-medium tabular-nums text-muted md:block">{format(fromDay(t), "EEEE, d MMMM")}</p>
         <div className="flex min-w-0 items-center gap-1 md:gap-3">

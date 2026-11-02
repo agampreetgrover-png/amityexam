@@ -112,6 +112,8 @@
   --shadow-float: 0 16px 40px -12px var(--float-shade), 0 3px 8px color-mix(in oklab, var(--float-shade) 30%, transparent);
   /* One easing for everything that answers a tap: quick off the mark, soft landing. */
   --ease-snappy: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* For things arriving and drawing in: a longer, gentler settle. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html {
@@ -297,7 +299,8 @@ body {
 }
 
 /* ───────────────────────── Motion ─────────────────────────
-   Only motion that answers something the student did. Nothing moves on its own. */
+   Motion answers something: a page arriving, a figure being measured, a tap. Short travel, two easings, and
+   nothing loops on its own (the chat's thinking dots aside). All of it collapses to a cut under reduced motion. */
 
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(4px); }
@@ -313,8 +316,56 @@ body {
   100% { transform: scale(1); }
 }
 
-/* Route changes: a short fade so the swap isn't a hard cut. */
-.page-enter { animation: fade-in 160ms var(--ease-snappy) both; }
+@keyframes page-rise { from { opacity: 0; transform: translateY(10px); } }
+/* A bar or strip draws from its start to where it stands. */
+@keyframes reveal-x { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+/* The readiness ring sweeps round to its figure; --ring-len is the circle's length, set on the arc. */
+@keyframes ring-draw { from { stroke-dashoffset: var(--ring-len); } }
+/* An icon tile lands with a small overshoot. */
+@keyframes icon-pop {
+  from { opacity: 0; transform: scale(0.6) rotate(-8deg); }
+  60% { opacity: 1; transform: scale(1.06) rotate(2deg); }
+  to { transform: none; }
+}
+@keyframes from-right { from { opacity: 0; transform: translateX(14px); } }
+@keyframes from-left { from { opacity: 0; transform: translateX(-14px); } }
+@keyframes msg-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+
+/* Route changes. The template remounts on every navigation, and the page's own blocks rise in one after another as
+   they appear, which is when its data has loaded rather than when the empty frame mounted. The stagger stops at
+   the sixth block so a long page isn't kept waiting. Chat (data-full) only fades: its composer is pinned, and a
+   moving ancestor would carry it along. .stagger does the same for the screens outside the app (sign-in, welcome). */
+.page-enter > :not([data-full]) > *, .stagger > * { animation: page-rise 420ms var(--ease-out) backwards; }
+.page-enter > :not([data-full]) > :nth-child(2), .stagger > :nth-child(2) { animation-delay: 50ms; }
+.page-enter > :not([data-full]) > :nth-child(3), .stagger > :nth-child(3) { animation-delay: 100ms; }
+.page-enter > :not([data-full]) > :nth-child(4), .stagger > :nth-child(4) { animation-delay: 150ms; }
+.page-enter > :not([data-full]) > :nth-child(5), .stagger > :nth-child(5) { animation-delay: 200ms; }
+.page-enter > :not([data-full]) > :nth-child(n + 6), .stagger > :nth-child(n + 6) { animation-delay: 250ms; }
+.page-enter > [data-full] { animation: fade-in 200ms var(--ease-snappy) backwards; }
+
+/* Measured things draw in once, after the block they sit in has started to arrive. */
+.bar-reveal { animation: reveal-x 800ms var(--ease-out) 180ms backwards; }
+.ring-draw { animation: ring-draw 1s var(--ease-out) 150ms backwards; }
+.icon-pop { animation: icon-pop 520ms var(--ease-out) 120ms backwards; }
+/* The countdown's figure rises a beat after its card. */
+.numeral-in { animation: page-rise 520ms var(--ease-out) 90ms backwards; }
+/* Stepping a calendar month: the days slide in from the side the arrow points to. */
+.month-next { animation: from-right 240ms var(--ease-out) backwards; }
+.month-prev { animation: from-left 240ms var(--ease-out) backwards; }
+/* Today's countdown (components/today/countdown.tsx): each digit sits in its own window, and only a digit that changed
+   rolls down into it from above; the others stay still. The real figure lands with a small settle. The window is
+   clipped a little outside the digit, so the figure's tight 0.9 line box doesn't shave its top. */
+.count-reel { display: inline-block; overflow: clip; overflow-clip-margin: 0.2em; }
+@keyframes count-tick { from { transform: translateY(-1.1em); } }
+.count-tick { animation: count-tick 160ms var(--ease-out) backwards; }
+@keyframes count-land {
+  from { transform: translateY(-0.12em); }
+  60% { transform: translateY(0.02em); }
+  to { transform: none; }
+}
+.count-land { display: inline-block; animation: count-land 380ms var(--ease-out) backwards; }
+/* A question just asked settles into its bubble from the composer below it. */
+.msg-in { animation: msg-in 260ms var(--ease-out) backwards; transform-origin: bottom right; }
 /* A tab's panel settles in each time it's shown: going from display:none to shown restarts this. */
 .tab-in { animation: rise-in 200ms var(--ease-snappy) both; }
 
@@ -328,11 +379,30 @@ body {
 
 /* Pressable things sink a hair under the finger. */
 .press {
-  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-property: color, background-color, border-color, box-shadow, transform, translate, opacity;
   transition-duration: 150ms;
   transition-timing-function: var(--ease-snappy);
 }
 .press:active:not(:disabled) { transform: translateY(0.5px) scale(0.98); }
+
+/* A card that opens something lifts a hair toward the pointer. Mouse and trackpad only: on touch the hover would
+   stick after the tap. It moves `translate`, so a .press on the same card still sinks under the click. */
+.lift { transition: translate 200ms var(--ease-snappy), border-color 150ms, box-shadow 200ms var(--ease-snappy); }
+.press.lift { transition-property: color, background-color, border-color, box-shadow, transform, translate, opacity; transition-duration: 200ms; }
+@media (hover: hover) and (pointer: fine) {
+  .lift:hover { translate: 0 -2px; }
+}
+
+/* The "⋯" menu grows out of its button and shrinks back into it (origin set where it opens, in Menu). */
+.menu-pop {
+  opacity: 0;
+  scale: 0.96;
+  transition: opacity 130ms var(--ease-snappy), scale 130ms var(--ease-snappy), overlay 130ms allow-discrete, display 130ms allow-discrete;
+}
+.menu-pop:popover-open { opacity: 1; scale: 1; }
+@starting-style {
+  .menu-pop:popover-open { opacity: 0; scale: 0.96; }
+}
 
 /* Dialogs fade and settle in with the backdrop. */
 dialog.sheet {

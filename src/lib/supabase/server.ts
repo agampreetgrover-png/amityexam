@@ -12,6 +12,11 @@ import { MAX_LOGGED_CALLS, type AuthCall, type AuthCallLog } from "./session-pol
 export interface CookieJar {
   getAll(): { name: string; value: string }[];
   set(name: string, value: string, options: CookieOptions): void;
+  /**
+   * Optional: receives each of Supabase's writes as the one batch it is (a session saved or removed, with its chunk
+   * cookies), already through secureCookieOptions. When present, it is used instead of set().
+   */
+  setBatch?(cookies: { name: string; value: string; options: CookieOptions }[]): void;
   /** The cache headers Supabase hands over with the first cookie write: the response must not be cached. */
   setHeaders?(headers: Record<string, string>): void;
 }
@@ -28,9 +33,36 @@ export function secureCookieOptions(options: CookieOptions, https: boolean): Coo
 const pastDeadline = () =>
   new Response(JSON.stringify({ code: "request_timeout", msg: "Deadline passed; not sent." }), { status: 408, headers: { "Content-Type": "application/json" } });
 
-/** Which Supabase Auth call a URL is, for the call log (the two whose answers decide sign-out). */
-const authEndpoint = (url: string): AuthCall["endpoint"] | null =>
-  url.includes("/auth/v1/token") ? "token" : url.includes("/auth/v1/user") ? "user" : null;
+/**
+ * Which Supabase Auth call a URL is, for the call log. /token is told apart by its grant_type: only a refresh
+ * (grant_type=refresh_token) is about the session the client already holds; every other grant (password, pkce,
+ * id_token…), /verify and /signup can START a session. An unknown or missing grant_type counts as a sign-in, never as
+ * a refresh, so its answers are never taken as evidence about the current session.
+ */
+export function authEndpoint(url: string): AuthCall["endpoint"] | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const path = u.pathname.replace(/\/+$/, "");
+  if (path.endsWith("/auth/v1/token")) return u.searchParams.get("grant_type") === "refresh_token" ? "refresh" : "sign-in";
+  if (path.endsWith("/auth/v1/user")) return "user";
+  if (path.endsWith("/auth/v1/verify") || path.endsWith("/auth/v1/signup")) return "sign-in";
+  return null;
+}
+
+/** Whether a successful sign-in answer carried a new session (the shape auth-js saves), without consuming the body. */
+async function startsSession(res: Response): Promise<boolean> {
+  if (!res.ok) return false;
+  try {
+    const b = (await res.clone().json()) as { access_token?: unknown; refresh_token?: unknown } | null;
+    return typeof b?.access_token === "string" && !!b.access_token && typeof b.refresh_token === "string" && !!b.refresh_token;
+  } catch {
+    return false;
+  }
+}
 
 /** Supabase's error code from an error answer, without consuming the body auth-js is about to read. */
 async function errorCode(res: Response): Promise<string | undefined> {
@@ -48,7 +80,8 @@ async function errorCode(res: Response): Promise<string | undefined> {
  * fetch with time limits: each call gives up after `ms`, and all calls end at `deadline` (one signal shared by the
  * whole operation). Supabase's client retries failed calls with backoff for up to ~30s; after the deadline those
  * retries are answered here with a 408 without going out, so its retry loop ends instead of reaching Supabase again.
- * With a `log`, every /token or /user answer (status and error code) is recorded for session-policy.ts.
+ * With a `log`, every refresh, /user and sign-in answer (status, error code, and whether a sign-in started a session)
+ * is recorded for session-policy.ts.
  */
 export const timedFetch =
   (ms: number, deadline?: AbortSignal, log?: AuthCallLog): typeof fetch =>
@@ -66,7 +99,11 @@ export const timedFetch =
       if (endpoint) record(log!, { endpoint, status: 0 });
       throw e;
     }
-    if (endpoint) record(log!, { endpoint, status: res.status, code: await errorCode(res) });
+    if (endpoint) {
+      const call: AuthCall = { endpoint, status: res.status, code: await errorCode(res) };
+      if (endpoint === "sign-in" && (await startsSession(res))) call.session = true;
+      record(log!, call);
+    }
     return res;
   };
 
@@ -93,7 +130,9 @@ export function buildServerClient(url: string, publishableKey: string, jar: Cook
     cookies: {
       getAll: () => jar.getAll(),
       setAll: (cookies, headers) => {
-        for (const { name, value, options } of cookies) jar.set(name, value, secureCookieOptions(options, https));
+        const secured = cookies.map(({ name, value, options }) => ({ name, value, options: secureCookieOptions(options, https) }));
+        if (jar.setBatch) jar.setBatch(secured);
+        else for (const { name, value, options } of secured) jar.set(name, value, options);
         if (Object.keys(headers).length) jar.setHeaders?.(headers);
       },
     },

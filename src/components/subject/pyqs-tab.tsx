@@ -51,9 +51,10 @@ export function PyqsTab({ subject, mode }: TabProps) {
   const topicIds = useMemo(() => new Set(modeTopics.map((t) => t.id)), [modeTopics]);
   const canMap = modeTopics.length > 0 && modeQuestions.some((q) => needsMapping(q, topicIds));
 
-  // Start on our own when there's work and we're online; the analyser ignores calls while it's busy.
+  // Start on our own when there's work and we're online. `pending` and `canMap` change as a run goes, so this
+  // fires during the run it started: `ifIdle` makes those calls no-ops instead of queuing more AI work.
   useEffect(() => {
-    if (online && (pending > 0 || canMap)) analyseSubject(subjectId);
+    if (online && (pending > 0 || canMap)) analyseSubject(subjectId, { ifIdle: true });
   }, [subjectId, online, pending, canMap]);
 
   if (!papers) return null;

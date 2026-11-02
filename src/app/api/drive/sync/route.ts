@@ -2,7 +2,7 @@ import { z } from "zod";
 import { BadRequest, readJsonBody } from "@/lib/ai/errors";
 import { MAX_DRIVE_SOURCES, MAX_SOURCE_LABEL } from "@/lib/drive/sources";
 import { syncDrive } from "@/lib/drive/sync";
-import { SYNC_LIMITS } from "@/lib/drive/sync-request";
+import { SYNC_FOLDER_ID, SYNC_LIMITS } from "@/lib/drive/sync-request";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -13,8 +13,9 @@ const L = SYNC_LIMITS;
 const Body = z.object({
   subjects: z.array(z.object({ id: z.number().int(), name: z.string().max(L.subjectName), code: z.string().max(L.subjectCode).optional() })).max(L.subjects),
   known: z.array(z.string().max(L.knownId)).max(L.known),
-  sources: z.array(z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/), label: z.string().max(MAX_SOURCE_LABEL) })).max(MAX_DRIVE_SOURCES),
-  links: z.array(z.object({ subjectId: z.number().int(), folderIds: z.array(z.string().regex(/^[A-Za-z0-9_-]{10,100}$/)).max(L.folderIdsPerLink) })).max(L.links).optional(),
+  // The same id rule the client trims its request to (fitSyncRequest), so the two can't drift apart.
+  sources: z.array(z.object({ id: z.string().regex(SYNC_FOLDER_ID), label: z.string().max(MAX_SOURCE_LABEL) })).max(MAX_DRIVE_SOURCES),
+  links: z.array(z.object({ subjectId: z.number().int(), folderIds: z.array(z.string().regex(SYNC_FOLDER_ID)).max(L.folderIdsPerLink) })).max(L.links).optional(),
   maxFiles: z.number().int().min(1).max(200).optional(),
   maxOcr: z.number().int().min(0).max(50).optional(),
 });

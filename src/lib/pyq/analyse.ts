@@ -169,9 +169,8 @@ export async function setPaperExam(materialId: number, exam: ExamMode) {
     });
   });
   const m = await db.materials.get(materialId);
-  // While another run is busy it would ignore this call, so queue a full run instead.
-  if (running) allQueued = true;
-  else if (m) void analyseSubject(m.subjectId);
+  // While another run is busy this queues the paper's subject (not every subject), which runs once that one ends.
+  if (m) void analyseSubject(m.subjectId);
 }
 
 async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopped: boolean; error?: string }> {
@@ -258,8 +257,44 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
 // ---- Public API ------------------------------------------------------------------------------
 
 let running = false;
-let allQueued = false; // analyseAll, a subject's analysis or a re-tag was asked for while another run was busy
-const remapsQueued = new Set<number>(); // subjects whose topic matches were reset while another run was busy
+// Work asked for while another run was busy. Each kind is kept to its own scope: a subject's request runs that
+// subject only, so a busy analyser never turns one subject's request into a run (and AI calls) across every subject.
+let allQueued = false; // analyseAll
+const subjectsQueued = new Set<number>(); // a subject's analysis: an upload, a Retry, a re-tag
+const remapsQueued = new Set<number>(); // subjects whose topic matches were reset
+let waitingForOnline = false;
+
+/** Start the next piece of queued work, if nothing else is running. Each run's end calls this again. */
+function runQueued() {
+  if (running) return; // a run that started meanwhile picks the queue up when it ends
+  if (!remapsQueued.size && !subjectsQueued.size && !allQueued) return;
+  // Offline, a run would refuse to start; the work stays queued until the connection is back instead of being lost.
+  if (offline()) {
+    if (!waitingForOnline && typeof window !== "undefined") {
+      waitingForOnline = true;
+      window.addEventListener("online", () => {
+        waitingForOnline = false;
+        runQueued();
+      }, { once: true });
+    }
+    return;
+  }
+  // Taken off the queue only now, when the run is sure to start (nothing is running and we're online).
+  const [remap] = remapsQueued;
+  if (remap !== undefined) {
+    remapsQueued.delete(remap);
+    void remapSubject(remap);
+    return;
+  }
+  const [subject] = subjectsQueued;
+  if (subject !== undefined) {
+    subjectsQueued.delete(subject);
+    void analyseSubject(subject);
+    return;
+  }
+  allQueued = false;
+  void analyseAll();
+}
 
 /** Run `fn` unless another analysis is already going; resets the status line when done. */
 async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -275,15 +310,8 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
     running = false;
     set({ running: false });
     // Whatever run just ended (a subject's, from the PYQs tab, or a full one), work queued meanwhile goes next:
-    // re-matches first (each run's end starts the next), then one full run, which covers any subject's papers.
-    const [remap] = remapsQueued;
-    if (remap !== undefined) {
-      remapsQueued.delete(remap);
-      setTimeout(() => void remapSubject(remap), 0);
-    } else if (allQueued) {
-      allQueued = false;
-      setTimeout(() => void analyseAll(), 0);
-    }
+    // re-matches first, then queued subjects, then a full run.
+    setTimeout(runQueued, 0);
   }
 }
 
@@ -300,10 +328,15 @@ const finalMessage = (papers: number, mapped: number, stopped: boolean, mapError
         : "",
   });
 
-/** Analyse a subject's new papers, then match their questions to topics. */
-export const analyseSubject = (subjectId: number, { max = 8 } = {}) => {
+/**
+ * Analyse a subject's new papers, then match their questions to topics.
+ * While another run is busy the request is queued for this subject, so an upload, a Retry or a re-tag isn't lost.
+ * `ifIdle` is for automatic starts (the PYQs tab opening, or seeing the run's own progress): it starts a run only
+ * when nothing is running and queues nothing, since the run in progress is the one doing that work.
+ */
+export const analyseSubject = (subjectId: number, { max = 8, ifIdle = false } = {}) => {
   if (running) {
-    allQueued = true; // a Retry or an upload during another run isn't lost: the full run after it covers this subject
+    if (!ifIdle) subjectsQueued.add(subjectId);
     return Promise.resolve(undefined);
   }
   return exclusive(async () => {

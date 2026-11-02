@@ -63,6 +63,8 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   // A linked folder is crawled from inside (its own name isn't in the path), so nothing is dropped from the front
   // of its paths when copies are compared below.
   const fromLinked = new WeakSet<CrawledFile>();
+  // Files of a source's top-level mixed past-papers folder: there's no subject folder above them (see copyKeys).
+  const fromMixed = new WeakSet<CrawledFile>();
   // Folders linked by hand come first, so their files go to that subject even if another one also matches.
   for (const link of req.links ?? []) {
     for (const folderId of link.folderIds) {
@@ -113,7 +115,9 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
           // A mixed past-papers folder: assign each file by its own name.
           for (const f of await crawl(entry.id, { path: [entry.name], skipFolder, signal, run })) {
             const s = bestSubject(f.name, subjects);
-            if (s) add(s.id, [f]);
+            if (!s) continue;
+            fromMixed.add(f);
+            add(s.id, [f]);
           }
         } else if (entry.type !== "folder") {
           const s = bestSubject(entry.name, subjects);
@@ -132,16 +136,22 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   // A copy has the same name in the same place inside the subject's folder. The folder itself (path[0]) may be
   // named differently in each drive; below it, PYQs/2022/Major.pdf and PYQs/2023/Major.pdf are two papers.
   // A linked folder's paths already start below the subject's folder, so they are compared whole.
-  const copyKey = (subjectId: number, f: CrawledFile) =>
-    `${subjectId}:${(fromLinked.has(f) ? f.path : f.path.slice(1)).map(sameName).join("/")}/${sameName(f.name)}`;
+  // A mixed past-papers folder at a source's top level (PYQs/X.pdf) has no subject folder above it, so its file
+  // stands for both places a copy could sit in a subject's folder: inside its past-papers folder (PYQs/X.pdf, as a
+  // linked or subject folder holds it) and at the top (X.pdf, how a loose file at a source's top level is keyed).
+  const key = (subjectId: number, path: string[], name: string) => `${subjectId}:${path.map(sameName).join("/")}/${sameName(name)}`;
+  const copyKeys = (subjectId: number, f: CrawledFile) =>
+    fromLinked.has(f) ? [key(subjectId, f.path, f.name)]
+      : fromMixed.has(f) ? [key(subjectId, f.path, f.name), key(subjectId, f.path.slice(1), f.name)]
+        : [key(subjectId, f.path.slice(1), f.name)];
   // Names of files imported on an earlier round count too, or the copy in the other drive would come in next time.
-  for (const [subjectId, files] of found) for (const f of files) if (known.has(f.id)) seen.add(copyKey(subjectId, f));
+  for (const [subjectId, files] of found) for (const f of files) if (known.has(f.id)) for (const k of copyKeys(subjectId, f)) seen.add(k);
   for (const [subjectId, files] of found) {
     for (const f of files) {
-      const key = copyKey(subjectId, f);
-      if (known.has(f.id) || seen.has(f.id) || seen.has(key)) continue;
+      const keys = copyKeys(subjectId, f);
+      if (known.has(f.id) || seen.has(f.id) || keys.some((k) => seen.has(k))) continue;
       seen.add(f.id);
-      seen.add(key);
+      for (const k of keys) seen.add(k);
       const c = classify(f.name, f.path, f.type);
       if (c) queue.push({ subjectId, f, ...c });
     }

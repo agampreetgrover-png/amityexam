@@ -8,6 +8,7 @@ import { BookOpen, Flame, GraduationCap, House, MessagesSquare, Moon, Search, Se
 import { openCommandPalette } from "./command-palette-loader";
 import { setTheme, useTheme } from "@/lib/theme";
 import { DevWarmup } from "./dev-warmup";
+import { LogoMark } from "./logo";
 import { cn } from "./ui";
 
 const primary = [
@@ -151,7 +152,7 @@ export function Nav() {
       >
         <Link href="/" onClick={onClick("/")} aria-label="Amity Exams" className="group flex h-16 shrink-0 items-center gap-3 px-3 lg:px-5">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent-solid text-accent-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.18)] transition-transform duration-200 ease-snappy group-hover:-rotate-6">
-            <GraduationCap size={17} strokeWidth={2} />
+            <LogoMark size={18} />
           </span>
           <span className="hidden text-[16px] font-bold tracking-[-0.02em] lg:inline">Amity Exams</span>
         </Link>

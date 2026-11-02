@@ -735,7 +735,7 @@ export function Bubble({ role, content, images, live, sources, onRegenerate }: {
           </div>
         )}
         {content && (
-          <p className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-accent/20 bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-text">{content}</p>
+          <p className="msg-in min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-br-md border border-accent/20 bg-accent-soft px-4 py-2.5 text-[15px] leading-relaxed text-text">{content}</p>
         )}
       </div>
     );

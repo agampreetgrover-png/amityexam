@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { appPassword, isValidSession, SESSION_COOKIE, SESSION_MAX_AGE } from "@/lib/access";
+import { authError, authRequestRefusal, isAuthPath } from "@/lib/auth/request-guard";
 import { refreshSession } from "@/lib/supabase/middleware";
 import { isVercel } from "@/lib/vercel";
 import { safeNext, unlockPage } from "@/lib/unlock-page";
@@ -11,6 +12,7 @@ import { safeNext, unlockPage } from "@/lib/unlock-page";
 // 3. With APP_PASSWORD set (for a deployed copy), the whole app asks for the password once per device.
 // 4. A signed-in Supabase session (accounts) that is about to expire is refreshed here (route handlers calling
 //    getUser() may refresh too when this was skipped). It decides no access by itself.
+// 5. Non-GET /auth/* requests must be same-origin and JSON (see below).
 
 const LOOPBACK = /^(?:localhost|127(?:\.\d{1,3}){3}|\[::1\])$/i;
 
@@ -48,6 +50,12 @@ export async function middleware(req: NextRequest) {
   if ((api || (pathname === "/unlock" && req.method === "POST")) && crossSite(req, host)) {
     return deny("Cross-site requests aren't allowed.", 403);
   }
+  // 5. State-changing /auth/* requests: proven same-origin and JSON, before anything else runs (the handlers check
+  //    again themselves: src/lib/auth/request-guard.ts).
+  if (isAuthPath(pathname)) {
+    const refusal = authRequestRefusal(req);
+    if (refusal) return new NextResponse(refusal.body, refusal);
+  }
   // Without a password, an expiring session is refreshed now and its cookies ride on every response below, the
   // refusals included. With APP_PASSWORD set, nothing (not even a refresh, which costs a call to Supabase) happens
   // until the password has been checked: see the end.
@@ -72,6 +80,12 @@ export async function middleware(req: NextRequest) {
     // API calls and the service worker's precaching get a plain 401. A page load gets the password form right
     // here, not a redirect: Next turns a middleware redirect into an absolute "localhost" URL, and 127.0.0.1 and
     // localhost hold different data (IndexedDB is per address). Being a 401, it's never cached as the page.
+    // /auth/* requests get it in the auth client's shape, so the screens read it as "blocked" (reload), never as an
+    // unknown answer (which the email screens would have shown as "sent").
+    if (!navigation && isAuthPath(pathname)) {
+      const locked = authError(401, "blocked");
+      return out(new NextResponse(locked.body, locked));
+    }
     if (!navigation || api) return out(deny("This app is locked. Reload the page and enter the password.", 401));
     return out(unlockPage(safeNext(pathname + search), "", 401));
   }

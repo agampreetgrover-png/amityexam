@@ -235,16 +235,21 @@ export function validateBackup(backup: unknown): Record<string, Record<string, u
   const isText = (v: unknown): v is string => typeof v === "string";
   for (const q of (data.quizzes ?? []) as Record<string, unknown>[]) {
     q.topicIds = Array.isArray(q.topicIds) ? q.topicIds.filter(isId) : [];
-    q.questions = Array.isArray(q.questions)
-      ? q.questions
-          .filter((x): x is Record<string, unknown> => isPlainObject(x) && isText(x.question) && isText(x.answer))
-          .map((x) => ({
-            ...x,
-            type: x.type === "mcq" ? "mcq" : "short",
-            options: Array.isArray(x.options) ? x.options.filter(isText) : undefined,
-          }))
-      : [];
-    q.responses = Array.isArray(q.responses) ? q.responses.map((r) => (isText(r) ? r : "")) : [];
+    // Responses are matched to questions by position, so a dropped question takes its response with it; otherwise
+    // every later answer would show (and be marked) against the wrong question.
+    const questions: unknown[] = Array.isArray(q.questions) ? q.questions : [];
+    const responses: unknown[] = Array.isArray(q.responses) ? q.responses : [];
+    const keep = questions.flatMap((x, i) => (isPlainObject(x) && isText(x.question) && isText(x.answer) ? [i] : []));
+    q.questions = keep.map((i) => {
+      const x = questions[i] as Record<string, unknown>;
+      return {
+        ...x,
+        type: x.type === "mcq" ? "mcq" : "short",
+        options: Array.isArray(x.options) ? x.options.filter(isText) : undefined,
+        explanation: isText(x.explanation) ? x.explanation : undefined, // rendered as text in the quiz history
+      };
+    });
+    q.responses = keep.map((i) => (isText(responses[i]) ? responses[i] : ""));
     q.score = typeof q.score === "number" && Number.isFinite(q.score) ? Math.min(100, Math.max(0, q.score)) : 0;
     if (typeof q.createdAt !== "number" || !Number.isFinite(q.createdAt)) q.createdAt = 0;
   }

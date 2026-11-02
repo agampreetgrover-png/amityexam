@@ -36,8 +36,40 @@ describe("validateBackup repairs quizzes and topic progress", () => {
     );
     const [a, b] = data.quizzes;
     expect(a).toMatchObject({ topicIds: [], questions: [], responses: [], score: 100, createdAt: 5 });
-    expect(b).toMatchObject({ topicIds: [3], score: 0, responses: ["a", ""], createdAt: 0 });
+    // Only the first question survives, so only its response does.
+    expect(b).toMatchObject({ topicIds: [3], score: 0, responses: ["a"], createdAt: 0 });
     expect(b.questions).toEqual([{ type: "mcq", question: "Q?", answer: "A", options: ["A"] }]);
+  });
+
+  // Audit 1-2 Nov: dropping a junk question shifted the questions but not the responses, and a non-string
+  // explanation (rendered as text in the quiz history) passed through.
+  it("drops a junk question's response with it, so later answers stay with their questions", () => {
+    const data = validateBackup(
+      backup({
+        quizzes: [{
+          id: 1, subjectId: 1, topicIds: [], score: 50, createdAt: 1,
+          questions: [
+            { type: "short", question: "Q1", answer: "A1" },
+            { type: "short", question: 42, answer: "junk" },
+            { type: "mcq", question: "Q3", answer: "B", options: ["A", "B"], explanation: { html: "<b>x</b>" } },
+            { type: "short", question: "Q4", answer: "A4", explanation: "Because." },
+          ],
+          responses: ["r1", "r2", "B", 9],
+        }],
+      }),
+    );
+    const [q] = data.quizzes as { questions: Record<string, unknown>[]; responses: string[] }[];
+    expect(q.questions.map((x) => x.question)).toEqual(["Q1", "Q3", "Q4"]);
+    expect(q.responses).toEqual(["r1", "B", ""]);
+    expect(q.questions[1].explanation).toBeUndefined();
+    expect(q.questions[2].explanation).toBe("Because.");
+  });
+
+  it("gives a quiz with fewer responses than questions an empty answer for the rest", () => {
+    const data = validateBackup(
+      backup({ quizzes: [{ id: 1, subjectId: 1, questions: [{ question: "Q1", answer: "A" }, { question: "Q2", answer: "B" }], responses: ["x"] }] }),
+    );
+    expect(data.quizzes[0].responses).toEqual(["x", ""]);
   });
 
   it("puts an unreadable topic confidence or status back to a sensible value", () => {
