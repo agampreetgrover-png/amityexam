@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SESSION_COOKIE } from "@/lib/access";
 import { issueRecoveryMarker, RECOVERY_COOKIE } from "@/lib/auth/recovery-marker";
 import { setStoreForTests } from "@/lib/ratelimit";
-import { COOKIE, sessionBody, signedInCookies, USER_ID, type Reply } from "@/test/fake-supabase";
+import { COOKIE, hs256AccessToken, sessionBody, signedInCookies, USER_ID, type Reply } from "@/test/fake-supabase";
 import { get, isDeletion, post, sessionIn, setCookies, setupAccounts, teardownAccounts, type Harness } from "@/test/auth-routes";
 import { GET as session } from "./session/route";
 import { POST as signout } from "./signout/route";
@@ -41,7 +41,8 @@ describe("GET /auth/session", () => {
     expect(new Date(body.verifiedAt).toString()).not.toBe("Invalid Date");
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(cookies.size).toBe(0);
-    expect(h.store.checks).toHaveLength(0); // a fresh session needs no refresh, so no refresh limit is spent
+    // A fresh session needs no refresh, so no refresh budget is spent; the check itself is limited per session (M2).
+    expect(h.store.checks.map((c) => c.bucket)).toEqual(["session-check:sid"]);
   });
 
   it("an expired session is refreshed (within the refresh limits) and the rotated session is written back", async () => {
@@ -51,7 +52,7 @@ describe("GET /auth/session", () => {
     const { body, res } = await check(await signedInCookies(-10));
     expect(body.state).toBe("verified");
     expect((await sessionIn(res))?.refresh_token).toBe(fresh.refresh_token);
-    expect(h.store.checks.map((c) => c.bucket)).toEqual(["session:ip", "session:global"]);
+    expect(h.store.checks.map((c) => c.bucket)).toEqual(["session:ip", "session:sid", "session:global"]);
   });
 
   for (const [code, status, reason] of [
@@ -211,7 +212,7 @@ describe("POST /auth/update-password", () => {
     expect(endpoints()).toEqual(["user", "logout", "update-user", "logout"]);
     for (const c of h.server.calls.filter((c) => c.endpoint === "logout")) expect(new URL(c.url).searchParams.get("scope")).toBe("others");
     expect(h.server.calls.find((c) => c.endpoint === "update-user")?.body).toMatchObject({ password: GOOD });
-    expect(h.store.checks.map((c) => c.bucket)).toEqual(["reset:ip"]);
+    expect(h.store.checks.map((c) => c.bucket)).toEqual(["reset:ip", "session-check:sid"]);
     expect(isDeletion(r.cookies.get(RECOVERY_COOKIE))).toBe(true); // the marker works once
   });
 
@@ -359,9 +360,13 @@ describe("POST /auth/update-password", () => {
 // Security review finding 1: auth-js refreshes on ANY truthy expires_at it reads as past, so a cookie whose
 // expires_at isn't a plain number must count against the refresh limits too, or anyone could make this server call
 // Supabase's /token without limit (and use up the /token budget every student shares).
+// The access token here is one that can't be checked locally (HS256), so the cookie isn't rejected as forged and
+// must go through the limits (forged ones never reach them: src/app/auth/session-proof.test.ts).
 describe("refresh limits can't be skipped with an odd expires_at", () => {
   const b64 = (o: unknown) => "base64-" + Buffer.from(JSON.stringify(o)).toString("base64url");
-  const forged = (expires_at: unknown) => [{ name: COOKIE, value: b64({ access_token: "x.y.z", refresh_token: "r", token_type: "bearer", expires_at, user: { id: USER_ID } }) }];
+  const forged = (expires_at: unknown) => [
+    { name: COOKIE, value: b64({ access_token: hs256AccessToken(now() - 10), refresh_token: "r", token_type: "bearer", expires_at, user: { id: USER_ID } }) },
+  ];
   for (const [why, value] of [
     ["a string", "1"],
     ["true", true],

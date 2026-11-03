@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { middleware } from "./middleware";
 import { resetAccountsConfigForTests } from "./lib/supabase/env";
 import { LIMIT_TIMEOUT_MS, MIN_REFRESH_MS, refreshSession } from "./lib/supabase/middleware";
-import { MemoryStore, setStoreForTests } from "./lib/ratelimit";
+import { MemoryStore, sessionKey, setStoreForTests } from "./lib/ratelimit";
+import { resetJwksCacheForTests } from "./lib/supabase/token-proof";
 import { createServerClient } from "@supabase/ssr";
 import { verifyUser } from "./lib/auth";
 import { SESSION_COOKIE, sessionToken } from "./lib/access";
@@ -20,6 +21,7 @@ const ACCOUNTS = {
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
   SUPABASE_ENV: "development",
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: "0x4AAAAAAAtest",
+  TURNSTILE_SECRET_KEY: "0x4AAAAAAAtest-secret",
 };
 const VERCEL_PREVIEW = { ...ACCOUNTS, VERCEL: "1", VERCEL_ENV: "preview", UPSTASH_REDIS_REST_URL: "https://x.upstash.io", UPSTASH_REDIS_REST_TOKEN: "t", RATE_LIMIT_SECRET: "s".repeat(32) };
 const stub = (env: Record<string, string>) => Object.entries(env).forEach(([k, v]) => vi.stubEnv(k, v));
@@ -41,6 +43,7 @@ beforeEach(() => {
   server = fakeSupabase();
   vi.stubGlobal("fetch", server.fetch);
   resetAccountsConfigForTests();
+  resetJwksCacheForTests();
   setStoreForTests(allow);
   for (const k of [...Object.keys(VERCEL_PREVIEW), "APP_PASSWORD"]) vi.stubEnv(k, "");
 });
@@ -86,7 +89,7 @@ describe("when Supabase is contacted", () => {
     expect(server.calls).toHaveLength(0);
   });
 
-  it("checks the per-IP bucket, then the global one, before contacting Supabase", async () => {
+  it("checks the per-IP bucket, then the session, then the global one, before contacting Supabase", async () => {
     stub(ACCOUNTS);
     server.reply("refresh", { status: 200, body: sessionBody(3600) });
     const limit = vi.fn(allow.limit);
@@ -94,12 +97,13 @@ describe("when Supabase is contacted", () => {
     await middleware(request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) }));
     expect(limit.mock.calls).toEqual([
       ["session:ip", "local"],
+      ["session:sid", sessionKey("s1")], // the session id from the verified access token, hashed
       ["session:global", "all"],
     ]);
     expect(refreshCalls()).toHaveLength(1);
   });
 
-  it("a per-IP refusal doesn't use up the global allowance", async () => {
+  it("a per-IP or per-session refusal doesn't use up the global allowance", async () => {
     stub(ACCOUNTS);
     const store = new MemoryStore({});
     const limit = vi.spyOn(store, "limit");
@@ -109,11 +113,11 @@ describe("when Supabase is contacted", () => {
       server.reply("refresh", { status: 200, body: sessionBody(3600) });
       await middleware(request("http://127.0.0.1:3000/subjects", { cookie }));
     }
-    const ip = limit.mock.calls.filter(([b]) => b === "session:ip").length;
-    const global = limit.mock.calls.filter(([b]) => b === "session:global").length;
-    expect(ip).toBe(15);
-    expect(global).toBe(10); // only the 10 the per-IP limit let through
-    expect(refreshCalls()).toHaveLength(10);
+    const count = (bucket: string) => limit.mock.calls.filter(([b]) => b === bucket).length;
+    expect(count("session:ip")).toBe(15);
+    expect(count("session:sid")).toBe(10); // only the 10 the per-IP limit let through
+    expect(count("session:global")).toBe(4); // only the 4 this one session may use per window
+    expect(refreshCalls()).toHaveLength(4);
   });
 
   it("not when the rate-limit store can't answer (fails closed); the page still renders", async () => {
@@ -354,7 +358,7 @@ describe("stopping at the rate-limit step", () => {
     setStoreForTests(store);
     const req = request("http://127.0.0.1:3000/subjects", { cookie: cookieHeader(await signedInCookies(30)) });
     const apply = await refreshSession(req, { deadlineMs: 1500 }); // …leaving ~700ms, less than MIN_REFRESH_MS
-    expect(answered).toEqual(["session:ip", "session:global"]); // both limits said yes: the "too little time left" path
+    expect(answered).toEqual(["session:ip", "session:sid", "session:global"]); // every limit said yes: the "too little time left" path
     await settle(1200); // past the deadline: a refresh started at ~800ms would have reached Supabase by now
     expect(server.calls).toHaveLength(0);
     expect(setCookies(apply(new (await import("next/server")).NextResponse(null)))).toEqual([]);

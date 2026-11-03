@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
@@ -30,6 +30,26 @@ export const LIMITS = {
   // here and Supabase's token-refresh rate limit in its dashboard together.
   "session:ip": { limit: 10, window: "5 m" },
   "session:global": { limit: 120, window: "5 m" },
+  // Which session buckets a request uses depends on its access token (src/lib/supabase/token-proof.ts):
+  //   - a token signed by the project's own key (verified): per session as well, then the global budget above. A real
+  //     session refreshes about once an hour, so a handful per 5 minutes covers several tabs and retries; replaying
+  //     one stolen or own token from many addresses stops here.
+  //   - a token that can't be checked (HS256, a key no longer published, keys unreachable): a small budget of its own,
+  //     so made-up cookies, which can only ever land here, can't use up what real sessions need.
+  "session:sid": { limit: 4, window: "5 m" },
+  "session:unverified": { limit: 20, window: "5 m" },
+  // Session checks (GET /auth/session, sign-out, password change), each one call to Supabase's /user or /logout.
+  "session-check:sid": { limit: 30, window: "5 m" },
+  "session-check:ip": { limit: 60, window: "5 m" },
+  "session-check:unverified": { limit: 60, window: "5 m" },
+  // Global caps, below Supabase's own per-IP limits: every call leaves from this server's IPs, so Supabase counts all
+  // students together (defaults: about 30 sign-ins and 30 verifications per 5 minutes; emails per hour depend on the
+  // SMTP setup). Raise these only together with the limits in Supabase's dashboard (Authentication → Rate Limits).
+  // They are checked last, after the per-IP limits and the CAPTCHA, so only requests that passed both can use them.
+  "login:global": { limit: 25, window: "5 m" },
+  "verify:global": { limit: 25, window: "5 m" },
+  // Shared by sign-up, resend and forgot: all three spend the same email budget.
+  "email:global": { limit: 25, window: "1 h" },
 } as const satisfies Record<string, { limit: number; window: Window }>;
 export type Bucket = keyof typeof LIMITS;
 
@@ -117,6 +137,9 @@ export function emailKey(email: string, secret: string | null, env: Env = proces
   }
   return createHmac("sha256", key).update(email.trim().toLowerCase()).digest("hex");
 }
+
+/** A bucket key for a session id (from a token whose signature was checked): a hash, so ids aren't stored as such. */
+export const sessionKey = (sessionId: string) => createHash("sha256").update(`session\n${sessionId}`).digest("hex").slice(0, 32);
 
 /** Which deployment the counters belong to, so Preview and Production never share them (even in one database). */
 export const deploymentName = (env: Env = process.env) => env.VERCEL_ENV || (isVercel(env) ? "vercel" : "local");

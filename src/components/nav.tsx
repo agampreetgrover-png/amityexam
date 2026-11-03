@@ -71,9 +71,9 @@ function useRailTip() {
   return { tip, show, hide };
 }
 
-export function Nav() {
+/** Which item is current, for the sidebar and the mobile bar alike (only one of them shows at any width). */
+function useNavCurrent() {
   const path = usePathname() ?? "/";
-  const { resolved: theme } = useTheme();
   // The clicked item lights up straight away, before the next page has loaded. It only counts while we're still
   // on the page it was clicked from, so it clears itself once the navigation lands (or a later one does).
   const [clicked, setClicked] = useState<{ href: string; from: string } | null>(null);
@@ -85,6 +85,13 @@ export function Nav() {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return; // opens a new tab or window
     setClicked({ href, from: path });
   };
+  return { path, current, active, onClick };
+}
+
+/** Desktop and tablet: the sidebar. The mobile bottom bar is MobileNav, placed after the page (see app layout). */
+export function Nav() {
+  const { path, current, active, onClick } = useNavCurrent();
+  const { resolved: theme } = useTheme();
 
   // The current page sits on a soft indigo pill that glides down the rail to whichever item is active.
   // On first load (and when the window or fonts re-measure it) it just appears. It's measured inside the rail,
@@ -139,7 +146,6 @@ export function Nav() {
       </li>
     );
   };
-  const mobileIndex = primary.findIndex((p) => active(p.href));
 
   return (
     <>
@@ -218,43 +224,52 @@ export function Nav() {
           {tip.label}
         </span>
       )}
-
-      {/* Mobile: bottom bar of the primary items; Settings lives in the top bar. The current item's icon
-          sits on a soft pill that slides between them. */}
-      <nav
-        // Page content scrolls on under the bar, so it is a frosted step of the card colour where the browser can blur.
-        className="fixed inset-x-0 bottom-0 z-20 flex select-none border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] supports-[backdrop-filter]:bg-surface/85 supports-[backdrop-filter]:backdrop-blur-xl supports-[backdrop-filter]:backdrop-saturate-150 md:hidden"
-        aria-label="Main"
-      >
-        {mobileIndex >= 0 && (
-          <span
-            aria-hidden
-            className="absolute left-0 top-2 flex justify-center transition-transform duration-250 ease-snappy"
-            style={{ width: `${100 / primary.length}%`, transform: `translateX(${mobileIndex * 100}%)` }}
-          >
-            <span className="h-7 w-14 rounded-full bg-nav-active" />
-          </span>
-        )}
-        {primary.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            onClick={onClick(href)}
-            aria-current={active(href) ? "page" : undefined}
-            className={cn(
-              "group relative flex min-w-0 flex-1 flex-col items-center gap-1 whitespace-nowrap pb-2 pt-2 text-[11px] transition-colors duration-150",
-              active(href) ? "font-semibold text-nav-active-ink" : "font-medium text-muted",
-            )}
-          >
-            {/* The icon dips under the thumb, so a tap is felt before the next page has loaded. */}
-            <span className="flex h-7 items-center justify-center transition-transform duration-150 ease-snappy group-active:scale-[0.88]">
-              <Icon size={20} strokeWidth={active(href) ? 2.1 : 1.75} />
-            </span>
-            {label}
-          </Link>
-        ))}
-      </nav>
       {process.env.NODE_ENV === "development" && <DevWarmup routes={ROUTES} />}
     </>
+  );
+}
+
+/**
+ * Mobile: bottom bar of the primary items; Settings lives in the top bar. The current item's icon sits on a soft pill
+ * that slides between them. It is fixed to the bottom of the screen, so the app layout renders it after the page:
+ * the keyboard then reaches it where it is seen, after the top bar and the page, not before them.
+ */
+export function MobileNav() {
+  const { active, onClick } = useNavCurrent();
+  const mobileIndex = primary.findIndex((p) => active(p.href));
+  return (
+    <nav
+      // Page content scrolls on under the bar, so it is a frosted step of the card colour where the browser can blur.
+      className="fixed inset-x-0 bottom-0 z-20 flex select-none border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] supports-[backdrop-filter]:bg-surface/85 supports-[backdrop-filter]:backdrop-blur-xl supports-[backdrop-filter]:backdrop-saturate-150 md:hidden"
+      aria-label="Main"
+    >
+      {mobileIndex >= 0 && (
+        <span
+          aria-hidden
+          className="absolute left-0 top-2 flex justify-center transition-transform duration-250 ease-snappy"
+          style={{ width: `${100 / primary.length}%`, transform: `translateX(${mobileIndex * 100}%)` }}
+        >
+          <span className="h-7 w-14 rounded-full bg-nav-active" />
+        </span>
+      )}
+      {primary.map(({ href, label, icon: Icon }) => (
+        <Link
+          key={href}
+          href={href}
+          onClick={onClick(href)}
+          aria-current={active(href) ? "page" : undefined}
+          className={cn(
+            "group relative flex min-w-0 flex-1 flex-col items-center gap-1 whitespace-nowrap pb-2 pt-2 text-[11px] transition-colors duration-150",
+            active(href) ? "font-semibold text-nav-active-ink" : "font-medium text-muted",
+          )}
+        >
+          {/* The icon dips under the thumb, so a tap is felt before the next page has loaded. */}
+          <span className="flex h-7 items-center justify-center transition-transform duration-150 ease-snappy group-active:scale-[0.88]">
+            <Icon size={20} strokeWidth={active(href) ? 2.1 : 1.75} />
+          </span>
+          {label}
+        </Link>
+      ))}
+    </nav>
   );
 }

@@ -69,6 +69,14 @@ const fail = (id: number, reason: string) => {
 };
 const EMPTY_FAILURES: ReadonlyMap<number, string> = new Map();
 
+// Questions a matching request this session left without a topic (the AI skipped them, or their slice failed). Like
+// failed papers, automatic runs don't send them again until the app is reopened, so a question the AI keeps skipping
+// can't cost a request on every run; "Analyse now", "Match again" and a re-tag of their paper try them again.
+const unmatchedThisSession = new Set<number>();
+
+/** A paper an automatic run would read: not read yet, and not one that failed this session. */
+const waiting = (m: Material) => m.kind === "pyq" && !m.analysedAt && !failedThisSession.has(m.id!);
+
 /** Papers that couldn't be read this session, by material id, with the reason. */
 export function usePaperFailures(): ReadonlyMap<number, string> {
   return useSyncExternalStore(
@@ -88,19 +96,19 @@ export function retryPapers(subjectId: number, materialIds: number[]) {
 
 // ---- Steps (unguarded; the public wrappers below allow one run at a time) -----------------------
 
-async function analysePapersStep(subjectId: number | undefined, max: number): Promise<{ analysed: number; stopped: boolean }> {
+/** `read` counts every paper the AI was asked about, whether it was saved or failed. */
+async function analysePapersStep(subjectId: number | undefined, max: number): Promise<{ analysed: number; read: number; stopped: boolean }> {
   const pending = newestFirst(
-    await db.materials
-      .filter((m) => m.kind === "pyq" && !m.analysedAt && !failedThisSession.has(m.id!) && (subjectId === undefined || m.subjectId === subjectId))
-      .toArray(),
+    await db.materials.filter((m) => waiting(m) && (subjectId === undefined || m.subjectId === subjectId)).toArray(),
   ).slice(0, max);
-  if (!pending.length) return { analysed: 0, stopped: false };
+  if (!pending.length) return { analysed: 0, read: 0, stopped: false };
   const names = new Map((await db.subjects.toArray()).map((s) => [s.id!, s.name]));
 
   let analysed = 0;
+  let read = 0;
   set({ total: pending.length, done: 0 });
   for (const paper of pending) {
-    if (offline()) return { analysed, stopped: true };
+    if (offline()) return { analysed, read, stopped: true };
     set({ message: `Reading questions from ${paper.fileName}…` });
     let result: PyqPaperResult;
     try {
@@ -110,24 +118,24 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
     } catch (e) {
       if (isLimit(e)) {
         set({ message: e instanceof AiError && /key/i.test(e.message) ? e.message : "AI limit reached. The remaining papers will be analysed later." });
-        return { analysed, stopped: true };
+        return { analysed, read, stopped: true };
       }
       // Tried again next time the app opens, or when the student taps Retry.
       fail(paper.id!, e instanceof Error && e.message ? e.message : "The AI couldn't split this paper into questions.");
-      set({ done: state.done + 1 }); // a failed paper is still one step through the list
+      set({ done: ++read }); // a failed paper is still one step through the list
       continue;
     }
     // Saved with no questions, the paper would count as analysed and never be read again.
     if (!result.questions.length) {
       fail(paper.id!, "The AI found no questions in this paper.");
-      set({ done: state.done + 1 });
+      set({ done: ++read });
       continue;
     }
     await savePaper(paper, result);
     analysed++;
-    set({ done: state.done + 1 });
+    set({ done: ++read });
   }
-  return { analysed, stopped: false };
+  return { analysed, read, stopped: false };
 }
 
 async function savePaper(paper: Material, result: PyqPaperResult) {
@@ -166,6 +174,7 @@ export async function setPaperExam(materialId: number, exam: ExamMode) {
     await db.pyqQuestions.where({ materialId }).modify((q) => {
       q.exam = exam;
       delete q.topicId; // was never matched (unknown papers aren't), or matched against the wrong syllabus
+      unmatchedThisSession.delete(q.id!); // another syllabus now: worth asking again
     });
   });
   const m = await db.materials.get(materialId);
@@ -173,7 +182,11 @@ export async function setPaperExam(materialId: number, exam: ExamMode) {
   if (m) void analyseSubject(m.subjectId);
 }
 
-async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopped: boolean; error?: string }> {
+/**
+ * The questions a matching step would send, grouped by exam with that exam's syllabus. Questions left without a topic
+ * earlier this session are left out unless `retry` (the student asked).
+ */
+async function mappingWork(subjectId: number, retry: boolean) {
   const [subject, units, topics, papers, all] = await Promise.all([
     db.subjects.get(subjectId),
     db.units.where({ subjectId }).sortBy("order"),
@@ -181,24 +194,31 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
     db.materials.where({ subjectId }).filter((m) => m.kind === "pyq").toArray(),
     db.pyqQuestions.where({ subjectId }).toArray(),
   ]);
-  if (!subject || !topics.length) return { mapped: 0, stopped: false };
+  const scopes = new Map<ExamMode, { scoped: Topic[]; qs: PyqQuestion[] }>();
+  if (!subject || !topics.length) return { subject, units, scopes };
 
   // Each question is matched against its own paper's exam syllabus (the paper's tag is the source of truth).
   // Papers of unknown exam type aren't matched at all: they're shown in neither mode until the student sorts them.
   // A question needs matching when its topic isn't in that exam's syllabus (the same test the PYQs tab uses);
   // checking against every topic would leave one whose unit moved out of scope "not matched" for good.
   const examOf = new Map(papers.map((p) => [p.id!, pyqMode(p)]));
-  const scopes = new Map<ExamMode, { scoped: Topic[]; qs: PyqQuestion[] }>();
   for (const exam of new Set(examOf.values())) {
     if (!exam) continue;
     const scoped = topicsInScope(topics, units, exam);
     const ids = new Set(scoped.map((t) => t.id));
-    const qs = all.filter((q) => examOf.get(q.materialId) === exam && needsMapping(q, ids));
+    const qs = all.filter((q) => examOf.get(q.materialId) === exam && needsMapping(q, ids) && (retry || !unmatchedThisSession.has(q.id!)));
     if (scoped.length && qs.length) scopes.set(exam, { scoped, qs }); // no syllabus for that exam yet: stays "not matched"
   }
-  if (!scopes.size) return { mapped: 0, stopped: false };
+  return { subject, units, scopes };
+}
+
+/** `settled` counts the questions the AI answered for: matched, or left without a topic for this session. */
+async function mapTopicsStep(subjectId: number, retry = false): Promise<{ mapped: number; settled: number; stopped: boolean; error?: string }> {
+  const { subject, units, scopes } = await mappingWork(subjectId, retry);
+  if (!subject || !scopes.size) return { mapped: 0, settled: 0, stopped: false };
 
   let mapped = 0;
+  let settled = 0;
   let error: string | undefined;
   set({ total: [...scopes.values()].reduce((a, s) => a + s.qs.length, 0), done: 0 });
   for (const { scoped, qs } of scopes.values()) {
@@ -207,7 +227,7 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
       return (unit ? `${t.title} (${unit})` : t.title).slice(0, MAX_TOPIC_CHARS);
     });
     for (let i = 0; i < qs.length; i += MAP_BATCH) {
-      if (offline()) return { mapped, stopped: true, error };
+      if (offline()) return { mapped, settled, stopped: true, error };
       const batch = qs.slice(i, i + MAP_BATCH);
       set({ message: `Matching questions to your ${subject.name} syllabus…` });
       // The API takes so many topics a request, so a long syllabus goes in slices. A question takes the first
@@ -226,7 +246,7 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
         } catch (e) {
           if (isLimit(e)) {
             set({ message: "AI limit reached. The remaining questions will be matched later." });
-            return { mapped, stopped: true, error };
+            return { mapped, settled, stopped: true, error };
           }
           error = e instanceof Error && e.message ? e.message : "the AI request failed";
           continue;
@@ -240,23 +260,36 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
       await db.transaction("rw", db.pyqQuestions, async () => {
         for (const [j, q] of batch.entries()) {
           const t = hit.get(j) ?? (misses.get(j)?.size === slices ? -1 : undefined);
-          if (t === undefined) continue; // questions the AI skipped stay unmapped and are retried next time
-          // The paper may have been re-tagged while the AI was answering; this match is for the old syllabus then.
+          // The paper may have been re-tagged while the AI was answering; this answer is for the old syllabus then.
           const cur = await db.pyqQuestions.get(q.id!);
           if (!cur || cur.exam !== q.exam || cur.topicId !== q.topicId) continue;
+          settled++;
+          if (t === undefined) {
+            // The AI skipped it (or its slice failed): it stays unmatched, and isn't sent again by an automatic run.
+            unmatchedThisSession.add(q.id!);
+            continue;
+          }
           await db.pyqQuestions.update(q.id, { topicId: t >= 0 ? scoped[t].id! : null });
+          unmatchedThisSession.delete(q.id!);
           mapped++;
         }
       });
       set({ done: mapped });
     }
   }
-  return { mapped, stopped: false, error };
+  return { mapped, settled, stopped: false, error };
+}
+
+/** Whether an automatic run of this subject would have anything to send the AI. */
+async function hasWork(subjectId: number): Promise<boolean> {
+  if ((await db.materials.where({ subjectId }).filter(waiting).count()) > 0) return true;
+  return (await mappingWork(subjectId, false)).scopes.size > 0;
 }
 
 // ---- Public API ------------------------------------------------------------------------------
 
 let running = false;
+let runningFor: number | "all" | undefined; // the subject the run in progress is for, or "all" for a full run
 // Work asked for while another run was busy. Each kind is kept to its own scope: a subject's request runs that
 // subject only, so a busy analyser never turns one subject's request into a run (and AI calls) across every subject.
 let allQueued = false; // analyseAll
@@ -296,10 +329,11 @@ function runQueued() {
   void analyseAll();
 }
 
-/** Run `fn` unless another analysis is already going; resets the status line when done. */
-async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
+/** Run `fn` (the work of `scope`) unless another analysis is already going; resets the status line when done. */
+async function exclusive<T>(scope: number | "all", fn: () => Promise<T>): Promise<T | undefined> {
   if (running || offline()) return undefined;
   running = true;
+  runningFor = scope;
   set({ ...IDLE, running: true, message: "Checking past papers…" });
   try {
     return await fn();
@@ -308,6 +342,7 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
     return undefined;
   } finally {
     running = false;
+    runningFor = undefined;
     set({ running: false });
     // Whatever run just ended (a subject's, from the PYQs tab, or a full one), work queued meanwhile goes next:
     // re-matches first, then queued subjects, then a full run.
@@ -331,18 +366,29 @@ const finalMessage = (papers: number, mapped: number, stopped: boolean, mapError
 /**
  * Analyse a subject's new papers, then match their questions to topics.
  * While another run is busy the request is queued for this subject, so an upload, a Retry or a re-tag isn't lost.
- * `ifIdle` is for automatic starts (the PYQs tab opening, or seeing the run's own progress): it starts a run only
- * when nothing is running and queues nothing, since the run in progress is the one doing that work.
+ * `ifIdle` is for automatic starts (the PYQs tab opening, or seeing a run's progress): during this subject's own run
+ * it does nothing, since that run is doing the work and checks for more as it ends; during any other run (another
+ * subject's, or a full one) it queues this subject, like any other request.
+ * A run reads at most `max` papers; while the subject has more waiting, it's queued again for the next batch.
+ * `retry` (the student pressed Analyse now) also sends questions the AI left without a topic earlier this session.
  */
-export const analyseSubject = (subjectId: number, { max = 8, ifIdle = false } = {}) => {
+export const analyseSubject = (subjectId: number, { max = 8, ifIdle = false, retry = false } = {}) => {
   if (running) {
-    if (!ifIdle) subjectsQueued.add(subjectId);
+    if (!ifIdle || runningFor !== subjectId) subjectsQueued.add(subjectId);
     return Promise.resolve(undefined);
   }
-  return exclusive(async () => {
+  const before = state.message;
+  return exclusive(subjectId, async () => {
+    // Nothing for the AI (a queued request a full run already covered, say): leave the last run's summary showing.
+    if (!retry && !(await hasWork(subjectId))) return void set({ message: before });
     const a = await analysePapersStep(subjectId, max);
-    const m = a.stopped ? { mapped: 0, stopped: true, error: undefined } : await mapTopicsStep(subjectId);
+    const m = a.stopped ? { mapped: 0, settled: 0, stopped: true, error: undefined } : await mapTopicsStep(subjectId, retry);
     finalMessage(a.analysed, m.mapped, a.stopped || m.stopped, m.error);
+    // Carry on with the next batch (or work that came in during this run), queued so other requests get their turn.
+    // Only after a run that got through something and wasn't stopped (AI limit, offline), and only for work an
+    // automatic run takes on: papers that failed and questions left unmatched this session don't count, so every
+    // run shrinks what's left and this ends.
+    if (!a.stopped && !m.stopped && a.read + m.settled > 0 && (await hasWork(subjectId))) subjectsQueued.add(subjectId);
   });
 };
 
@@ -352,7 +398,7 @@ export const analyseAll = async ({ max = 12 } = {}): Promise<void> => {
     allQueued = true; // picked up when the current run ends
     return;
   }
-  await exclusive(async () => {
+  await exclusive("all", async () => {
     const a = await analysePapersStep(undefined, max);
     let mapped = 0;
     let mapError: string | undefined;
@@ -378,11 +424,13 @@ export const remapSubject = (subjectId: number) => {
     remapsQueued.add(subjectId); // the syllabus changed mid-run: match again once the run ends
     return Promise.resolve(undefined);
   }
-  return exclusive(async () => {
+  return exclusive(subjectId, async () => {
     await db.pyqQuestions.where({ subjectId }).modify((q) => {
       delete q.topicId;
     });
-    const m = await mapTopicsStep(subjectId);
+    const m = await mapTopicsStep(subjectId, true); // every question is asked about afresh
     finalMessage(0, m.mapped, m.stopped, m.error);
+    // A re-match doesn't read papers: any waiting ones (which the PYQs tab left to this run) go next.
+    if (!m.stopped && (await hasWork(subjectId))) subjectsQueued.add(subjectId);
   });
 };

@@ -1,6 +1,13 @@
-// Headless Chrome check of the account screens against a running build, with every /auth/* answer mocked (the
-// backend routes don't exist yet). Start the app first (npm run build && npx next start -p 3200), then:
+// Headless Chrome check of the account screens against a running build, with every /auth/* answer mocked, so each
+// screen state can be shown without a Supabase project (the real route handlers, src/app/auth/*/route.ts, have their
+// own tests). Build with a Turnstile site key, so the forms show their security check (the key is inlined at build
+// time; Cloudflare's published test key is fine), then start the app:
+//   NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA npm run build && npx next start -p 3200
 //   node scripts/auth-ui-check.mjs [--base http://127.0.0.1:3200] [--out dir] [--no-shots]
+// Turnstile: a stub window.turnstile is installed before the page's scripts run, so the forms get one-use tokens
+// ("stub-turnstile-<action>-<n>") without Cloudflare. Cloudflare's script is never fetched (any request to it is
+// blocked and fails the run). Nothing in the app is switched off: the forms still refuse to send without a token
+// (a scenario checks that), and the server's own Turnstile check isn't reached because every /auth answer is mocked.
 // Each scenario sets the mocked answers, visits a screen, acts like a student (types, clicks) and asserts what the
 // screen shows and which requests it made. Screenshots at 390 and 1440 wide, light and dark; axe-core runs on each
 // state. Chrome uses a throwaway profile, so no real browser data is touched. Exit 1 if any assertion fails.
@@ -50,10 +57,12 @@ const evaluate = async (expression) => {
 
 // ── Mocked /auth/* answers ──────────────────────────────────────────────────────────────────────────────────────
 // mocks: { "<METHOD> <path>": { status, body, delay } | [ …in order… ] }. Anything under /auth/ not listed goes to
-// the real server (which today answers 404 for every /auth route, i.e. "accounts not available").
+// the real server. Built without Supabase settings, accounts are off there: GET /auth/session answers
+// { state: "disabled" } and every POST answers 404 { error: { code: "disabled" } } (the first scenario checks it).
 let mocks = {};
 let requests = [];
 let pageErrors = [];
+const cloudflareRequests = [];
 ws.addEventListener("message", async (m) => {
   const msg = JSON.parse(m.data);
   if (msg.id && pending.has(msg.id)) return pending.get(msg.id)(msg), pending.delete(msg.id);
@@ -62,7 +71,12 @@ ws.addEventListener("message", async (m) => {
   if (msg.method === "Fetch.requestPaused") {
     const { request, requestId } = msg.params;
     const url = new URL(request.url);
-    requests.push({ method: request.method, path: url.pathname, body: request.postData ?? null });
+    // The stub stands in for Cloudflare's script, so it should never be fetched; if it is, it's blocked and reported.
+    if (url.hostname === "challenges.cloudflare.com") {
+      cloudflareRequests.push(request.url);
+      return send("Fetch.failRequest", { requestId, errorReason: "BlockedByClient" });
+    }
+    requests.push({ method: request.method, path: url.pathname, search: url.search, body: request.postData ?? null });
     const key = `${request.method} ${url.pathname}`;
     let mock = mocks[key];
     if (Array.isArray(mock)) mock = mock.length > 1 ? mock.shift() : mock[0];
@@ -77,7 +91,65 @@ await send("Page.enable");
 await send("Runtime.enable");
 await send("Network.enable");
 await send("Network.setBypassServiceWorker", { bypass: true });
-await send("Fetch.enable", { patterns: [{ urlPattern: "*/auth/*", requestStage: "Request" }] });
+await send("Fetch.enable", { patterns: [{ urlPattern: "*/auth/*", requestStage: "Request" }, { urlPattern: "*://challenges.cloudflare.com/*", requestStage: "Request" }] });
+
+// ── Turnstile stub ───────────────────────────────────────────────────────────────────────────────────────────
+// The same three calls as Cloudflare's API (render, reset, remove; src/components/auth/turnstile.tsx). With
+// window.turnstile already there, the widget never loads Cloudflare's script. Like the real managed widget, it
+// answers a render, and every reset, with a new token after a moment; in "error" mode it calls the error callback
+// instead, as when the check can't load. window.__turnstileStub records what the page asked for.
+const ORIGIN = new URL(BASE).origin;
+const stubSource = (mode) => `(() => {
+  if (location.origin !== ${JSON.stringify(ORIGIN)}) return;
+  const mode = ${JSON.stringify(mode)};
+  const widgets = new Map();
+  const log = { renders: [], resets: 0, issued: [] };
+  let n = 0;
+  const answer = (id) => setTimeout(() => {
+    const w = widgets.get(id);
+    if (!w) return;
+    if (mode === "error") return w["error-callback"]?.();
+    const token = "stub-turnstile-" + w.action + "-" + ++n;
+    log.issued.push(token);
+    w.callback?.(token);
+  }, 40);
+  window.__turnstileStub = log;
+  window.turnstile = {
+    render(el, options) {
+      const id = "stub-widget-" + ++n;
+      widgets.set(id, options);
+      log.renders.push({ action: options.action, sitekey: options.sitekey });
+      el.setAttribute("data-turnstile-stub", mode);
+      answer(id);
+      return id;
+    },
+    reset(id) { log.resets++; answer(id); },
+    remove(id) { widgets.delete(id); },
+  };
+})()`;
+let stubScript = null;
+const setCaptchaMode = async (mode) => {
+  if (stubScript) await send("Page.removeScriptToEvaluateOnNewDocument", { identifier: stubScript });
+  stubScript = (await send("Page.addScriptToEvaluateOnNewDocument", { source: stubSource(mode) })).result.identifier;
+};
+await setCaptchaMode("pass");
+/** The security-check token a request carried, if any. */
+const tokenOf = (r) => {
+  try {
+    return JSON.parse(r?.body ?? "null")?.captchaToken;
+  } catch {
+    return undefined;
+  }
+};
+const finish = async (code) => {
+  ws.close();
+  chrome.kill();
+  await sleep(500);
+  try {
+    rmSync(profileDir, { recursive: true, force: true });
+  } catch {}
+  process.exit(code);
+};
 
 const settle = async (ms = 700) => {
   await sleep(250);
@@ -167,11 +239,35 @@ const VERIFIED = { "GET /auth/session": { body: { state: "verified", user: { id:
 const posts = (path) => requests.filter((r) => r.method === "POST" && r.path === path);
 await send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
+// ── Preflight: the build must show the security check ─────────────────────────────────────────────────────────
+// Without NEXT_PUBLIC_TURNSTILE_SITE_KEY at build time the widget never renders, no form can get a token, and every
+// form scenario would fail for that one reason. Say so once instead.
+mocks = { ...SIGNED_OUT };
+await go("/login", { storage: {} });
+const preflight = await evaluate("({ renders: window.__turnstileStub?.renders ?? [], form: !!document.querySelector('form') })");
+if (!preflight.form || !preflight.renders.some((r) => r.action === "login" && r.sitekey)) {
+  console.error(
+    `The sign-in form at ${BASE}/login didn't show its security check (widgets rendered: ${JSON.stringify(preflight.renders)}).\n` +
+      "Rebuild with a Turnstile site key, e.g. NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA npm run build, then start it again.",
+  );
+  await finish(2);
+}
+
 // ── Scenarios ───────────────────────────────────────────────────────────────────────────────────────────────
-await scenario("accounts off (today's real server: no /auth routes)", async () => {
+await scenario('accounts off (the real server: every /auth route answers "disabled")', async () => {
   await go("/login", { storage: {} });
   check("says accounts aren't available", (await h1()) === "Accounts aren't available here", await h1());
   check("no form is shown", !(await evaluate("!!document.querySelector('form')")));
+  // Unmocked, so these reach the real route handlers: the session says "disabled" (a state, 200), a POST is refused
+  // as disabled (404 with the client's error shape), never Next's own 404 page.
+  const real = await evaluate(`(async () => {
+    const read = async (r) => ({ status: r.status, body: await r.json().catch(() => null) });
+    const session = await fetch("/auth/session", { headers: { Accept: "application/json" } }).then(read);
+    const login = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: "{}" }).then(read);
+    return { session, login };
+  })()`);
+  check("the real GET /auth/session answers { state: \"disabled\" }", real.session.status === 200 && real.session.body?.state === "disabled", JSON.stringify(real.session));
+  check("a real POST answers 404 with code \"disabled\"", real.login.status === 404 && real.login.body?.error?.code === "disabled", JSON.stringify(real.login));
   await shot("login-accounts-off");
 });
 
@@ -203,6 +299,9 @@ await scenario("sign in: validation, server error, loading, success", async () =
   await sleep(1800);
   check("after signing in it goes to the switch screen (asks before opening data)", (await evaluate("location.pathname")) === "/switch", await evaluate("location.pathname"));
   check("the password was sent only in the POST body", requests.filter((r) => (r.body ?? "").includes("wrong password here")).every((r) => r.method === "POST" && r.path === "/auth/login"));
+  const tokens = posts("/auth/login").map(tokenOf);
+  check("every sign-in carried a security-check token", tokens.length === 2 && tokens.every((t) => /^stub-turnstile-login-\d+$/.test(t ?? "")), JSON.stringify(tokens));
+  check("each attempt used a fresh token (a token works once)", new Set(tokens).size === tokens.length, JSON.stringify(tokens));
 });
 
 await scenario("sign in: email not confirmed, rate limited, ?reason notice", async () => {
@@ -258,6 +357,7 @@ await scenario("sign up: requirements, mismatch, success", async () => {
   await sleep(1200);
   check("goes to check-email", (await evaluate("location.pathname")) === "/check-email", await evaluate("location.pathname"));
   check("shows the address", (await text()).includes("riya.sharma@s.amity.edu"));
+  check("the sign-up carried a security-check token", /^stub-turnstile-signup-\d+$/.test(tokenOf(posts("/auth/signup")[0]) ?? ""), posts("/auth/signup")[0]?.body ?? "not sent");
   check("password not in sessionStorage or localStorage", !(await evaluate("JSON.stringify({...localStorage, ...sessionStorage}).includes('correct horse')")));
 });
 
@@ -271,6 +371,7 @@ await scenario("check email: resend and cooldown", async () => {
   await click(await evaluate("document.querySelector('button[type=submit]').innerText.trim()"));
   await sleep(900);
   check("resend request was sent once", posts("/auth/resend").length === 1);
+  check("the resend carried a security-check token", /^stub-turnstile-resend-\d+$/.test(tokenOf(posts("/auth/resend")[0]) ?? ""), posts("/auth/resend")[0]?.body ?? "not sent");
   check("button waits before it can send again", await evaluate("[...document.querySelectorAll('button')].some((b) => b.disabled && /again in/i.test(b.innerText))"));
   await shot("check-email-cooldown");
 });
@@ -285,14 +386,54 @@ await scenario("forgot password: generic answer", async () => {
   await sleep(600);
   const t = await text();
   check("success names the address without saying whether it exists", t.includes("If an account uses nobody@s.amity.edu"), t);
+  check("the request carried a security-check token", /^stub-turnstile-forgot-\d+$/.test(tokenOf(posts("/auth/forgot")[0]) ?? ""), posts("/auth/forgot")[0]?.body ?? "not sent");
   await shot("forgot-sent");
 });
 
+await scenario("security check fails: nothing is sent without a token", async () => {
+  // The widget reports an error (Cloudflare blocked or unreachable), so there is never a token. Each form must say so
+  // and refuse to send: the CAPTCHA can't be skipped from the browser.
+  await setCaptchaMode("error");
+  try {
+    mocks = { ...SIGNED_OUT, "POST /auth/login": { body: { userId: USER, email: "riya.sharma@s.amity.edu" } }, "POST /auth/signup": { body: {} }, "POST /auth/forgot": { body: {} } };
+    await go("/login", { storage: {} });
+    check("sign in: says the security check couldn't load", (await text()).includes("security check couldn't load"), await text());
+    await typeInto("Email", "riya.sharma@s.amity.edu");
+    await typeInto("Password", "a long enough password");
+    await click("Sign in");
+    await sleep(500);
+    check("sign in: nothing is sent without a token", posts("/auth/login").length === 0, String(posts("/auth/login").length));
+    check("sign in: explains the check didn't go through, and stays put", (await text()).includes("security check didn't go through") && (await evaluate("location.pathname")) === "/login", await text());
+    await shot("login-captcha-failed");
+
+    await go("/signup", { storage: {} });
+    await typeInto("Email", "riya.sharma@s.amity.edu");
+    await typeInto("Password", "correct horse battery");
+    await typeInto("Confirm password", "correct horse battery");
+    await click("Create account");
+    await sleep(500);
+    check("sign up: nothing is sent without a token", posts("/auth/signup").length === 0 && (await evaluate("location.pathname")) === "/signup", await evaluate("location.pathname"));
+
+    await go("/forgot-password", { storage: {} });
+    await typeInto("Email", "riya.sharma@s.amity.edu");
+    await click(await evaluate("document.querySelector('button[type=submit]').innerText.trim()"));
+    await sleep(500);
+    check("forgot password: nothing is sent without a token", posts("/auth/forgot").length === 0 && !(await text()).includes("If an account uses"), await text());
+  } finally {
+    await setCaptchaMode("pass");
+  }
+});
+
 await scenario("confirmation link: nothing used on open", async () => {
-  mocks = { "POST /auth/verify": { delay: 600, body: { userId: USER, email: "riya.sharma@s.amity.edu", type: "signup" } } };
+  mocks = { ...SIGNED_OUT, "POST /auth/verify": { delay: 600, body: { userId: USER, email: "riya.sharma@s.amity.edu", type: "signup" } } };
   await go("/auth/confirm?token_hash=pkce_abc123DEF&type=signup", { storage: {} });
-  const apiCalls = requests.filter((r) => ["/auth/verify", "/auth/session"].includes(r.path) || r.method === "POST");
-  check("opening the link sends nothing (no verify, no session check)", apiCalls.length === 0, JSON.stringify(apiCalls));
+  // Opening the link only reads who is signed in here (to know whether to ask before switching accounts). It must
+  // not use the link, and the token must go nowhere but the address bar it is cleared from.
+  // Not counted: the page itself (GET /auth/confirm) and its code (/_next/static/…/(auth)/auth/confirm/page-….js).
+  const onOpen = requests.filter((r) => r.path !== "/auth/confirm" && !r.path.startsWith("/_next/"));
+  check("opening the link uses nothing: no verify, no POST of any kind", onOpen.every((r) => r.method === "GET") && posts("/auth/verify").length === 0, JSON.stringify(onOpen));
+  check("the only request on open is the read-only session check", onOpen.length === 1 && onOpen[0].path === "/auth/session", JSON.stringify(onOpen));
+  check("the session check doesn't carry the token", onOpen.every((r) => !`${r.search}${r.body ?? ""}`.includes("pkce_abc123DEF")), JSON.stringify(onOpen));
   check("the token is removed from the address bar", (await evaluate("location.search")) === "", await evaluate("location.href"));
   await shot("confirm-ready");
   await click(await evaluate("document.querySelector('button[type=submit]').innerText.trim()"));
@@ -300,8 +441,48 @@ await scenario("confirmation link: nothing used on open", async () => {
   await shot("confirm-loading");
   await sleep(900);
   check("verify was sent once with the token", posts("/auth/verify").length === 1 && (posts("/auth/verify")[0].body ?? "").includes("pkce_abc123DEF"));
+  check("nobody was signed in, so it didn't ask to replace a session", !("replaceSession" in JSON.parse(posts("/auth/verify")[0]?.body ?? "{}")), posts("/auth/verify")[0]?.body);
   check("confirmed screen", (await h1()) === "Email confirmed", await h1());
   await shot("confirm-done");
+});
+
+await scenario("confirmation link while signed in: asks before switching accounts", async () => {
+  const link = "/auth/confirm?token_hash=pkce_switch456&type=signup";
+  mocks = { ...VERIFIED, "POST /auth/verify": { delay: 300, body: { userId: OTHER, email: "someone.else@s.amity.edu", type: "signup" } } };
+  await go(link, { storage: {} });
+  check("asks first, naming the account that would be signed out", (await h1()) === "Switch accounts?" && (await text()).includes("riya.sharma@s.amity.edu"), await text());
+  check("nothing is used while it asks", posts("/auth/verify").length === 0 && requests.every((r) => r.method === "GET"), JSON.stringify(requests));
+  await shot("confirm-switch-question");
+  await click("Stay signed in");
+  await sleep(800);
+  check("'Stay signed in' leaves without using the link", posts("/auth/verify").length === 0 && (await evaluate("location.pathname")) !== "/auth/confirm", await evaluate("location.pathname"));
+
+  mocks = { ...VERIFIED, "POST /auth/verify": { delay: 300, body: { userId: OTHER, email: "someone.else@s.amity.edu", type: "signup" } } };
+  await go(link, { storage: {} });
+  await click("Sign out and continue");
+  await sleep(900);
+  const sent = posts("/auth/verify");
+  check("only 'Sign out and continue' uses the link, asking to replace the session", sent.length === 1 && JSON.parse(sent[0].body).replaceSession === true && sent[0].body.includes("pkce_switch456"), JSON.stringify(sent));
+  check("the next screen names the account the link opened", (await h1()) === "Email confirmed" && (await text()).includes("someone.else@s.amity.edu"), await text());
+});
+
+await scenario("confirmation link: the server's switch_required becomes the question", async () => {
+  // The session check said nobody was signed in, but the server found a session when the link was used: it refuses
+  // with switch_required (the link is not used up) and the screen asks instead of failing.
+  mocks = {
+    ...SIGNED_OUT,
+    "POST /auth/verify": [{ status: 409, body: { error: { code: "switch_required" } } }, { body: { userId: USER, email: "riya.sharma@s.amity.edu", type: "signup" } }],
+  };
+  await go("/auth/confirm?token_hash=pkce_race789&type=signup", { storage: {} });
+  await click(await evaluate("document.querySelector('button[type=submit]').innerText.trim()"));
+  await sleep(600);
+  check("asks instead of showing an error", (await h1()) === "Switch accounts?" && (await evaluate("document.querySelectorAll('[role=alert]').length")) === 0, await text());
+  check("the first try didn't ask to replace a session", !("replaceSession" in JSON.parse(posts("/auth/verify")[0]?.body ?? "{}")), posts("/auth/verify")[0]?.body);
+  await click("Sign out and continue");
+  await sleep(600);
+  const sent = posts("/auth/verify");
+  check("only the confirmed retry asks to replace it", sent.length === 2 && JSON.parse(sent[1].body).replaceSession === true, JSON.stringify(sent));
+  check("then the link is used", (await h1()) === "Email confirmed", await h1());
 });
 
 await scenario("confirmation link: bad and expired", async () => {
@@ -495,15 +676,11 @@ await scenario("keyboard order on sign in", async () => {
 });
 
 // ── Report ───────────────────────────────────────────────────────────────────────────────────────────────────
+current = "whole run";
+check("Cloudflare's script was never fetched (the stub stood in for it)", cloudflareRequests.length === 0, cloudflareRequests.join(", "));
 const failed = results.filter((r) => !r.ok);
 const seriousAxe = axeFindings.filter((a) => a.impact === "serious" || a.impact === "critical");
 writeFileSync(join(OUT, "report.json"), JSON.stringify({ base: BASE, results, axe: axeFindings }, null, 2));
 console.log(`\n${results.length - failed.length}/${results.length} checks passed; axe: ${seriousAxe.length} serious/critical (${axeFindings.length} total). Screenshots and report: ${OUT}`);
 for (const a of seriousAxe) console.log(`  axe ${a.impact} ${a.id} in ${a.state} (${a.nodes} nodes, e.g. ${a.sample})`);
-ws.close();
-chrome.kill();
-await sleep(500);
-try {
-  rmSync(profileDir, { recursive: true, force: true });
-} catch {}
-process.exit(failed.length ? 1 : 0);
+await finish(failed.length ? 1 : 0);

@@ -8,14 +8,20 @@ import { vi } from "vitest";
 import { timing } from "@/lib/auth/route";
 import { setStoreForTests, type Bucket } from "@/lib/ratelimit";
 import { resetAccountsConfigForTests } from "@/lib/supabase/env";
-import { COOKIE, cookieHeader, fakeSupabase } from "./fake-supabase";
+import { resetJwksCacheForTests } from "@/lib/supabase/token-proof";
+import { captchaToken, COOKIE, cookieHeader, fakeSupabase } from "./fake-supabase";
 
 export const ACCOUNTS = {
   SUPABASE_URL: "https://devrefaaaaaaaaaaaaaa.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
   SUPABASE_ENV: "development",
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: "0x4AAAAAAAtest",
+  // A real-looking secret (not one of Cloudflare's test keys), so the action and host name checks run.
+  TURNSTILE_SECRET_KEY: "0x4AAAAAAAtest-secret",
 };
+
+/** The routes that need a CAPTCHA, and the action their token must be made for. */
+const CAPTCHA_ACTIONS: Record<string, string> = { "/auth/login": "login", "/auth/signup": "signup", "/auth/resend": "resend", "/auth/forgot": "forgot" };
 const CLEARED = ["VERCEL", "VERCEL_ENV", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "RATE_LIMIT_SECRET", "APP_PASSWORD", ...Object.keys(ACCOUNTS)];
 
 export const HOST = "127.0.0.1:3000";
@@ -43,6 +49,7 @@ export function setupAccounts({ enabled = true } = {}) {
   for (const k of CLEARED) vi.stubEnv(k, "");
   if (enabled) for (const [k, v] of Object.entries(ACCOUNTS)) vi.stubEnv(k, v);
   resetAccountsConfigForTests();
+  resetJwksCacheForTests();
   const server = fakeSupabase();
   vi.stubGlobal("fetch", server.fetch);
   const store = recordingStore();
@@ -61,11 +68,16 @@ export function teardownAccounts() {
 
 type Cookies = { name: string; value: string }[];
 
-/** A same-origin JSON POST, as the app's own pages send it. */
+/**
+ * A same-origin JSON POST, as the app's own pages send it. On the CAPTCHA routes it carries a token the fake
+ * Turnstile accepts for that route, unless the body names captchaToken itself (undefined: sent without one).
+ */
 export function post(path: string, body: unknown, { cookies = [] as Cookies, headers = {} as Record<string, string>, raw }: { cookies?: Cookies; headers?: Record<string, string>; raw?: string } = {}) {
   const h: Record<string, string> = { host: HOST, ...SAME_ORIGIN, "content-type": "application/json", ...headers };
   if (cookies.length) h.cookie = cookieHeader(cookies);
-  return new NextRequest(`${ORIGIN}${path}`, { method: "POST", headers: h, body: raw ?? JSON.stringify(body) });
+  const action = CAPTCHA_ACTIONS[path];
+  const withCaptcha = action && body && typeof body === "object" && !Array.isArray(body) && !("captchaToken" in body) ? { ...body, captchaToken: captchaToken(action) } : body;
+  return new NextRequest(`${ORIGIN}${path}`, { method: "POST", headers: h, body: raw ?? JSON.stringify(withCaptcha) });
 }
 
 export function get(path: string, { cookies = [] as Cookies, headers = {} as Record<string, string> } = {}) {

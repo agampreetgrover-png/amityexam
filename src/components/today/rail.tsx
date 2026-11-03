@@ -107,7 +107,9 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
           const mark = cn(
             "grid h-8 w-8 place-items-center text-[12.5px] tabular-nums",
             !here && "rounded-full",
-            !here && (isSameMonth(d, month) ? "text-text" : "text-faint/70"),
+            // Days of the months either side are quieter than this month's, but still at a readable contrast (4.5:1+):
+            // --faint in full, not faded further with an opacity.
+            !here && (isSameMonth(d, month) ? "text-text" : "text-faint"),
             here && "font-semibold",
             here && !practical && cn("rounded-full", PAPER[tone]),
             here && practical && cn("rounded-lg border-2 border-dashed", PRACTICAL[tone]),

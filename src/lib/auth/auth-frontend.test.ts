@@ -75,7 +75,7 @@ describe("API client: same-origin JSON, no storage, server answers passed on", (
   it("posts JSON to a same-origin /auth path with cookies, and nothing else", async () => {
     const f = vi.fn(async () => json(200, { userId: A, email: "a@b.co" }));
     setFetchForTests(f as unknown as typeof fetch);
-    const r = await signIn({ email: "a@b.co", password: "pw" });
+    const r = await signIn({ email: "a@b.co", password: "pw", captchaToken: "tok" });
     expect(r).toEqual({ ok: true, userId: A, email: "a@b.co" });
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/auth/login");
@@ -83,7 +83,7 @@ describe("API client: same-origin JSON, no storage, server answers passed on", (
     expect(init.credentials).toBe("same-origin");
     expect(init.cache).toBe("no-store");
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
-    expect(JSON.parse(init.body as string)).toEqual({ email: "a@b.co", password: "pw" });
+    expect(JSON.parse(init.body as string)).toEqual({ email: "a@b.co", password: "pw", captchaToken: "tok" });
   });
 
   it("never touches localStorage, sessionStorage or document.cookie", async () => {
@@ -93,7 +93,7 @@ describe("API client: same-origin JSON, no storage, server answers passed on", (
     vi.stubGlobal("sessionStorage", trap("sessionStorage"));
     vi.stubGlobal("document", { get cookie() { touched.push("cookie"); return ""; }, set cookie(_v: string) { touched.push("cookie="); } });
     setFetchForTests((async () => json(200, {})) as unknown as typeof fetch);
-    await signUp({ email: "a@b.co", password: "abcdefghij" });
+    await signUp({ email: "a@b.co", password: "abcdefghij", captchaToken: "tok" });
     await updatePassword({ password: "abcdefghij", expectedUserId: A });
     await signOut();
     expect(touched).toEqual([]);
@@ -125,7 +125,7 @@ describe("API client: same-origin JSON, no storage, server answers passed on", (
     const f = vi.fn();
     setFetchForTests(f as unknown as typeof fetch);
     vi.stubGlobal("navigator", { onLine: false });
-    expect(await signIn({ email: "a@b.co", password: "x" })).toEqual({ ok: false, code: "offline" });
+    expect(await signIn({ email: "a@b.co", password: "x", captchaToken: "tok" })).toEqual({ ok: false, code: "offline" });
     expect(f).not.toHaveBeenCalled();
   });
 

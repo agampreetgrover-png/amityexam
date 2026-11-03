@@ -4,6 +4,7 @@ import type { AiRequest } from "../ai/schemas";
 // A tiny in-memory stand-in for the Dexie tables the analysis touches.
 type Row = { id: number; [k: string]: unknown };
 const tables: Record<string, Row[]> = {};
+let nextId = 100_000; // ids bulkAdd gives new rows, as Dexie's auto-increment would
 const table = (name: string) => {
   const rows = () => tables[name];
   const where = (q: Record<string, unknown>) => {
@@ -11,7 +12,7 @@ const table = (name: string) => {
     return {
       toArray: async () => hit(),
       sortBy: async (k: string) => [...hit()].sort((a, b) => Number(a[k]) - Number(b[k])),
-      filter: (fn: (r: Row) => boolean) => ({ toArray: async () => hit().filter(fn) }),
+      filter: (fn: (r: Row) => boolean) => ({ toArray: async () => hit().filter(fn), count: async () => hit().filter(fn).length }),
       modify: async (fn: (r: Row) => void) => hit().forEach(fn),
       delete: async () => void (tables[name] = rows().filter((r) => !hit().includes(r))),
     };
@@ -26,7 +27,7 @@ const table = (name: string) => {
       if (r) Object.assign(r, patch);
       return r ? 1 : 0;
     },
-    bulkAdd: async (xs: Row[]) => void rows().push(...xs),
+    bulkAdd: async (xs: Row[]) => void rows().push(...xs.map((x) => ({ ...x, id: x.id ?? nextId++ }))),
   };
 };
 vi.mock("../db", () => ({
@@ -256,5 +257,153 @@ describe("reading a paper", () => {
     expect(tables.materials[0].analysedAt).toBeUndefined();
     await analyseSubject(1); // not asked again this session
     expect(aiJson.mock.calls.filter(([a]) => a === "pyq")).toHaveLength(1);
+  });
+});
+
+// Review of 85f31d4: the tab's automatic start was dropped during another subject's run, and a subject with more
+// papers than one run reads stopped after the first run's eight.
+const analysedAt = (id: number) => tables.materials.find((m) => m.id === id)!.analysedAt;
+const mapCalls = () => aiJson.mock.calls.filter(([a]) => a === "pyqmap").length;
+/** How many papers each run read: the lengths of the unbroken stretches of paper requests. */
+const paperRuns = () =>
+  aiJson.mock.calls.map(([a]) => a).join(",").split("pyqmap").map((s) => s.split(",").filter((a) => a === "pyq").length).filter(Boolean);
+const papers = (subjectId: number, from: number, n: number, name: string) =>
+  Array.from({ length: n }, (_, k) => ({ id: from + k, subjectId, kind: "pyq", fileName: `${name} ${k}.pdf`, pyqExam: "end-term", text: "Q1" }));
+// Matches every question to the syllabus's first topic.
+const matchAll = async (action: string, body: AiRequest) =>
+  action === "pyqmap" ? { map: (JSON.parse(body.text!) as { i: number }[]).map(({ i }) => ({ i, t: 0 })) } : paperReply;
+
+describe("the PYQs tab opened while another subject is being analysed (issue A)", () => {
+  it("analyses that subject once the run in progress ends, and only that subject", async () => {
+    tables.subjects.push({ id: 2, name: "Maths" }, { id: 3, name: "Physics" });
+    tables.materials.push(...papers(2, 400, 1, "Maths 2024"), ...papers(3, 410, 1, "Physics 2024"));
+    const release = gated();
+    const busy = remapSubject(1);
+    await analyseSubject(2, { ifIdle: true }); // Maths's tab opens while DBMS is being matched
+    expect(paperCalls()).toEqual([]);
+    release();
+    await busy;
+    await vi.waitFor(() => expect(analysedAt(400)).toBeDefined());
+    await settle();
+    expect(paperCalls()).toEqual(["Maths 2024 0.pdf"]); // not a full run: Physics wasn't touched
+    expect(analysedAt(410)).toBeUndefined();
+  });
+
+  it("analyses that subject after a full run too, e.g. the one a Drive sync starts", async () => {
+    tables.subjects.push({ id: 2, name: "Maths" });
+    // More DBMS papers than a full run reads, so Maths's paper isn't reached by it.
+    tables.materials.push(...papers(1, 420, 12, "DBMS 2025"), ...papers(2, 440, 1, "Maths 2019"));
+    const release = gated();
+    const all = analyseAll();
+    await vi.waitFor(() => expect(paperCalls()).toHaveLength(12));
+    await analyseSubject(2, { ifIdle: true }); // Maths's tab opens during the full run
+    release();
+    await all;
+    await vi.waitFor(() => expect(analysedAt(440)).toBeDefined());
+  });
+
+  it("reads a subject's waiting paper after a re-match of that subject, which doesn't read papers itself", async () => {
+    tables.materials.push(...papers(1, 450, 1, "DBMS 2018"));
+    const release = gated();
+    const busy = remapSubject(1);
+    await analyseSubject(1, { ifIdle: true }); // the tab, seeing the re-match's progress: nothing queued
+    release();
+    await busy;
+    await vi.waitFor(() => expect(analysedAt(450)).toBeDefined());
+    await settle();
+    expect(paperCalls()).toEqual(["DBMS 2018 0.pdf"]);
+  });
+});
+
+describe("a subject with more waiting papers than one run reads (issue B)", () => {
+  it("carries on, eight papers a run, until every waiting paper is read, each once", async () => {
+    tables.materials.push(...papers(1, 500, 20, "DBMS set"));
+    aiJson.mockImplementation(matchAll);
+    await analyseSubject(1, { ifIdle: true }); // the tab opening
+    await vi.waitFor(() => expect(tables.materials.filter((m) => !m.analysedAt)).toEqual([]));
+    await settle();
+    expect(paperRuns()).toEqual([8, 8, 4]); // the per-run cap still holds
+    expect(new Set(paperCalls()).size).toBe(20);
+    expect(paperCalls()).toHaveLength(20);
+  });
+
+  it("stops at an AI limit and doesn't carry on by itself", async () => {
+    const { AiError } = await import("../ai/client");
+    tables.materials.push(...papers(1, 530, 20, "DBMS limit"));
+    aiJson.mockImplementation(async (action, body) => {
+      if (action === "pyq" && paperCalls().length > 3) throw Object.assign(new AiError("Rate limit reached"), { retryAfter: 30 });
+      return matchAll(action, body);
+    });
+    await analyseSubject(1);
+    await settle();
+    expect(paperCalls()).toHaveLength(4); // 3 read, then the limit
+    expect(tables.materials.filter((m) => !m.analysedAt)).toHaveLength(17);
+  });
+
+  it("reads each unreadable paper once, then stops instead of retrying it", async () => {
+    const { AiError } = await import("../ai/client");
+    tables.materials.push(...papers(1, 560, 10, "DBMS scan"));
+    aiJson.mockImplementation(async (action, body) => {
+      if (action === "pyq") throw new AiError("The AI returned an unexpected format. Try again.");
+      return matchAll(action, body);
+    });
+    await analyseSubject(1);
+    await settle();
+    // Past the first run's eight, the last two are read too, and then nothing more is sent.
+    expect(new Set(paperCalls()).size).toBe(10);
+    expect(paperCalls()).toHaveLength(10);
+  });
+});
+
+describe("questions the AI keeps skipping (review of 85f31d4)", () => {
+  // Fresh question ids: the analyser remembers skipped questions for the session.
+  const skipped = () => {
+    tables.pyqQuestions = [
+      { id: 600, subjectId: 1, materialId: 7, exam: "end-term", text: "Write about the weather." },
+      { id: 601, subjectId: 1, materialId: 7, exam: "end-term", text: "Discuss your holidays." },
+    ];
+    aiJson.mockResolvedValue({ map: [] }); // the AI places neither question, every time
+  };
+
+  it("don't start automatic runs, or matching requests, over and over", async () => {
+    skipped();
+    await analyseSubject(1, { ifIdle: true }); // the tab opening
+    await settle();
+    const first = mapCalls();
+    expect(first).toBe(2); // one batch, sent in the long syllabus's two slices
+    // The tab's effect firing again, the tab being reopened, a full run after a Drive sync, another upload.
+    for (let n = 0; n < 5; n++) await analyseSubject(1, { ifIdle: true });
+    await analyseAll();
+    await analyseSubject(1);
+    await settle();
+    expect(mapCalls()).toBe(first);
+    expect(tables.pyqQuestions.map((q) => q.topicId)).toEqual([undefined, undefined]);
+  });
+
+  it("aren't sent again by a run queued from the tab during a full run that just tried them", async () => {
+    skipped();
+    tables.pyqQuestions.forEach((q) => (q.id += 10)); // not yet tried this session
+    const release = gated();
+    const all = analyseAll();
+    await vi.waitFor(() => expect(mapCalls()).toBeGreaterThan(0));
+    await analyseSubject(1, { ifIdle: true }); // the tab sees the full run's progress: queued for DBMS
+    release();
+    await all;
+    await settle();
+    expect(mapCalls()).toBe(2);
+  });
+
+  it("are tried again when the student asks: Analyse now, or a re-tag of their paper", async () => {
+    skipped();
+    tables.pyqQuestions.forEach((q) => (q.id += 20));
+    await analyseSubject(1);
+    await settle();
+    expect(mapCalls()).toBe(2);
+    await analyseSubject(1, { retry: true }); // "Analyse now"
+    await settle();
+    expect(mapCalls()).toBe(4);
+    await setPaperExam(7, "end-term"); // re-tagged: matched against that syllabus afresh
+    await settle();
+    expect(mapCalls()).toBe(6);
   });
 });

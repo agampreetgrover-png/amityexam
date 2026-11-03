@@ -43,6 +43,10 @@ export function errorMessage(code: AuthErrorCode, retryAfter?: number): string {
       return "Accounts aren't available on this copy of Amity Exams. Local Mode works as usual.";
     case "blocked":
       return "This request was blocked. Reload the page and try again.";
+    case "captcha_failed":
+      return "The security check didn't go through. Complete it again, then try once more.";
+    case "switch_required":
+      return "You're signed in to an account on this device. Confirm that you want to switch before using this link.";
     case "offline":
       return "You're offline. Connect to the internet to sign in; Local Mode keeps working without it.";
     case "network":

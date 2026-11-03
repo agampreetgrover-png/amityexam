@@ -1,6 +1,6 @@
 import { RECOVERY_COOKIE, recoveryCookieOptions } from "@/lib/auth/recovery-marker";
 import { authPost, isSessionCookie, reply, sessionClient } from "@/lib/auth/route";
-import { refreshAllowed } from "@/lib/auth/server-session";
+import { sessionGate } from "@/lib/auth/server-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,8 @@ export const POST = authPost(async (ctx) => {
   // limits. If that is refused or Supabase can't be reached, the cookies are still deleted here; the session then
   // stays valid at Supabase (refresh tokens don't expire by default) until revoked another way, e.g. by D6 or
   // "sign out everywhere", but this browser no longer holds it.
-  if (hasSession && (await refreshAllowed(ctx))) {
+  // A forged session (sessionGate) has nothing at Supabase to revoke: only its cookies are deleted.
+  if (hasSession && (await sessionGate(ctx)) === "open") {
     try {
       await sessionClient(ctx, writes).auth.signOut({ scope: "local" });
     } catch (e) {

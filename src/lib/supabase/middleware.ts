@@ -1,10 +1,11 @@
 import "server-only";
 import { combineChunks, stringFromBase64URL } from "@supabase/ssr";
 import type { NextRequest, NextResponse } from "next/server";
-import { checkLimits, clientIp } from "@/lib/ratelimit";
+import { checkLimits } from "@/lib/ratelimit";
 import { accountsConfig } from "./env";
 import { callLogOf, createSupabaseServerClient } from "./server";
 import { classifyAuthError } from "./session-policy";
+import { proveAccessToken, refreshChecks } from "./token-proof";
 
 // Keeps a signed-in session fresh when a page is loaded. It decides nothing about who is signed in: that is getUser()
 // in the route handlers (src/lib/auth.ts), which also refresh a session themselves when this one didn't.
@@ -16,8 +17,10 @@ import { classifyAuthError } from "./session-policy";
 //   2. it carries THIS project's session cookie (sb-<ref>-auth-token), which reads as a session with a refresh token
 //      whose access token expires within REFRESH_MARGIN_S (a made-up or garbled cookie, or a session that's still
 //      fresh, sends nothing at all);
-//   3. the rate limits allow it: per client IP first, then a global cap below Supabase's own per-IP /token budget
-//      (every refresh leaves from this server's IPs);
+//   3. its access token wasn't forged (token-proof.ts: checked against the project's published signing keys), and the
+//      rate limits allow it: per client IP first; then, for a verified session, per session and a global cap below
+//      Supabase's own per-IP /token budget (every refresh leaves from this server's IPs); for a token that can't be
+//      checked here, a small budget of its own, so made-up cookies can't use up what real sessions need;
 //   4. it fits inside one deadline (DEADLINE_MS) that covers the limit check and every call to Supabase, retries
 //      included: after it, no further call goes out (see timedFetch). A page waits at most about that long.
 //
@@ -57,17 +60,26 @@ export const sessionCookieName = (supabaseUrl: string) => `sb-${new URL(supabase
  * with its own helpers. This only decides whether to TRY a refresh; it is never trusted to say who anyone is.
  */
 export async function sessionExpiresAt(cookies: { name: string; value: string }[], key: string): Promise<number | null> {
+  const session = await readStoredSession(cookies, key);
+  if (typeof session !== "object") return null;
+  const { expires_at, refresh_token } = session as { expires_at?: unknown; refresh_token?: unknown };
+  if (typeof refresh_token !== "string" || !refresh_token) return null; // nothing to refresh with
+  return typeof expires_at === "number" && Number.isFinite(expires_at) ? expires_at : null;
+}
+
+/**
+ * The stored session exactly as @supabase/ssr hands it to auth-js (same chunk and base64 handling), parsed; "none"
+ * when there is no session cookie at all; "unreadable" when it is there but isn't a JSON object. Never trusted to say
+ * who anyone is: it only decides whether (and within which limits) Supabase may be asked.
+ */
+export async function readStoredSession(cookies: { name: string; value: string }[], key: string): Promise<Record<string, unknown> | "none" | "unreadable"> {
   try {
     const raw = await combineChunks(key, (name) => cookies.find((c) => c.name === name)?.value);
-    if (!raw) return null;
-    const json = raw.startsWith("base64-") ? stringFromBase64URL(raw.slice("base64-".length)) : raw;
-    const session: unknown = JSON.parse(json);
-    if (!session || typeof session !== "object") return null;
-    const { expires_at, refresh_token } = session as { expires_at?: unknown; refresh_token?: unknown };
-    if (typeof refresh_token !== "string" || !refresh_token) return null; // nothing to refresh with
-    return typeof expires_at === "number" && Number.isFinite(expires_at) ? expires_at : null;
+    if (!raw) return "none";
+    const value: unknown = JSON.parse(raw.startsWith("base64-") ? stringFromBase64URL(raw.slice("base64-".length)) : raw);
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : "unreadable";
   } catch {
-    return null;
+    return "unreadable";
   }
 }
 
@@ -96,13 +108,12 @@ export async function refreshSession(req: NextRequest, { now = Date.now, deadlin
   // One deadline for everything from here on, shared by every call Supabase's client makes (retries included).
   const deadline = AbortSignal.timeout(deadlineMs);
   const started = Date.now();
-  const limit = await checkLimits(
-    [
-      { bucket: "session:ip", key: clientIp(req.headers) },
-      { bucket: "session:global", key: "all" },
-    ],
-    LIMIT_TIMEOUT_MS,
-  );
+  // Is the access token one this project issued (token-proof.ts)? A forged one is left alone: no budget is spent and
+  // Supabase isn't asked. Only a verified one can use the main refresh budget; one that can't be checked has its own.
+  const stored = await readStoredSession(cookies, key);
+  const proof = await proveAccessToken(typeof stored === "object" ? stored.access_token : undefined, config, { deadline });
+  if (proof.kind === "forged") return keep;
+  const limit = await checkLimits(refreshChecks(proof, req.headers), LIMIT_TIMEOUT_MS);
   // Two separate reasons to stop here: the limits refused or couldn't answer in time; or they allowed it, but too
   // little of the deadline is left to start a refresh that could finish (one cut off midway can leave the browser
   // holding a refresh token Supabase has already rotated).

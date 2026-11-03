@@ -4,7 +4,7 @@ import { RECOVERY_COOKIE } from "@/lib/auth/recovery-marker";
 import { CookieWrites, timing } from "@/lib/auth/route";
 import { buildServerClient, callLogOf } from "@/lib/supabase/server";
 import { sessionEvidence } from "@/lib/supabase/session-policy";
-import { COOKIE, sessionBody, signedInCookies, SUPABASE_URL, USER_ID, type Reply } from "@/test/fake-supabase";
+import { captchaToken, COOKIE, sessionBody, signedInCookies, SUPABASE_URL, USER_ID, type Reply } from "@/test/fake-supabase";
 import { isDeletion, post, sessionIn, setCookies, setupAccounts, teardownAccounts, type Harness } from "@/test/auth-routes";
 import { POST as forgot } from "./forgot/route";
 import { POST as login } from "./login/route";
@@ -45,10 +45,10 @@ describe("POST /auth/login", () => {
     expect(h.server.calls[0].body).toMatchObject({ email: "a@example.test", password: GOOD });
   });
 
-  it("applies login:ip, then login:ip-email keyed by an HMAC of the address (never the address itself)", async () => {
+  it("applies login:ip, then login:ip-email keyed by an HMAC of the address (never the address itself), then login:global", async () => {
     h.server.reply("password", { status: 200, body: sessionBody(3600) });
     await signIn({ email: "A@Example.test", password: GOOD });
-    expect(h.store.checks.map((c) => c.bucket)).toEqual(["login:ip", "login:ip-email"]);
+    expect(h.store.checks.map((c) => c.bucket)).toEqual(["login:ip", "login:ip-email", "login:global"]);
     const key = h.store.checks[1].key;
     expect(key).toMatch(/^local:[0-9a-f]{64}$/);
     expect(key.toLowerCase()).not.toContain("example");
@@ -109,12 +109,11 @@ describe("POST /auth/login", () => {
     expect((await signIn({ email: "a@example.test", password: "short" })).status).toBe(200);
   });
 
-  it("passes the captcha token to Supabase; rejects a non-string or huge one", async () => {
+  it("checks the CAPTCHA itself and never passes the token on to Supabase (it works only once)", async () => {
     h.server.reply("password", { status: 200, body: sessionBody(3600) });
-    await signIn({ email: "a@example.test", password: GOOD, captchaToken: "tok-123" });
-    expect(h.server.calls[0].body).toMatchObject({ gotrue_meta_security: { captcha_token: "tok-123" } });
-    expect((await signIn({ email: "a@example.test", password: GOOD, captchaToken: 5 })).body).toEqual({ error: { code: "invalid_input" } });
-    expect((await signIn({ email: "a@example.test", password: GOOD, captchaToken: "x".repeat(4097) })).body).toEqual({ error: { code: "invalid_input" } });
+    expect((await signIn()).status).toBe(200);
+    expect(h.server.captchaCalls).toEqual([{ token: captchaToken("login"), secret: "0x4AAAAAAAtest-secret" }]);
+    expect(JSON.stringify(h.server.calls[0].body)).not.toContain("captcha");
   });
 
   it("replaces another account's session: its chunks the new session doesn't overwrite are deleted", async () => {
@@ -154,7 +153,7 @@ describe("the session race: a stale cookie's late refresh can't touch a new sign
 
   for (const [route, handler, body, script] of [
     ["/auth/login", login, { email: "a@example.test", password: GOOD }, () => h.server.reply("password", { status: 200, body: sessionBody(3600) })],
-    ["/auth/verify", verify, { tokenHash: "a".repeat(56), type: "recovery" }, () => h.server.reply("verify", { status: 200, body: sessionBody(3600, "", { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) }] }) })],
+    ["/auth/verify", verify, { tokenHash: "a".repeat(56), type: "recovery", replaceSession: true }, () => h.server.reply("verify", { status: 200, body: sessionBody(3600, "", { amr: [{ method: "recovery", timestamp: Math.floor(Date.now() / 1000) }] }) })],
   ] as const) {
     it(`${route}: never refreshes the request's stale session, and the response holds the new session`, async () => {
       h.server.reply("refresh", err(400, "refresh_token_not_found", 50)); // would be the stale session's answer
@@ -184,7 +183,7 @@ describe("POST /auth/verify", () => {
       expect(r.body).toEqual({ userId: USER_ID, email: "a@example.test", type });
       expect(await sessionIn(r.res)).not.toBeNull();
       expect(h.server.calls[0].body).toMatchObject({ token_hash: HASH, type });
-      expect(h.store.checks.map((c) => c.bucket)).toEqual(["verify:ip"]);
+      expect(h.store.checks.map((c) => c.bucket)).toEqual(["verify:ip", "verify:global"]);
       // Only a recovery link marks its session for setting a password (HttpOnly, Strict, only sent to /auth).
       const marker = r.cookies.get(RECOVERY_COOKIE);
       if (type === "recovery") {
@@ -233,8 +232,10 @@ describe("POST /auth/verify", () => {
   ] as const) {
     it(`a link ${why} → ${expected[1]}, no cookie written`, async () => {
       h.server.reply("verify", reply as Reply);
-      const r = await open({ tokenHash: HASH, type: "signup" }, await signedInCookies(3600));
+      // Over an existing session (the switch confirmed): a failed link changes nothing, and revokes nothing.
+      const r = await open({ tokenHash: HASH, type: "signup", replaceSession: true }, await signedInCookies(3600));
       expect([r.status, r.body.error?.code]).toEqual(expected);
+      expect(endpoints()).not.toContain("logout");
       expect(r.cookies.size).toBe(0);
     });
   }
@@ -333,7 +334,7 @@ describe("email privacy: POST /auth/signup", () => {
   it("applies signup:ip then signup:email (HMAC); over either → 429, Supabase never asked", async () => {
     h.server.reply("signup", NEW);
     await send();
-    expect(h.store.checks.map((c) => c.bucket)).toEqual(["signup:ip", "signup:email"]);
+    expect(h.store.checks.map((c) => c.bucket)).toEqual(["signup:ip", "signup:email", "email:global"]);
     expect(h.store.checks[1].key).toMatch(/^[0-9a-f]{64}$/);
     h.store.refuse.add("signup:email");
     expect((await send()).status).toBe(429);
@@ -342,8 +343,8 @@ describe("email privacy: POST /auth/signup", () => {
 });
 
 describe.each([
-  ["/auth/resend", resend, "resend", ["resend:ip", "resend:email"]],
-  ["/auth/forgot", forgot, "recover", ["forgot:ip", "forgot:email"]],
+  ["/auth/resend", resend, "resend", ["resend:ip", "resend:email", "email:global"]],
+  ["/auth/forgot", forgot, "recover", ["forgot:ip", "forgot:email", "email:global"]],
 ] as const)("email privacy: POST %s", (path, handler, endpoint, buckets) => {
   const send = async (body: object = { email: "a@example.test" }, headers: Record<string, string> = {}) => {
     const res = await handler(post(path, body, { headers }));
@@ -382,7 +383,7 @@ describe.each([
     expect((await send()).body).toEqual({ error: { code: "blocked" } });
   });
 
-  it(`applies ${buckets.join(" then ")}; over either → 429 with Retry-After`, async () => {
+  it(`applies ${buckets.join(" then ")}; over any → 429 with Retry-After`, async () => {
     h.server.reply(endpoint, { status: 200, body: {} });
     await send();
     expect(h.store.checks.map((c) => c.bucket)).toEqual(buckets);
@@ -393,12 +394,13 @@ describe.each([
     expect(endpoints()).toEqual([endpoint]); // the refused request never reached Supabase
   });
 
-  it("passes the captcha token on, reads no cookie and writes none", async () => {
+  it("checks the CAPTCHA itself (never passed on), reads no cookie and writes none", async () => {
     h.server.reply(endpoint, { status: 200, body: {} });
-    const res = await handler(post(path, { email: "a@example.test", captchaToken: "tok-9" }, { cookies: await signedInCookies(-10) }));
+    const res = await handler(post(path, { email: "a@example.test" }, { cookies: await signedInCookies(-10) }));
     expect(setCookies(res).size).toBe(0);
     expect(endpoints()).toEqual([endpoint]); // the request's stale session was not refreshed
-    expect(h.server.calls[0].body).toMatchObject({ gotrue_meta_security: { captcha_token: "tok-9" } });
+    expect(h.server.captchaCalls).toHaveLength(1);
+    expect(JSON.stringify(h.server.calls[0].body)).not.toContain("captcha");
   });
 
   it("never builds a link from the request's Host (no redirect_to, even with a forged forwarded host)", async () => {

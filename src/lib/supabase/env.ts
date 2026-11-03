@@ -21,6 +21,11 @@ export type AccountsConfig =
       env: SupabaseEnvName;
       projectRef: string;
       turnstileSiteKey: string;
+      /**
+       * Server-only Turnstile secret: this server checks every sign-in, sign-up and email request's CAPTCHA itself
+       * (src/lib/auth/captcha.ts). Required: without it accounts stay off, so there is no way to run them unprotected.
+       */
+      turnstileSecretKey: string;
       /** Shared rate-limit store: required on Vercel, optional elsewhere (local development uses memory). */
       upstash: { url: string; token: string } | null;
       /** Keys rate-limit buckets by email without storing the address. Generated per process when unset locally. */
@@ -101,6 +106,12 @@ export function publishableKeyProblem(key: string, projectRef: string): string |
   return "SUPABASE_PUBLISHABLE_KEY is not a publishable (sb_publishable_…) or anon key";
 }
 
+/**
+ * Cloudflare's published Turnstile test keys: site keys like 1x00000000000000000000AA and secrets like
+ * 1x0000000000000000000000000000000AA (prefix 1x/2x/3x, zeros, two capital letters). Real keys start with 0x.
+ */
+export const isTurnstileTestKey = (key: string) => /^[1-3]x0+[A-Z]{2}$/.test(key);
+
 export function readAccountsConfig(env: Env = process.env, projects = SUPABASE_PROJECTS): AccountsConfig {
   const off = (reason: string): AccountsConfig => ({ enabled: false, reason });
   // Which deployment this is (src/lib/vercel.ts), failing closed: a recognisably-Vercel deployment whose VERCEL_ENV is
@@ -137,6 +148,14 @@ export function readAccountsConfig(env: Env = process.env, projects = SUPABASE_P
     if (!projects.development.includes(projectRef)) return off(`project ${projectRef} isn't listed as a development project in src/lib/supabase/projects.ts`);
   }
   if (!turnstileSiteKey) return off("NEXT_PUBLIC_TURNSTILE_SITE_KEY is not set");
+  // The CAPTCHA is checked here, by this server, never left to a setting in Supabase that the app can't see: no
+  // secret, no accounts. Cloudflare's test keys (always pass / always fail) are fine for development and Preview,
+  // never for Production.
+  const turnstileSecretKey = env.TURNSTILE_SECRET_KEY?.trim();
+  if (!turnstileSecretKey) return off("TURNSTILE_SECRET_KEY is not set");
+  if (deployment.kind === "vercel" && deployment.env === "production" && (isTurnstileTestKey(turnstileSiteKey) || isTurnstileTestKey(turnstileSecretKey))) {
+    return off("Cloudflare's Turnstile test keys can't be used in Production");
+  }
 
   const upstashUrl = env.UPSTASH_REDIS_REST_URL?.trim();
   const upstashToken = env.UPSTASH_REDIS_REST_TOKEN?.trim();
@@ -153,6 +172,7 @@ export function readAccountsConfig(env: Env = process.env, projects = SUPABASE_P
     env: supabaseEnv,
     projectRef,
     turnstileSiteKey,
+    turnstileSecretKey,
     upstash,
     rateLimitSecret,
   };

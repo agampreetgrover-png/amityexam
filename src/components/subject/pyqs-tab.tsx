@@ -52,7 +52,8 @@ export function PyqsTab({ subject, mode }: TabProps) {
   const canMap = modeTopics.length > 0 && modeQuestions.some((q) => needsMapping(q, topicIds));
 
   // Start on our own when there's work and we're online. `pending` and `canMap` change as a run goes, so this
-  // fires during the run it started: `ifIdle` makes those calls no-ops instead of queuing more AI work.
+  // fires during the run it started: `ifIdle` makes those calls no-ops instead of queuing more AI work. During another
+  // subject's run it queues this subject instead, and a subject with more papers than one run reads carries on by itself.
   useEffect(() => {
     if (online && (pending > 0 || canMap)) analyseSubject(subjectId, { ifIdle: true });
   }, [subjectId, online, pending, canMap]);
@@ -96,7 +97,8 @@ export function PyqsTab({ subject, mode }: TabProps) {
           </div>
           {(pending > 0 || canMap) ? (
             // While the analyser runs the button says so, rather than only greying out.
-            <Button onClick={() => analyseSubject(subjectId)} disabled={!online || analysis.running}>
+            // Asked by hand, so questions the AI skipped earlier this session are sent again too.
+            <Button onClick={() => analyseSubject(subjectId, { retry: true })} disabled={!online || analysis.running}>
               {analysis.running ? <><Loader2 size={16} className={spin} aria-hidden /> Analysing…</> : <><Sparkles size={16} /> Analyse now</>}
             </Button>
           ) : failedIds.length > 0 && (

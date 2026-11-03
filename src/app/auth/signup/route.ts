@@ -1,12 +1,14 @@
-import { authPost, captchaFrom, codeOf, CookieWrites, emailBucket, emailFrom, enforceLimits, failure, freshClient, isRateLimited, noSoonerThan, refuse, reply, statusOf, type SupabaseError } from "@/lib/auth/route";
+import { authPost, captchaFrom, codeOf, CookieWrites, emailBucket, emailFrom, enforceLimits, failure, freshClient, isRateLimited, noSoonerThan, refuse, reply, requireCaptcha, statusOf, type SupabaseError } from "@/lib/auth/route";
 import { passwordProblem } from "@/lib/auth/password-policy";
 import { clientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /auth/signup { email, password, captchaToken? } → {}
-// errors: invalid_input (field), weak_password, rate_limited, unavailable, disabled (+ blocked)
+// POST /auth/signup { email, password, captchaToken } → {}
+// errors: invalid_input (field), weak_password, captcha_failed, rate_limited, unavailable, disabled (+ blocked)
+// The CAPTCHA is checked here after the per-IP and per-address limits, then the global email cap (shared with
+// resend and forgot). Neither depends on whether the address has an account.
 // The answer is the same for a new address and one that already has an account (Supabase sends a confirmation email
 // to the first and nothing to the second): every outcome that could depend on the address is a plain {}, and every
 // answer after the limits waits out the same minimum time (noSoonerThan). No cookie is ever set: a new account
@@ -24,8 +26,10 @@ export const POST = authPost(async (ctx, body) => {
     { bucket: "signup:ip", key: clientIp(ctx.req.headers) },
     { bucket: "signup:email", key: emailBucket(ctx, email) },
   ]);
+  await requireCaptcha(ctx, captchaToken, "signup");
+  await enforceLimits([{ bucket: "email:global", key: "all" }]);
 
-  const { error } = await freshClient(ctx, new CookieWrites()).auth.signUp({ email, password: password as string, options: { captchaToken } });
+  const { error } = await freshClient(ctx, new CookieWrites()).auth.signUp({ email, password: password as string });
   const res = signupOutcome(error);
   await noSoonerThan(started);
   return res;

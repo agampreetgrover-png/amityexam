@@ -1,7 +1,7 @@
 import "server-only";
-import { combineChunks, stringFromBase64URL } from "@supabase/ssr";
-import { checkLimits, clientIp } from "@/lib/ratelimit";
-import { LIMIT_TIMEOUT_MS, REFRESH_MARGIN_S } from "@/lib/supabase/middleware";
+import { checkLimits } from "@/lib/ratelimit";
+import { LIMIT_TIMEOUT_MS, readStoredSession, REFRESH_MARGIN_S } from "@/lib/supabase/middleware";
+import { checkChecks, proveAccessToken, refreshChecks } from "@/lib/supabase/token-proof";
 import type { SignedOutReason } from "./client";
 import type { AuthContext } from "./route";
 
@@ -32,40 +32,30 @@ export function signedOutReason(code: string): SignedOutReason {
 }
 
 /**
- * The stored session exactly as @supabase/ssr hands it to auth-js (same chunk and base64 handling), parsed; "none"
- * when there is no session cookie at all; "unreadable" when it is there but isn't a JSON object.
+ * Whether a route may let Supabase's client loose on the request's session:
+ *   "open"    yes (or there is no session cookie, so auth-js won't ask Supabase anything);
+ *   "refused" the limits refused, or the store couldn't answer (fail closed): answer "unavailable", change nothing;
+ *   "forged"  the access token is not one this project issued (token-proof.ts), or the cookie isn't a session at all:
+ *             signed out, without asking Supabase or spending any budget.
+ * Every call auth-js makes leaves from this server's IPs, so none may happen unlimited:
+ *   - a possible REFRESH (one POST /token) uses the refresh buckets: auth-js refreshes on any truthy expires_at
+ *     ("1", true, [1]…) it reads as past, so anything but a numeric expires_at beyond the refresh margin counts;
+ *   - otherwise the session is only CHECKED (one GET /user or POST /logout), with the check buckets (M2: a made-up
+ *     cookie with a far-future expires_at used to skip every limit and reach /user each time).
+ * Only a verified session (signed by the project's published key) gets the main buckets; one that can't be checked
+ * here shares a small budget of its own.
  */
-async function storedSession(ctx: AuthContext): Promise<Record<string, unknown> | "none" | "unreadable"> {
-  const cookies = ctx.req.cookies.getAll();
-  try {
-    const raw = await combineChunks(ctx.cookieKey, (name) => cookies.find((c) => c.name === name)?.value);
-    if (!raw) return "none";
-    const value: unknown = JSON.parse(raw.startsWith("base64-") ? stringFromBase64URL(raw.slice("base64-".length)) : raw);
-    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : "unreadable";
-  } catch {
-    return "unreadable";
-  }
-}
+export type SessionGate = "open" | "refused" | "forged";
 
-/**
- * Whether a route may let Supabase's client loose on the request's session. Every refresh leaves from this server's
- * IPs and shares Supabase's per-IP /token budget, so whenever one COULD happen, the middleware's refresh limits apply
- * first (a store that can't answer refuses). Only a session that plainly needs no refresh skips them: a numeric
- * expires_at further away than the refresh margin. Anything else counts as a possible refresh, because auth-js
- * refreshes on any truthy expires_at ("1", true, [1]…) it reads as past, and a cookie is whatever the client sends.
- */
-export async function refreshAllowed(ctx: AuthContext): Promise<boolean> {
-  const s = await storedSession(ctx);
-  if (s === "none") return true; // nothing to refresh
-  if (s !== "unreadable" && typeof s.expires_at === "number" && Number.isFinite(s.expires_at) && s.expires_at - Date.now() / 1000 > REFRESH_MARGIN_S) return true;
-  const r = await checkLimits(
-    [
-      { bucket: "session:ip", key: clientIp(ctx.req.headers) },
-      { bucket: "session:global", key: "all" },
-    ],
-    LIMIT_TIMEOUT_MS,
-  );
-  return r.ok;
+export async function sessionGate(ctx: AuthContext): Promise<SessionGate> {
+  const s = await readStoredSession(ctx.req.cookies.getAll(), ctx.cookieKey);
+  if (s === "none") return "open";
+  if (s === "unreadable") return "forged"; // auth-js can't read it either: nothing there for Supabase to answer about
+  const proof = await proveAccessToken(s.access_token, ctx.config, { deadline: ctx.deadline });
+  if (proof.kind === "forged") return "forged";
+  const fresh = typeof s.expires_at === "number" && Number.isFinite(s.expires_at) && s.expires_at - Date.now() / 1000 > REFRESH_MARGIN_S;
+  const r = await checkLimits(fresh ? checkChecks(proof, ctx.req.headers) : refreshChecks(proof, ctx.req.headers), LIMIT_TIMEOUT_MS);
+  return r.ok ? "open" : "refused";
 }
 
 /** The claims of an access token, read without checking its signature: callers only use tokens Supabase vouched for. */

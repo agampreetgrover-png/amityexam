@@ -1,16 +1,20 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { clientIp, type Bucket } from "@/lib/ratelimit";
-import { authPost, captchaFrom, codeOf, CookieWrites, emailBucket, emailFrom, enforceLimits, failure, freshClient, isRateLimited, noSoonerThan, reply, statusOf, type SupabaseError } from "./route";
+import type { CaptchaAction } from "./captcha";
+import { authPost, captchaFrom, codeOf, CookieWrites, emailBucket, emailFrom, enforceLimits, failure, freshClient, isRateLimited, noSoonerThan, reply, requireCaptcha, statusOf, type SupabaseError } from "./route";
 
 // The two "send an email to this address" routes (/auth/resend, /auth/forgot). Whether the address has an account
 // must not show in the answer or its timing: every outcome that could depend on it is a plain {}, and every answer
 // after the rate limits waits out the same minimum time. What CAN be reported doesn't depend on the address: our own
 // limits (per IP, per address), a bad address, a refused captcha. Even "Supabase not answering" can't be: see outcome().
 
-type Send = (supabase: SupabaseClient, email: string, captchaToken: string | undefined) => Promise<{ error: SupabaseError }>;
+// The CAPTCHA is checked by this server after the per-IP and per-address limits (and never passed on to Supabase),
+// then the global email cap shared with sign-up: none of that depends on the address either.
 
-export function emailOnlyRoute([ipBucket, emailBucketName]: [Bucket, Bucket], send: Send) {
+type Send = (supabase: SupabaseClient, email: string) => Promise<{ error: SupabaseError }>;
+
+export function emailOnlyRoute([ipBucket, emailBucketName]: [Bucket, Bucket], action: CaptchaAction, send: Send) {
   return authPost(async (ctx, body) => {
     const started = Date.now();
     const email = emailFrom(body);
@@ -19,8 +23,10 @@ export function emailOnlyRoute([ipBucket, emailBucketName]: [Bucket, Bucket], se
       { bucket: ipBucket, key: clientIp(ctx.req.headers) },
       { bucket: emailBucketName, key: emailBucket(ctx, email) },
     ]);
+    await requireCaptcha(ctx, captchaToken, action);
+    await enforceLimits([{ bucket: "email:global", key: "all" }]);
     // No cookies are read or written: these routes have nothing to do with the browser's session.
-    const { error } = await send(freshClient(ctx, new CookieWrites()), email, captchaToken);
+    const { error } = await send(freshClient(ctx, new CookieWrites()), email);
     const res = outcome(error);
     await noSoonerThan(started);
     return res;

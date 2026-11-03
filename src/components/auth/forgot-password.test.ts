@@ -39,8 +39,8 @@ describe("forgot-password answer", () => {
     for (const code of sent) expect(forgotOutcome({ ok: false, code })).toBe("sent");
   });
 
-  it("passes on transport and availability problems", () => {
-    const shown: AuthErrorCode[] = ["offline", "network", "rate_limited", "unavailable", "disabled", "not_available", "blocked"];
+  it("passes on transport and availability problems, and a failed security check (checked before the address)", () => {
+    const shown: AuthErrorCode[] = ["offline", "network", "rate_limited", "unavailable", "disabled", "not_available", "blocked", "captcha_failed"];
     for (const code of shown) expect(forgotOutcome({ ok: false, code })).toEqual({ ok: false, code });
     expect(forgotOutcome({ ok: false, code: "rate_limited", retryAfter: 30 })).toEqual({ ok: false, code: "rate_limited", retryAfter: 30 });
   });

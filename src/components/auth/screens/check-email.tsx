@@ -9,6 +9,7 @@ import { normalizeEmail, validateEmailOnly } from "@/lib/auth/validate";
 import { SubmitButton, Notice } from "../feedback";
 import { TextField } from "../fields";
 import { AuthShell, FormCard, useAccountsStatus } from "../shell";
+import { captchaOrFailure, useCaptcha } from "../turnstile";
 import { RetryButton, StateScreen, UseLocalModeButton } from "../state-screen";
 import { useAuthForm } from "../use-form";
 import { forgotOutcome } from "./forgot-password";
@@ -98,12 +99,17 @@ function ResendForm({ pending, disabled }: { pending: string | null; disabled: b
     setEndsAt(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
   }, [pending]);
 
+  const captcha = useCaptcha("resend");
   const form = useAuthForm<"email", object>({
     validate: () => (pending ? {} : validateEmailOnly({ email })),
     submit: async () => {
       setSent(false);
+      const c = captchaOrFailure(captcha.token);
+      if (!("token" in c)) return c;
+      const result = await resendVerification({ email: pending ?? normalizeEmail(email), captchaToken: c.token });
+      captcha.reset(); // used up, whatever the answer
       // Always a generic answer: nothing shown here says whether an account uses the address.
-      const outcome = forgotOutcome(await resendVerification({ email: pending ?? normalizeEmail(email) }));
+      const outcome = forgotOutcome(result);
       const wait = resendCooldown(outcome);
       if (wait) startCooldown(wait);
       return outcome === "sent" ? { ok: true } : outcome;
@@ -156,7 +162,8 @@ function ResendForm({ pending, disabled }: { pending: string | null; disabled: b
   if (pending) {
     return (
       <form ref={form.formRef} noValidate onSubmit={form.onSubmit} aria-describedby={f ? "resend-error" : undefined}>
-        {button}
+        {captcha.widget}
+        <div className="mt-4">{button}</div>
         {feedback}
       </form>
     );
@@ -184,6 +191,7 @@ function ResendForm({ pending, disabled }: { pending: string | null; disabled: b
             error={form.errors.email}
           />
         </fieldset>
+        {captcha.widget}
         {feedback}
         {button}
       </form>

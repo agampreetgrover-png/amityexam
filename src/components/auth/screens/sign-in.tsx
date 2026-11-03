@@ -13,6 +13,7 @@ import { Button, buttonClass } from "../../ui";
 import { SubmitButton, Notice } from "../feedback";
 import { PasswordField, TextField } from "../fields";
 import { AuthShell, FormCard, useAccountsStatus } from "../shell";
+import { captchaOrFailure, useCaptcha } from "../turnstile";
 import { RetryButton, StateScreen, UseLocalModeButton } from "../state-screen";
 import { useAuthForm } from "../use-form";
 
@@ -58,9 +59,16 @@ function SignInForm({ next, disabled }: { next: string; disabled: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const captcha = useCaptcha("login");
   const form = useAuthForm<"email" | "password", { userId: string; email: string }>({
     validate: () => validateSignIn({ email, password }),
-    submit: () => signIn({ email: normalizeEmail(email), password }),
+    submit: async () => {
+      const c = captchaOrFailure(captcha.token);
+      if (!("token" in c)) return c;
+      const r = await signIn({ email: normalizeEmail(email), password, captchaToken: c.token });
+      captcha.reset(); // used up, whatever the answer
+      return r;
+    },
     // Signed in: the next screen asks before opening the account's data (D3); it never switches by itself.
     onSuccess: () => router.push(`/switch?next=${encodeURIComponent(next)}`),
   });
@@ -104,6 +112,7 @@ function SignInForm({ next, disabled }: { next: string; disabled: boolean }) {
             </Link>
           </div>
         </fieldset>
+        {captcha.widget}
         {f && (
           <div id="signin-error" className="mt-5">
             <Notice

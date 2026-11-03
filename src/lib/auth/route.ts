@@ -9,6 +9,7 @@ import { sessionCookieName } from "@/lib/supabase/middleware";
 import { buildServerClient, secureCookieOptions, type CookieJar } from "@/lib/supabase/server";
 import { emailError, normalizeEmail } from "./validate";
 import { authRequestRefusal } from "./request-guard";
+import { MAX_CAPTCHA_TOKEN_CHARS, requestHostname, verifyCaptcha, type CaptchaAction } from "./captcha";
 
 // What every /auth/* route handler shares (the contract they answer is in src/lib/auth/client.ts):
 //   - authRequestRefusal first (same-origin + JSON), then "accounts off" → disabled, then a size-limited JSON body;
@@ -22,8 +23,6 @@ export type EnabledConfig = Extract<AccountsConfig, { enabled: true }>;
 export const ROUTE_DEADLINE_MS = 8000;
 /** Auth bodies are tiny: an email, a password, a captcha token. */
 export const MAX_BODY_BYTES = 8 * 1024;
-/** A captcha token is a few hundred characters; anything far longer is not one. */
-const MAX_CAPTCHA_CHARS = 4096;
 
 export type Field = "email" | "password";
 
@@ -119,12 +118,32 @@ export function emailFrom(body: Record<string, unknown>): string {
   return normalizeEmail(raw as string);
 }
 
-/** An optional captcha token, passed to Supabase (which checks it when captcha is on for the project). */
-export function captchaFrom(body: Record<string, unknown>): string | undefined {
+/**
+ * The CAPTCHA token every sign-in, sign-up and email request must carry (H1). Missing or malformed → captcha_failed,
+ * before anything is counted or asked. It is checked by requireCaptcha, never passed on to Supabase.
+ */
+export function captchaFrom(body: Record<string, unknown>): string {
   const t = body.captchaToken;
-  if (t === undefined || t === null || t === "") return undefined;
-  if (typeof t !== "string" || t.length > MAX_CAPTCHA_CHARS) refuse(failure(400, "invalid_input"));
+  if (typeof t !== "string" || !t || t.length > MAX_CAPTCHA_TOKEN_CHARS) refuse(failure(400, "captcha_failed"));
   return t as string;
+}
+
+/**
+ * Cloudflare must vouch for the token, for this form's action and this site (src/lib/auth/captcha.ts). Refused with
+ * 403 captcha_failed otherwise; 503 when Cloudflare can't be asked (fail closed). Called after the per-IP limits (so a
+ * flood without CAPTCHAs is turned away cheaply) and before the global ones (so only solved CAPTCHAs can use those).
+ */
+export async function requireCaptcha(ctx: AuthContext, token: string, action: CaptchaAction): Promise<void> {
+  const result = await verifyCaptcha({
+    secret: ctx.config.turnstileSecretKey,
+    token,
+    action,
+    hostname: requestHostname(ctx.req.headers.get("host") ?? ""),
+    deadline: ctx.deadline,
+  });
+  if (result === "ok") return;
+  if (result === "failed") refuse(failure(403, "captcha_failed"));
+  refuse(unavailable());
 }
 
 // ── Rate limits ──────────────────────────────────────────────────────────────────────────────────────────────────

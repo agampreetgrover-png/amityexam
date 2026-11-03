@@ -10,6 +10,7 @@ import { normalizeEmail, validateSignUp } from "@/lib/auth/validate";
 import { SubmitButton, Notice } from "../feedback";
 import { PasswordField, TextField } from "../fields";
 import { AccountFacts, AuthShell, FormCard, useAccountsStatus } from "../shell";
+import { captchaOrFailure, useCaptcha } from "../turnstile";
 import { RetryButton, StateScreen, UseLocalModeButton } from "../state-screen";
 import { useAuthForm } from "../use-form";
 import { AlreadySignedIn } from "./sign-in";
@@ -41,9 +42,16 @@ function SignUpForm({ disabled }: { disabled: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const captcha = useCaptcha("signup");
   const form = useAuthForm<"email" | "password" | "confirm", object>({
     validate: () => validateSignUp({ email, password, confirm }),
-    submit: () => signUp({ email: normalizeEmail(email), password }),
+    submit: async () => {
+      const c = captchaOrFailure(captcha.token);
+      if (!("token" in c)) return c;
+      const r = await signUp({ email: normalizeEmail(email), password, captchaToken: c.token });
+      captcha.reset(); // used up, whatever the answer
+      return r;
+    },
     onSuccess: () => {
       // Only the address goes along (this tab's sessionStorage), so /check-email can offer to send the link again.
       rememberPendingEmail(normalizeEmail(email));
@@ -96,6 +104,7 @@ function SignUpForm({ disabled }: { disabled: boolean }) {
             error={form.errors.confirm}
           />
         </fieldset>
+        {captcha.widget}
         {f && (
           <div id="signup-error" className="mt-5">
             <Notice tone="error">{errorMessage(f.code, f.retryAfter)}</Notice>

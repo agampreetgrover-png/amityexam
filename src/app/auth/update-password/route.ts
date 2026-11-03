@@ -3,7 +3,7 @@ import { verifyUser } from "@/lib/auth";
 import { passwordProblem } from "@/lib/auth/password-policy";
 import { RECOVERY_COOKIE, recoveryCookieOptions, recoveryMarkerValid } from "@/lib/auth/recovery-marker";
 import { authPost, codeOf, enforceLimits, failure, isRateLimited, refuse, reply, sessionClient, unavailable, type AuthContext, type SupabaseError } from "@/lib/auth/route";
-import { refreshAllowed, tokenClaims } from "@/lib/auth/server-session";
+import { sessionGate, tokenClaims } from "@/lib/auth/server-session";
 import { clientIp } from "@/lib/ratelimit";
 import { callLogOf } from "@/lib/supabase/server";
 import { classifyAuthError } from "@/lib/supabase/session-policy";
@@ -30,9 +30,11 @@ export const POST = authPost(async (ctx, body) => {
   if (problem) refuse(failure(400, "invalid_input", { field: "password" }));
   if (typeof expectedUserId !== "string" || !expectedUserId || expectedUserId.length > 128) refuse(failure(400, "invalid_input"));
   await enforceLimits([{ bucket: "reset:ip", key: clientIp(ctx.req.headers) }]);
-  if (!(await refreshAllowed(ctx))) return unavailable();
-
   const { writes } = ctx;
+  const gate = await sessionGate(ctx);
+  if (gate === "forged") return writes.signedOut(ctx, failure(401, "session_missing"));
+  if (gate === "refused") return unavailable();
+
   const supabase = sessionClient(ctx, writes);
   const loaded = await supabase.auth.getSession();
   if (loaded.error) {

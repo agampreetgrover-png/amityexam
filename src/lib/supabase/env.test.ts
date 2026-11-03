@@ -10,6 +10,7 @@ const base = {
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
   SUPABASE_ENV: "development",
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: "0x4AAAAAAAtest",
+  TURNSTILE_SECRET_KEY: "0x4AAAAAAAtest-secret",
 };
 const vercel = { VERCEL: "1", UPSTASH_REDIS_REST_URL: "https://x.upstash.io", UPSTASH_REDIS_REST_TOKEN: "t", RATE_LIMIT_SECRET: "s".repeat(32) };
 
@@ -60,6 +61,27 @@ describe("accounts environment guard", () => {
 
   it("needs the Turnstile site key", () => {
     expect(readAccountsConfig({ ...base, NEXT_PUBLIC_TURNSTILE_SITE_KEY: "" })).toMatchObject({ enabled: false });
+  });
+
+  // H1: the CAPTCHA is checked by this server, so without its secret there is no way to run accounts unprotected.
+  it("needs the server-only Turnstile secret, everywhere", () => {
+    for (const secret of [undefined, "", "   "]) {
+      expect(readAccountsConfig({ ...base, TURNSTILE_SECRET_KEY: secret })).toMatchObject({ enabled: false, reason: expect.stringContaining("TURNSTILE_SECRET_KEY") });
+      expect(readAccountsConfig({ ...base, ...vercel, VERCEL_ENV: "preview", TURNSTILE_SECRET_KEY: secret })).toMatchObject({ enabled: false });
+    }
+    expect(readAccountsConfig(base)).toMatchObject({ enabled: true, turnstileSecretKey: "0x4AAAAAAAtest-secret" });
+  });
+
+  it("Cloudflare's Turnstile test keys work locally and in Preview, never in Production", () => {
+    const testKeys = { NEXT_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA", TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA" };
+    expect(readAccountsConfig({ ...base, ...testKeys })).toMatchObject({ enabled: true });
+    expect(readAccountsConfig({ ...base, ...vercel, VERCEL_ENV: "preview", ...testKeys })).toMatchObject({ enabled: true });
+    const prod = { ...base, ...vercel, VERCEL_ENV: "production", SUPABASE_ENV: "production", SUPABASE_URL: "https://prodrefaaaaaaaaaaaaa.supabase.co" };
+    const projects = { development: [], production: ["prodrefaaaaaaaaaaaaa"], local: [] };
+    expect(readAccountsConfig(prod, projects)).toMatchObject({ enabled: true });
+    for (const keys of [testKeys, { TURNSTILE_SECRET_KEY: "2x0000000000000000000000000000000AA" }, { NEXT_PUBLIC_TURNSTILE_SITE_KEY: "3x00000000000000000000FF" }]) {
+      expect(readAccountsConfig({ ...prod, ...keys }, projects)).toMatchObject({ enabled: false, reason: expect.stringContaining("test keys") });
+    }
   });
 
   it("production stays off until a production project is committed, and never uses the development project", () => {

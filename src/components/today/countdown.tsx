@@ -13,9 +13,15 @@ const gap = (k: number) => 28 + 260 * (k / LEAD) ** 3;
 type Phase = "rest" | "counting" | "landed";
 
 /**
+ * Where the count starts for a figure of `days`, or null when it isn't counted. On the exam day itself (0) the
+ * figure is the word "Today", which a run of numbers ticking down to 1 doesn't lead to, so it is just shown.
+ */
+export const countStart = (days: number): number | null => (days > 0 ? days + LEAD : null);
+
+/**
  * The next exam's days-left figure. The first time it is shown in a visit (per exam, per day) it counts down to the
- * real number from LEAD above it; after that, and under reduced motion, it just shows the number. Screen readers
- * get the real figure only, never the ticks.
+ * real number from LEAD above it; after that, under reduced motion, and on the exam day, it just shows the figure.
+ * Screen readers get the real figure only, never the ticks.
  */
 export function CountdownFigure({ days, playKey, markClass }: { days: number; playKey: string; markClass?: string }) {
   const [shown, setShown] = useState(days);
@@ -25,7 +31,8 @@ export function CountdownFigure({ days, playKey, markClass }: { days: number; pl
   // Layout effect: the starting number replaces the real one before the first paint, so the real one never flashes.
   const done = useRef(false);
   useLayoutEffect(() => {
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const from = countStart(days);
+    if (from === null || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const key = `countdown:${playKey}`;
     try {
       if (sessionStorage.getItem(key)) return;
@@ -34,7 +41,6 @@ export function CountdownFigure({ days, playKey, markClass }: { days: number; pl
       // Storage blocked (a private window): play it every time rather than never.
     }
     done.current = false;
-    const from = days + LEAD;
     let k = 0;
     let timer: ReturnType<typeof setTimeout>;
     setShown(from);

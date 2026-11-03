@@ -1,6 +1,7 @@
-// The browser's side of the same-origin /auth/* endpoints. EXPECTED CONTRACT, not yet implemented by the backend
-// (Phase 2b S1 owns the route handlers). Until those routes exist every call resolves to { ok: false, code:
-// "not_available" }, and the screens say accounts aren't available here: nothing is faked.
+// The browser's side of the same-origin /auth/* endpoints. The contract below is implemented by the route handlers in
+// src/app/auth/*/route.ts (shared parts in src/lib/auth/route.ts). While accounts are off they answer "disabled"
+// (GET /auth/session: { state: "disabled" }). A deployment without those routes answers Next's own 404/405 page,
+// which reads as { ok: false, code: "not_available" }, and the screens say accounts aren't available: nothing is faked.
 //
 // Rules this file keeps (and the tests check):
 //   - Only same-origin /auth/* URLs, credentials "same-origin": the session lives in HttpOnly cookies the server sets.
@@ -10,26 +11,30 @@
 //
 // ── Contract ────────────────────────────────────────────────────────────────────────────────────────────────────
 // Every POST takes JSON (Content-Type: application/json) and answers JSON with Cache-Control: no-store.
-// Every non-GET /auth/* handler must refuse cross-site requests itself (Sec-Fetch-Site / Origin): today's middleware
-// only does that for /api/* and POST /unlock. Email links should carry the token in the fragment
-// (/auth/confirm#token_hash=…&type=…) so it never reaches the server or its logs.
+// Every non-GET /auth/* request must be same-origin (Sec-Fetch-Site / Origin) and JSON: the middleware refuses any
+// other, and each handler checks again itself (src/lib/auth/request-guard.ts): 403 blocked, or 415 invalid_input.
+// Every POST may also answer disabled (accounts off), invalid_input (a malformed or oversized body) or unavailable.
+// Email links should carry the token in the fragment (/auth/confirm#token_hash=…&type=…) so it never reaches the
+// server or its logs.
 //   Success: 200 with the body listed per endpoint.
 //   Failure: 4xx/5xx with { "error": { "code": AuthErrorCode, "retryAfter"?: seconds, "field"?: "email" | "password" } }.
 //            429 also sends Retry-After. Messages shown to the student come from src/lib/auth/copy.ts, keyed by code.
 //
 //   GET  /auth/session          → SessionInfo (below). Never fails for "signed out": that is a state, not an error.
-//   POST /auth/login            { email, password, captchaToken? }            → { userId, email }
-//                                 errors: invalid_credentials, email_not_confirmed, rate_limited, unavailable, disabled
-//   POST /auth/signup           { email, password, captchaToken? }            → {}   (identical for new and existing emails)
-//                                 errors: invalid_input (field), weak_password, rate_limited, unavailable, disabled
-//   POST /auth/resend           { email, captchaToken? }                      → {}   (always generic)
-//   POST /auth/forgot           { email, captchaToken? }                      → {}   (always generic)
-//   POST /auth/verify           { tokenHash, type: "signup"|"email"|"recovery" } → { userId, email, type }
+//   POST /auth/login            { email, password, captchaToken }             → { userId, email }
+//                                 errors: invalid_credentials, email_not_confirmed, captcha_failed, rate_limited, unavailable, disabled
+//   POST /auth/signup           { email, password, captchaToken }             → {}   (identical for new and existing emails)
+//                                 errors: invalid_input (field), weak_password, captcha_failed, rate_limited, unavailable, disabled
+//   POST /auth/resend           { email, captchaToken }                       → {}   (always generic)
+//   POST /auth/forgot           { email, captchaToken }                       → {}   (always generic)
+//   POST /auth/verify           { tokenHash, type: "signup"|"email"|"recovery", replaceSession? } → { userId, email, type }
+//                                 errors: switch_required (a session is present and replaceSession isn't true), …
 //                                 errors: link_invalid, link_expired, rate_limited, unavailable
 //   POST /auth/update-password  { password, expectedUserId }                 → {}
 //                                 errors: session_missing, user_mismatch, weak_password, same_password, rate_limited
-//                                 Must also sign out the account's other sessions (decision D6); the success screen says so.
-//                                 Must only accept a session that came from a recovery link (or a recent sign-in).
+//                                 Also signs out the account's other sessions (decision D6); the success screen says so.
+//                                 Only accepts a session opened from a recovery link in this browser within the last
+//                                 15 minutes (the recovery marker, src/lib/auth/recovery-marker.ts).
 //   POST /auth/signout          {}                                            → {}
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -56,6 +61,8 @@ export type AuthErrorCode =
   | "unavailable"
   | "disabled"
   | "blocked"
+  | "captcha_failed"
+  | "switch_required"
   | "offline"
   | "network"
   | "not_available"
@@ -64,6 +71,7 @@ export type AuthErrorCode =
 const KNOWN_CODES = new Set<AuthErrorCode>([
   "invalid_input", "invalid_credentials", "email_not_confirmed", "weak_password", "same_password", "link_invalid",
   "link_expired", "session_missing", "user_mismatch", "rate_limited", "unavailable", "disabled", "blocked",
+  "captcha_failed", "switch_required",
 ]);
 
 export type AuthFailure = { ok: false; code: AuthErrorCode; retryAfter?: number; field?: "email" | "password" };
@@ -122,7 +130,7 @@ export async function toResult<T>(res: Response): Promise<AuthResult<T>> {
   if (res.status === 429) return fail("rate_limited");
   if (res.status === 403) return fail("blocked"); // a cross-site refusal, or the APP_PASSWORD lock
   if (res.status >= 500) return fail("unavailable");
-  // No JSON error at all: the route doesn't exist yet (Next's 404/405 page).
+  // No JSON error at all: a deployment without the route (Next's own 404/405 page).
   if (res.status === 404 || res.status === 405 || body === null) return fail("not_available");
   return fail("unknown");
 }
@@ -156,12 +164,22 @@ export async function getSession(): Promise<AuthResult<{ session: SessionInfo }>
   return { ok: false, code: "unknown" };
 }
 
-type WithCaptcha = { captchaToken?: string };
+/** The form a Turnstile token is made for (the widget's `action`); the server checks the token was made for it. */
+export type CaptchaAction = "login" | "signup" | "resend" | "forgot";
+
+/** Every sign-in, sign-up and email request carries a Turnstile token; the server checks it (captcha_failed if not). */
+type WithCaptcha = { captchaToken: string };
 
 export const signIn = (v: { email: string; password: string } & WithCaptcha) => post<{ userId: string; email: string }>("/auth/login", v);
 export const signUp = (v: { email: string; password: string } & WithCaptcha) => post<object>("/auth/signup", v);
 export const resendVerification = (v: { email: string } & WithCaptcha) => post<object>("/auth/resend", v);
 export const requestPasswordReset = (v: { email: string } & WithCaptcha) => post<object>("/auth/forgot", v);
-export const verifyEmailLink = (v: { tokenHash: string; type: VerifyType }) => post<{ userId: string; email: string; type: VerifyType }>("/auth/verify", v);
+/**
+ * `replaceSession: true` only after the student confirmed, on a screen naming the account this browser is signed in
+ * to, that the link may sign that account out here. Without it the server answers switch_required while a session
+ * is present, and the link stays unused.
+ */
+export const verifyEmailLink = (v: { tokenHash: string; type: VerifyType; replaceSession?: boolean }) =>
+  post<{ userId: string; email: string; type: VerifyType }>("/auth/verify", v);
 export const updatePassword = (v: { password: string; expectedUserId: string }) => post<object>("/auth/update-password", v);
 export const signOut = () => post<object>("/auth/signout", {});

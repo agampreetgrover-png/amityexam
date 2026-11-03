@@ -8,14 +8,15 @@ import { normalizeEmail, validateEmailOnly } from "@/lib/auth/validate";
 import { SubmitButton, Notice } from "../feedback";
 import { TextField } from "../fields";
 import { AuthShell, FormCard, useAccountsStatus } from "../shell";
+import { captchaOrFailure, useCaptcha } from "../turnstile";
 import { RetryButton, SignInLink, StateScreen, UseLocalModeButton } from "../state-screen";
 import { useAuthForm } from "../use-form";
 
 /**
- * Failures worth telling the student about: the request didn't reach the service, or the service said "not now".
- * None of them says anything about whether an account exists.
+ * Failures worth telling the student about: the request didn't reach the service, the service said "not now", or
+ * the security check didn't pass (checked before the address is looked at). None says whether an account exists.
  */
-const TRANSPORT_FAILURES = new Set<AuthErrorCode>(["offline", "network", "rate_limited", "unavailable", "disabled", "not_available", "blocked"]);
+const TRANSPORT_FAILURES = new Set<AuthErrorCode>(["offline", "network", "rate_limited", "unavailable", "disabled", "not_available", "blocked", "captcha_failed"]);
 
 /**
  * What a "send me a link" request (reset or confirmation) shows. Anything that isn't a transport or availability
@@ -67,10 +68,15 @@ export function ForgotSent({ email }: { email: string }) {
 
 function ForgotForm({ disabled, onSent }: { disabled: boolean; onSent: (email: string) => void }) {
   const [email, setEmail] = useState("");
+  const captcha = useCaptcha("forgot");
   const form = useAuthForm<"email", object>({
     validate: () => validateEmailOnly({ email }),
     submit: async () => {
-      const outcome = forgotOutcome(await requestPasswordReset({ email: normalizeEmail(email) }));
+      const c = captchaOrFailure(captcha.token);
+      if (!("token" in c)) return c;
+      const result = await requestPasswordReset({ email: normalizeEmail(email), captchaToken: c.token });
+      captcha.reset(); // used up, whatever the answer
+      const outcome = forgotOutcome(result);
       return outcome === "sent" ? { ok: true } : outcome;
     },
     onSuccess: () => onSent(normalizeEmail(email)),
@@ -98,6 +104,7 @@ function ForgotForm({ disabled, onSent }: { disabled: boolean; onSent: (email: s
             error={form.errors.email}
           />
         </fieldset>
+        {captcha.widget}
         {f && (
           <div id="forgot-error" className="mt-5">
             <Notice tone="error">{errorMessage(f.code, f.retryAfter)}</Notice>

@@ -1,5 +1,5 @@
 import { RECOVERY_COOKIE, recoveryCookieOptions } from "@/lib/auth/recovery-marker";
-import { authPost, captchaFrom, codeOf, emailBucket, emailFrom, enforceLimits, failure, freshClient, isRateLimited, refuse, reply, statusOf, unavailable, type SupabaseError } from "@/lib/auth/route";
+import { authPost, captchaFrom, codeOf, emailBucket, emailFrom, enforceLimits, failure, freshClient, isRateLimited, refuse, reply, requireCaptcha, statusOf, unavailable, type SupabaseError } from "@/lib/auth/route";
 import { clientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -8,8 +8,9 @@ export const dynamic = "force-dynamic";
 /** Old passwords may predate the policy, so sign-in only bounds the length (a hash is computed per attempt). */
 const MAX_PASSWORD_CHARS = 1024;
 
-// POST /auth/login { email, password, captchaToken? } → { userId, email }
-// errors: invalid_credentials, email_not_confirmed, rate_limited, unavailable, disabled (+ invalid_input, blocked)
+// POST /auth/login { email, password, captchaToken } → { userId, email }
+// errors: invalid_credentials, email_not_confirmed, captcha_failed, rate_limited, unavailable, disabled (+ invalid_input, blocked)
+// Checks, in order: the per-IP limits, the CAPTCHA (this server checks it; it isn't passed on), then the global cap.
 // Signs in with a client that starts WITHOUT the request's cookies (freshClient): a stale session in them can't be
 // refreshed in the background and can't remove the new one. On success the new session replaces the old cookies;
 // on any failure no cookie changes. The user id comes only from Supabase's answer.
@@ -23,9 +24,11 @@ export const POST = authPost(async (ctx, body) => {
     { bucket: "login:ip", key: ip },
     { bucket: "login:ip-email", key: `${ip}:${emailBucket(ctx, email)}` },
   ]);
+  await requireCaptcha(ctx, captchaToken, "login");
+  await enforceLimits([{ bucket: "login:global", key: "all" }]);
 
   const { writes } = ctx;
-  const { data, error } = await freshClient(ctx, writes).auth.signInWithPassword({ email, password: password as string, options: { captchaToken } });
+  const { data, error } = await freshClient(ctx, writes).auth.signInWithPassword({ email, password: password as string });
   if (error) return loginFailure(error);
   if (!data.session || !data.user?.id) return unavailable();
   writes.replaceSession(ctx);

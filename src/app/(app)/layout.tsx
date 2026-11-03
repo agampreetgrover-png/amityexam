@@ -2,7 +2,7 @@ import { CommandPaletteLoader } from "@/components/command-palette-loader";
 import { ModeGate } from "@/components/mode-gate";
 import { ProfileGate } from "@/components/profile-gate";
 import { Toaster } from "@/components/toast";
-import { Nav } from "@/components/nav";
+import { MobileNav, Nav } from "@/components/nav";
 import { TopBar } from "@/components/top-bar";
 import { DriveSync } from "@/components/drive-sync";
 import { Notifier } from "@/components/notifier";
@@ -40,6 +40,9 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
         </main>
         {/* After the page, so a toast's Undo follows the content in tab order; it's fixed, so nothing moves. */}
         <Toaster />
+        {/* The phone's bottom bar comes last for the same reason: it's fixed at the foot of the screen, so the keyboard
+            reaches it after the top bar, the page and a toast above it, the order they're seen in. Hidden from md up. */}
+        <MobileNav />
       </ModeGate>
     </ProfileGate>
   );
