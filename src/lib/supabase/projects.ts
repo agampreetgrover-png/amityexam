@@ -6,11 +6,11 @@
 //     the two databases can't be mixed up by pasting the wrong URL into the wrong environment.
 //   - local: a Supabase running on this computer, by its exact host ("localhost", "127.0.0.1" or "[::1]"). Only ever
 //     used off Vercel, and kept apart from the real refs: a local entry can never authorise a *.supabase.co address.
-// While a list is empty, accounts stay off for it, whatever the environment variables say. Add the development ref
-// when the development project is created (see .env.example). Add the production ref only when production accounts
-// are approved.
+// While a list is empty, accounts stay off for it, whatever the environment variables say. Add the production ref only
+// when production accounts are approved.
 export const SUPABASE_PROJECTS: { development: readonly string[]; production: readonly string[]; local: readonly string[] } = {
-  development: [],
+  // amityexams-dev: this computer and Vercel Preview (dev branch). Refused in Production.
+  development: ["nkoryfqeuyqmepwwgtbe"],
   production: [],
   local: [],
 };

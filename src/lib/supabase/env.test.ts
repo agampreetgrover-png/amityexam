@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseSupabaseUrl, readAccountsConfig } from "./env";
 import type { SUPABASE_PROJECTS } from "./projects";
 
-// The tests below use these approved projects by default. The committed list (empty) is tested on its own, last.
+// The tests below use these approved projects by default. The committed lists are tested on their own, further down.
 vi.mock("./projects", () => ({ SUPABASE_PROJECTS: { development: ["devrefaaaaaaaaaaaaaa"], production: [], local: ["127.0.0.1"] } }));
 
 const base = {
@@ -114,15 +114,48 @@ describe("accounts environment guard", () => {
     expect(readAccountsConfig({ ...base, SUPABASE_URL: "https://attackeraaaaaaaaaaaa.supabase.co" }, { development: ["devrefaaaaaaaaaaaaaa"], production: [], local: [] })).toMatchObject({ enabled: false });
   });
 
-  it("the committed project lists are empty, so accounts are off locally, in Preview and in Production", async () => {
-    const actual = (await vi.importActual<{ SUPABASE_PROJECTS: typeof SUPABASE_PROJECTS }>("./projects")).SUPABASE_PROJECTS;
-    expect(actual).toEqual({ development: [], production: [], local: [] });
-    const everyEnv = [
-      base,
-      { ...base, ...vercel, VERCEL_ENV: "preview" },
-      { ...base, ...vercel, VERCEL_ENV: "production", SUPABASE_ENV: "production", SUPABASE_URL: "https://prodrefaaaaaaaaaaaaa.supabase.co" },
-    ];
-    for (const env of everyEnv) expect(readAccountsConfig(env, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("isn't listed") });
+  describe("the committed project lists", () => {
+    // amityexams-dev, the only approved project. Production and local stay empty until separately approved.
+    const DEV_REF = "nkoryfqeuyqmepwwgtbe";
+    const committed = async () => (await vi.importActual<{ SUPABASE_PROJECTS: typeof SUPABASE_PROJECTS }>("./projects")).SUPABASE_PROJECTS;
+    const dev = { ...base, SUPABASE_URL: `https://${DEV_REF}.supabase.co` };
+
+    it("list exactly one development project and nothing for production or a local Supabase", async () => {
+      expect(await committed()).toEqual({ development: [DEV_REF], production: [], local: [] });
+    });
+
+    it("turn accounts on for the development project on this computer, in Vercel Preview and in Vercel Development", async () => {
+      const actual = await committed();
+      for (const env of [dev, { ...dev, ...vercel, VERCEL_ENV: "preview" }, { ...dev, ...vercel, VERCEL_ENV: "development" }]) {
+        expect(readAccountsConfig(env, actual)).toMatchObject({ enabled: true, env: "development", projectRef: DEV_REF, url: `https://${DEV_REF}.supabase.co` });
+      }
+    });
+
+    it("accept only that project: any other ref or a local Supabase stays off", async () => {
+      const actual = await committed();
+      for (const url of ["https://devrefaaaaaaaaaaaaaa.supabase.co", "https://attackeraaaaaaaaaaaa.supabase.co", `https://${DEV_REF.slice(0, -1)}x.supabase.co`]) {
+        expect(readAccountsConfig({ ...base, SUPABASE_URL: url }, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("isn't listed as a development project") });
+        expect(readAccountsConfig({ ...base, ...vercel, VERCEL_ENV: "preview", SUPABASE_URL: url }, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("isn't listed as a development project") });
+      }
+      expect(readAccountsConfig({ ...base, SUPABASE_URL: "http://127.0.0.1:54321" }, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("isn't listed as a local Supabase") });
+      // A legacy anon key from another project, next to the development project's URL.
+      const jwt = (payload: object) => `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
+      expect(readAccountsConfig({ ...dev, SUPABASE_PUBLISHABLE_KEY: jwt({ role: "anon", ref: "attackeraaaaaaaaaaaa" }) }, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("different project") });
+      expect(readAccountsConfig({ ...dev, SUPABASE_PUBLISHABLE_KEY: jwt({ role: "anon", ref: DEV_REF }) }, actual)).toMatchObject({ enabled: true });
+    });
+
+    it("never let Vercel Production use the development project, nor turn accounts on there at all", async () => {
+      const actual = await committed();
+      const prod = { ...dev, ...vercel, VERCEL_ENV: "production" };
+      // The development project with SUPABASE_ENV=production: refused as a development project.
+      expect(readAccountsConfig({ ...prod, SUPABASE_ENV: "production" }, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("is a development project and can't be used in production") });
+      // ...even if it were also pasted into the production list by mistake.
+      expect(readAccountsConfig({ ...prod, SUPABASE_ENV: "production" }, { ...actual, production: [DEV_REF] })).toMatchObject({ enabled: false, reason: expect.stringContaining("is a development project") });
+      // The development project with the Preview settings copied over (SUPABASE_ENV=development): refused.
+      expect(readAccountsConfig(prod, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("needs production") });
+      // Any other project: no production project is listed yet.
+      expect(readAccountsConfig({ ...prod, SUPABASE_ENV: "production", SUPABASE_URL: "https://prodrefaaaaaaaaaaaaa.supabase.co" }, actual)).toMatchObject({ enabled: false, reason: expect.stringContaining("isn't listed as a production project") });
+    });
   });
 
   it("refuses secret and service-role keys as the publishable key, without echoing the key", () => {
