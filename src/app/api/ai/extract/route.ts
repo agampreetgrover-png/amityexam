@@ -2,7 +2,7 @@ import { errorResponse, readJsonBody } from "@/lib/ai/errors";
 import { extractWithFallback, getProviders } from "@/lib/ai/providers";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300; // room for a 90s provider timeout plus a full fallback answer
 
 const MAX_BYTES = 15 * 1024 * 1024;
 const MAX_BODY_BYTES = 21 * 1024 * 1024; // 15MB file ≈ 20MB as base64, plus JSON overhead

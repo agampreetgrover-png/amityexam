@@ -93,7 +93,15 @@ export function normalizeMathDelimiters(md: string): string {
     const before = s.slice(s.lastIndexOf("\n", at - 1) + 1, at);
     const end = s.indexOf("\n", at + all.length);
     const after = s.slice(at + all.length, end < 0 ? undefined : end);
-    if (/^[ \t>]*$/.test(before) && !after.trim()) return `$$\n${before}${tex.trim()}\n${before}$$`;
+    if (/^[ \t>]*$/.test(before) && !after.trim()) {
+      // Inner lines already carry the prefix ("> x^2"): strip it, then give every line exactly one, so a quoted
+      // formula has no stray ">" inside the maths.
+      const bare = before.trimEnd();
+      const strip = (l: string, i: number) =>
+        i === 0 ? l : l.startsWith(before) ? l.slice(before.length) : l.startsWith(bare) ? l.slice(bare.length) : l;
+      const body = tex.split("\n").map(strip).join("\n").trim();
+      return `$$\n${body.replace(/^/gm, before)}\n${before}$$`;
+    }
     return `$$${tex.trim()}$$`;
   });
   text = replacePairs(text, "\\(", "\\)", (all, tex) => (keep(tex) ? all : `$${tex.trim()}$`));

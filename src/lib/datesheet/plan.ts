@@ -6,7 +6,7 @@ import type { Exam, ExamType, Subject } from "../types";
 
 /** "CSE201 | Database Management Systems" for each subject, in order: the AI answers with these indexes. */
 export const subjectLabels = (subjects: Pick<Subject, "name" | "code">[]) =>
-  subjects.map((s) => `${s.code?.trim() || "(no code)"} | ${s.name}`);
+  subjects.map((s) => `${s.code?.trim() || "(no code)"} | ${s.name}`.slice(0, 300)); // the AI route's per-topic limit
 
 const HEADER_LINES = 8;
 const DATE = /\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b|\b\d{4}-\d{2}-\d{2}\b|\b(mon|tues|wednes|thurs|fri|satur|sun)day\b/i;

@@ -330,12 +330,21 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
   const subjects = useLiveQuery(() => db.subjects.orderBy("name").toArray());
   const [subjectId, setSubjectId] = useState<number | "">(initial?.subjectId ?? "");
   const sid = subjectId || subjects?.[0]?.id;
-  const units = useLiveQuery(() => (sid ? db.units.where({ subjectId: sid }).sortBy("order") : []), [sid]);
-  const topics = useLiveQuery(() => (sid ? db.topics.where({ subjectId: sid }).toArray() : []), [sid]);
+  // One query tagged with its sid: useLiveQuery keeps the old result while deps change, so a
+  // result for another subject counts as not loaded (else its topics show under the new one).
+  const q = useLiveQuery(async () => ({
+    sid,
+    units: sid ? await db.units.where({ subjectId: sid }).sortBy("order") : [],
+    topics: sid ? await db.topics.where({ subjectId: sid }).toArray() : [],
+  }), [sid]);
+  const cur = q && q.sid === sid ? q : undefined;
+  const units = cur?.units;
+  const topics = cur?.topics;
   const [type, setType] = useState<ExamType>(initial?.type ?? mode ?? "end-term"); // new exams default to the mode
   const [date, setDate] = useState(initial?.date ?? "");
-  const [time, setTime] = useState(initial?.time ?? "10:00");
-  const [duration, setDuration] = useState(initial?.durationMins?.toString() ?? "180");
+  // Defaults only for a new exam: editing one without a time must not save 10:00 / 180.
+  const [time, setTime] = useState(initial ? (initial.time ?? "") : "10:00");
+  const [duration, setDuration] = useState(initial ? (initial.durationMins?.toString() ?? "") : "180");
   const [scope, setScope] = useState<Set<number>>(new Set(initial?.topicIds ?? []));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);

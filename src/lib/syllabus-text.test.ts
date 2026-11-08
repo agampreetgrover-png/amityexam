@@ -14,6 +14,8 @@ describe("parseTopics", () => {
 
   it("keeps titles that only look like markers", () => {
     expect(parseTopics("C++ basics\nI/O systems\n3NF and BCNF")).toEqual(["C++ basics", "I/O systems", "3NF and BCNF"]);
+    expect(parseTopics("D.C. Machines\nI.C. Engines\nP.N. junction diode")).toEqual(["D.C. Machines", "I.C. Engines", "P.N. junction diode"]);
+    expect(parseSyllabus("Unit 1\nD.C. generators, D.C. motors")[0].topics.map((t) => t.title)).toEqual(["D.C. generators", "D.C. motors"]);
   });
 
   it("removes repeats regardless of case", () => {

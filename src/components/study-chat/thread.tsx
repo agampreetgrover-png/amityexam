@@ -229,6 +229,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     let reply = "";
     let chat = id;
     let created = false;
+    let finished = false;
     let questionId: number | undefined;
     try {
       // Deleted once `busy` is set, so the "No answer arrived" row doesn't flash back before the answer starts.
@@ -267,13 +268,14 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
         },
         ctrl.current.signal,
       );
+      finished = true;
     } catch (e) {
       if (!isAbort(e)) setError(e);
     } finally {
-      // Keep whatever arrived, even if stopped midway. If nothing did, take the question back out (and the chat,
-      // if it was new) and put it back in the box to send again.
+      // Keep whatever arrived, even if stopped midway; but a regenerate only replaces the old answer once the new
+      // one is complete. Otherwise take the question back out (and the chat, if it was new) and put it back in the box.
       try {
-        if (reply.trim() && chat != null) {
+        if (reply.trim() && chat != null && (!redo || finished)) {
           const saved = chat;
           await db.transaction("rw", db.chats, db.messages, async () => {
             // Deleted from History mid-answer: don't leave its answer behind with no chat.
@@ -686,9 +688,9 @@ export function Bubble({ role, content, images, live, enter, sources, onRegenera
   content: string;
   images?: string[]; // photos sent with a question (study chat)
   live?: boolean;
+  enter?: boolean; // asked or answered during this visit: settles in once, never when a chat is reopened
   sources?: ChatSource[];
   onRegenerate?: () => void;
-  enter?: boolean; // asked or answered during this visit: settles in once, never when a chat is reopened
 }) {
   const [copied, setCopied] = useState(false);
   if (role === "user") {

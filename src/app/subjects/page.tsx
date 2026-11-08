@@ -251,7 +251,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
       {duplicate && <p className="-mt-2 text-sm text-bad" role="alert">You already have a subject called that.</p>}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Course code" hint={suggested ? "Filled in from the Amity course list" : undefined}>
-          <Input value={shownCode} onChange={(e) => { setCodeTouched(true); setCode(e.target.value); }} placeholder="CSE204" />
+          <Input value={shownCode} onChange={(e) => { setCodeTouched(true); setCode(e.target.value); }} maxLength={20} placeholder="CSE204" />
         </Field>
         <Field label="Credits"><Input type="number" min={0} value={credits} onChange={(e) => setCredits(e.target.value)} /></Field>
       </div>

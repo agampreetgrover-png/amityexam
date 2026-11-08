@@ -146,6 +146,11 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
     let alive = true;
     (async () => {
       const ids = (await getSettings()).driveSources?.map((s) => s.id);
+      // [] = the student removed every folder; the route would fall back to the defaults.
+      if (ids && !ids.length) {
+        if (alive) setSheets([]);
+        return;
+      }
       const qs = ids?.length ? "?" + ids.map((id) => `source=${encodeURIComponent(id)}`).join("&") : "";
       try {
         const r = await fetch(`/api/drive/datesheets${qs}`);

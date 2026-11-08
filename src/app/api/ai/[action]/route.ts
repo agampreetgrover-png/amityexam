@@ -9,7 +9,7 @@ import {
 } from "@/lib/ai/schemas";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300; // room for a 90s provider timeout plus a full fallback answer
 
 // Room for up to four chat photos on top of the notes; Vercel caps bodies at ~4.5MB anyway.
 const MAX_BODY_BYTES = 4 * 1024 * 1024;

@@ -35,18 +35,20 @@ function ExamKit({ id }: { id: number }) {
   // A malformed URL id is not a valid IndexedDB key, so treat it as not found.
   const exam = useLiveQuery(async () => (Number.isFinite(id) ? ((await db.exams.get(id)) ?? null) : null), [id]);
   const subject = useLiveQuery(() => (exam ? db.subjects.get(exam.subjectId) : undefined), [exam?.subjectId]);
-  const topics = useLiveQuery(() => (exam ? db.topics.where({ subjectId: exam.subjectId }).toArray() : []), [exam?.subjectId]);
-  const units = useLiveQuery(() => (exam ? db.units.where({ subjectId: exam.subjectId }).toArray() : []), [exam?.subjectId]);
+  // undefined (not []) until the exam is known: useLiveQuery keeps the last result while the next query runs,
+  // so an early [] would show "0 topics" and "No cheat sheet yet" before the real data.
+  const topics = useLiveQuery(async () => (exam ? await db.topics.where({ subjectId: exam.subjectId }).toArray() : undefined), [exam?.subjectId]);
+  const units = useLiveQuery(async () => (exam ? await db.units.where({ subjectId: exam.subjectId }).toArray() : undefined), [exam?.subjectId]);
   const mode = useExamMode();
   const sheets = useLiveQuery(
-    () => (exam ? db.docs.where({ subjectId: exam.subjectId }).filter((d) => d.kind === "cheatsheet").reverse().sortBy("createdAt") : []),
+    async () => (exam ? await db.docs.where({ subjectId: exam.subjectId }).filter((d) => d.kind === "cheatsheet").reverse().sortBy("createdAt") : undefined),
     [exam?.subjectId],
   );
   const [newItem, setNewItem] = useState("");
   const [sheetIdx, setSheetIdx] = useState(0);
   const day = useToday();
 
-  if (exam === undefined) return null;
+  if (exam === undefined || (exam && (!topics || !units || !sheets))) return null;
   if (exam === null) {
     return (
       <Empty title="Exam not found">

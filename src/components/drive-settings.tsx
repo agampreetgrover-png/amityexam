@@ -181,6 +181,8 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     (async () => {
       const sources = (await getSettings()).driveSources;
+      // [] = the student removed every folder; the route would fall back to the defaults.
+      if (sources && !sources.length) return setGroups([]);
       const qs = sources?.length ? "?" + sources.map((s) => `source=${encodeURIComponent(s.id)}`).join("&") : "";
       try {
         const r = await fetch(`/api/drive/folders${qs}`);

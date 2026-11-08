@@ -45,11 +45,11 @@ export function MaterialsTab({ subject, mode }: TabProps) {
   const [paste, setPaste] = useState<PasteDraft | null>(null);
   const [preview, setPreview] = useState<Material | null>(null);
 
-  const upload = async (files: FileList | null) => {
-    if (!files?.length) return;
+  const upload = async (files: File[]) => {
+    if (!files.length) return;
     setError(null);
     const failed: string[] = [];
-    for (const f of Array.from(files)) {
+    for (const f of files) {
       setBusy(`Reading ${f.name}…`);
       try {
         const text = await extractAny(f, { onStatus: (s) => setBusy(`${f.name}: ${s}`) });
@@ -92,7 +92,8 @@ export function MaterialsTab({ subject, mode }: TabProps) {
               accept="application/pdf,.txt,.md,image/*"
               className="sr-only"
               disabled={!!busy}
-              onChange={(e) => { upload(e.target.files); e.target.value = ""; }}
+              // Copied first: Chromium empties the live FileList when the value is reset.
+              onChange={(e) => { upload(Array.from(e.target.files ?? [])); e.target.value = ""; }}
             />
           </label>
           <Button

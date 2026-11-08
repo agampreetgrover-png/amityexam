@@ -196,13 +196,13 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                       : "border-border bg-surface text-text hover:border-line-strong hover:bg-surface-2",
                   )}
                 >
-                  <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} className="mt-1 accent-[var(--accent)]" />
+                  <input type="radio" name={`q${page}`} checked={responses[page] === o} onChange={() => set(o)} disabled={!!busy} className="mt-1 accent-[var(--accent)]" />
                   {o}
                 </label>
               ))}
             </div>
           ) : (
-            <Textarea aria-labelledby={`q-${page}`} placeholder="Write your answer" maxLength={MAX_ANSWER} value={responses[page]} onChange={(e) => set(e.target.value)} className="min-h-32" />
+            <Textarea aria-labelledby={`q-${page}`} placeholder="Write your answer" maxLength={MAX_ANSWER} value={responses[page]} onChange={(e) => set(e.target.value)} disabled={!!busy} className="min-h-32" />
           )}
         </Card>
         <AiErrorBox error={error} />
@@ -214,7 +214,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
         )}
         {/* Phones: Previous drops to its icon so the last page's three buttons fit on one line. */}
         <div className="flex items-center justify-between gap-2 [&>button]:whitespace-nowrap">
-          <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0}><ChevronLeft size={16} /><span className="max-sm:sr-only">Previous</span></Button>
+          <Button variant="secondary" onClick={() => setPage(page - 1)} disabled={page === 0 || !!busy}><ChevronLeft size={16} /><span className="max-sm:sr-only">Previous</span></Button>
           <Button variant="ghost" disabled={!!busy} onClick={() => confirm("Leave this quiz? Your answers won't be saved.") && reset()}>Leave quiz</Button>
           {page < questions.length - 1 ? (
             <Button variant="secondary" onClick={() => setPage(page + 1)}>Next <ChevronRight size={16} /></Button>

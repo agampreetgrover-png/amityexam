@@ -387,14 +387,19 @@ export async function runWithFallback<T>(
  * so when one is limited the other stands in before moving on.
  */
 export function extractWithFallback(file: { mimeType: string; data: string }, prompt: string, fast = false) {
+  const providers = getProviders();
   return runWithFallback(async (p) => {
+    let out: string;
     try {
-      return await p.extract(file, prompt, { fast });
+      out = await p.extract(file, prompt, { fast });
     } catch (e) {
       if (p.name !== "gemini" || !(e instanceof AiProviderError) || (e.kind !== "day" && e.kind !== "minute")) throw e;
-      return await p.extract(file, prompt, { fast: !fast });
+      out = await p.extract(file, prompt, { fast: !fast });
     }
-  });
+    // A blank reply (a model out of tokens, a safety stop) gives the next provider a turn; only the last one's blank stands.
+    if (!out.trim() && p !== providers.at(-1)) throw new AiProviderError("The AI returned an empty answer.", 502, "bad-output", undefined, p.name);
+    return out;
+  }, providers);
 }
 
 /** Pick the most useful error to show when every provider failed. */

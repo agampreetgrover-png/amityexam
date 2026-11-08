@@ -144,6 +144,22 @@ export function validateBackup(backup: unknown): Record<string, Record<string, u
     e.topicIds = Array.isArray(e.topicIds) ? e.topicIds.filter(isId) : [];
     e.checklist = Array.isArray(e.checklist) ? e.checklist.filter((c) => isPlainObject(c) && typeof c.text === "string") : [];
   }
+  // The Quiz tab and weak-topic scoring read these on every visit.
+  for (const q of (data.quizzes ?? []) as Record<string, unknown>[]) {
+    const rs = Array.isArray(q.responses) ? q.responses : [];
+    const kept = (Array.isArray(q.questions) ? q.questions : [])
+      .map((x, i) => [x, rs[i]] as const) // a dropped question takes its answer with it, so the rest stay paired
+      .filter(([x]) => isPlainObject(x) && typeof x.question === "string" && typeof x.answer === "string");
+    q.questions = kept.map(([x]) => (typeof x.explanation === "string" ? x : { ...x, explanation: undefined }));
+    q.responses = kept.map(([, r]) => (typeof r === "string" ? r : ""));
+    q.topicIds = Array.isArray(q.topicIds) ? q.topicIds.filter(isId) : [];
+    if (!Number.isFinite(q.score)) q.score = 0;
+  }
+  for (const m of (data.messages ?? []) as Record<string, unknown>[]) {
+    if (m.sources === undefined) continue;
+    const ok = Array.isArray(m.sources) ? m.sources.filter((s) => isPlainObject(s) && typeof s.label === "string" && typeof s.kind === "string") : [];
+    m.sources = ok.length ? ok : undefined;
+  }
   for (const s of settings ?? []) if (s.examMode !== undefined && s.examMode !== "mid-term" && s.examMode !== "end-term") delete s.examMode; // asked again on launch
   // Drive settings and the sync map over these, so a wrong shape would crash Settings (and its import button) for good.
   const isFolderId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{10,}$/.test(v);

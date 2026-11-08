@@ -16,6 +16,13 @@ describe("normalizeMathDelimiters", () => {
     expect(norm("> \\[x\\]")).toBe("> $$\n> x\n> $$");
   });
 
+  it("keeps a multi-line display block in its quote or list item without doubling the prefix", () => {
+    expect(norm("> \\[\n> x^2\n> \\]")).toBe("> $$\n> x^2\n> $$");
+    expect(norm("> \\[ a +\n> b \\]")).toBe("> $$\n> a +\n> b\n> $$");
+    expect(norm("> > \\[\n> > x\n> > y\n> > \\]")).toBe("> > $$\n> > x\n> > y\n> > $$");
+    expect(norm("- Sum:\n  \\[\n  a +\n  b\n  \\]")).toBe("- Sum:\n  $$\n  a +\n  b\n  $$");
+  });
+
   it("keeps a mid-sentence \\[ … \\] in the line", () => {
     expect(norm("| a | \\[x^2\\] |")).toBe("| a | $$x^2$$ |");
   });

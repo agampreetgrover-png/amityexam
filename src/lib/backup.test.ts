@@ -20,3 +20,29 @@ describe("validateBackup text fields", () => {
     expect(() => validateBackup(backup({ messages: [{ id: 1, subjectId: 1, role: "user", createdAt: 1 }] }))).toThrow(/messages/);
   });
 });
+
+describe("validateBackup repairs", () => {
+  it("gives a quiz with missing or wrong-shaped fields the arrays and score the Quiz tab reads", () => {
+    const q1 = { type: "mcq", question: "Q1", answer: "A", explanation: {} };
+    const data = validateBackup(backup({
+      quizzes: [
+        { subjectId: 1, score: 50, createdAt: 1 },
+        { subjectId: 1, score: "x", createdAt: 1, topicIds: [2, "3", -1], questions: [null, q1, { question: 1, answer: "A" }], responses: ["skipped", 7] },
+      ],
+    }));
+    expect(data.quizzes[0]).toMatchObject({ questions: [], responses: [], topicIds: [], score: 50 });
+    expect(data.quizzes[1]).toMatchObject({ questions: [{ question: "Q1", answer: "A", explanation: undefined }], responses: [""], topicIds: [2], score: 0 });
+  });
+
+  it("drops chat sources that aren't a list of labelled sources", () => {
+    const good = { kind: "notes", label: "unit1.pdf" };
+    const data = validateBackup(backup({
+      messages: [
+        { subjectId: 1, role: "assistant", content: "a", createdAt: 1, sources: "x" },
+        { subjectId: 1, role: "assistant", content: "b", createdAt: 1, sources: [good, { kind: "pyq" }, null] },
+      ],
+    }));
+    expect(data.messages[0].sources).toBeUndefined();
+    expect(data.messages[1].sources).toEqual([good]);
+  });
+});

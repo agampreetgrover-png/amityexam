@@ -5,7 +5,9 @@ import type { ExamMode, Material, PyqQuestion, Subject, Topic, Unit } from "../t
 /** The paper's year: read from the paper by AI when analysed, else the first plausible year in its name. */
 export function paperYear(m: Pick<Material, "paperYear" | "fileName">): number | undefined {
   if (m.paperYear) return m.paperYear;
-  const y = m.fileName.match(/(?:^|[^0-9])((?:19|20)\d\d)(?![0-9])/)?.[1];
+  const all = [...m.fileName.matchAll(/(^|[^0-9])((?:19|20)\d\d)(?![0-9])/g)];
+  // One standing apart beats one glued to letters, which is often a course code ("MA2001_Major_2023").
+  const y = (all.find((x) => !/[A-Za-z]/.test(x[1])) ?? all[0])?.[2];
   return y ? Number(y) : undefined;
 }
 

@@ -18,6 +18,8 @@ describe("paper year and exam", () => {
     expect(paperYear({ fileName: "DBMS Major 2018.pdf", paperYear: 2019 })).toBe(2019);
     expect(paperYear({ fileName: "Minor Exam QP DBMS 2025-1.pdf" })).toBe(2025);
     expect(paperYear({ fileName: "Set-1 [AIML202].pdf" })).toBeUndefined();
+    expect(paperYear({ fileName: "MA2001_Major_2023.pdf" })).toBe(2023);
+    expect(paperYear({ fileName: "DBMS Dec2022.pdf" })).toBe(2022);
   });
 
 });

@@ -94,7 +94,8 @@ async function sync(auto: boolean) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subjects: subjects.map((s) => ({ id: s.id!, name: s.name, code: s.code })),
+          // Clipped to the route's limits: one long code saved before the form capped it would fail every sync.
+          subjects: subjects.map((s) => ({ id: s.id!, name: s.name.slice(0, 200), code: s.code?.slice(0, 20) })),
           known,
           sources,
           links: subjects.filter((s) => s.driveFolderIds?.length).map((s) => ({ subjectId: s.id!, folderIds: s.driveFolderIds! })),
