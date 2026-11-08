@@ -182,7 +182,7 @@ export default function TodayPage() {
                       <Link
                         href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
                         style={subjectStyle(s?.color)}
-                        className="group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet transition-[border-color,box-shadow] duration-150 hover:border-line-strong hover:shadow-lift"
+                        className="group flex h-full flex-col rounded-2xl border border-border bg-surface p-5 shadow-sheet press press-card hover:border-line-strong hover:shadow-lift"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-2">

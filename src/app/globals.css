@@ -304,6 +304,7 @@ body {
   to { opacity: 1; transform: none; }
 }
 @keyframes fade-in { from { opacity: 0; } }
+@keyframes sink-out { to { opacity: 0; transform: translateY(4px); } }
 @keyframes tick-pop {
   0% { transform: scale(0.85); }
   100% { transform: scale(1); }
@@ -315,17 +316,21 @@ body {
 .tab-in { animation: rise-in 200ms var(--ease-snappy) both; }
 
 .toast-in { animation: rise-in 200ms var(--ease-snappy); }
+/* Leaves faster than it came, back the way it rose. Must stay after .toast-in. */
+.toast-out { animation: sink-out 150ms var(--ease-snappy) forwards; }
 .palette-in[open] { animation: drop-in 180ms var(--ease-snappy); }
 .count-in { animation: fade-in 180ms var(--ease-snappy); }
 .tick-done { animation: tick-pop 180ms var(--ease-snappy); }
 
 /* Pressable things sink a hair under the finger. */
 .press {
-  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-property: color, background-color, border-color, box-shadow, transform, translate, scale, opacity;
   transition-duration: 150ms;
   transition-timing-function: var(--ease-snappy);
 }
 .press:active:not(:disabled) { transform: translateY(0.5px) scale(0.98); }
+/* Cards and wide rows sink less: 0.98 on a 300px card is a lurch. */
+.press.press-card:active:not(:disabled) { transform: scale(0.99); }
 
 /* Dialogs fade and settle in with the backdrop. */
 dialog.sheet {
@@ -346,6 +351,17 @@ dialog.sheet[open]::backdrop { background: var(--scrim); }
   dialog.sheet[open]::backdrop { background: transparent; }
 }
 
+/* ⋯ menus grow out of their button (Menu sets the origin when it places them) and fade away on close. */
+.menu-pop {
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 150ms var(--ease-snappy), transform 150ms var(--ease-snappy), overlay 150ms allow-discrete, display 150ms allow-discrete;
+}
+.menu-pop:popover-open { opacity: 1; transform: none; }
+@starting-style {
+  .menu-pop:popover-open { opacity: 0; transform: scale(0.97); }
+}
+
 /* Disclosure: the content eases open where the browser can animate to auto height. */
 details { interpolate-size: allow-keywords; }
 details::details-content {
@@ -361,6 +377,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   *, *::before, *::after {
     animation-duration: 1ms !important;
     animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
   /* Pseudo-elements the rule above doesn't reach. One rule each, so a browser that doesn't know one drops only that line. */

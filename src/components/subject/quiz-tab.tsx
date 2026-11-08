@@ -179,7 +179,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
           <span>{answered} answered</span>
         </div>
         <Progress value={((page + 1) / questions.length) * 100} />
-        <Card className="sm:p-6">
+        <Card key={page} className="tab-in sm:p-6">
           <div className="mb-5 flex items-start justify-between gap-3">
             <p id={`q-${page}`} ref={qRef} tabIndex={-1} className="text-[18px] font-medium leading-snug outline-none">{q.question}</p>
             <Badge className="shrink-0">{q.type === "mcq" ? "Choose one" : "Short answer"}</Badge>
@@ -259,7 +259,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                         onClick={() => toggle(t.id!)}
                         className={cn(
                           // rounded-lg, not a pill: a long topic name wraps to two lines on a phone.
-                          "inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-3 py-1 text-left text-[13px] transition-colors duration-150 pointer-coarse:min-h-10",
+                          "inline-flex min-h-8 items-center gap-1.5 rounded-lg border px-3 py-1 text-left text-[13px] press pointer-coarse:min-h-10",
                           picked.includes(t.id!)
                             ? "border-accent bg-accent-soft font-medium text-accent"
                             : "border-border bg-surface text-muted hover:bg-surface-2 hover:text-text",
@@ -307,7 +307,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   onClick={() => setReviewing(a)}
                   disabled={!a.questions.length}
                   aria-label={`Review the ${a.score}% quiz from ${new Date(a.createdAt).toLocaleDateString()}`}
-                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 disabled:pointer-events-none sm:px-5"
+                  className="group flex w-full items-center gap-4 px-4 py-3 text-left text-sm transition-colors duration-150 hover:bg-surface-2 active:bg-surface-3 disabled:pointer-events-none sm:px-5"
                 >
                   <span className={cn("numeral w-16 shrink-0 text-[28px]", scoreColor(a.score))}>{a.score}%</span>
                   {/* Phones: the count and date go under the topics, so the topics get the row's width. */}
@@ -387,7 +387,7 @@ function AnswerRow({ n, q, verdict, given, givenTone, children }: {
   children?: ReactNode;
 }) {
   return (
-    <li className="py-4">
+    <li className="tab-in py-4" style={{ animationDelay: `${Math.min(n - 1, 7) * 40}ms` }}>
       <div className="flex items-start justify-between gap-3">
         <p className="min-w-0 text-[15px] font-medium leading-relaxed"><span className="tabular-nums text-muted">{n}.</span> {q.question}</p>
         <Verdict kind={verdict} />

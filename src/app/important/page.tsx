@@ -241,7 +241,7 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
           selected && "bg-accent-soft hover:bg-accent-soft focus-within:bg-accent-soft",
         )}
       >
-        {selected && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
+        {selected && <span aria-hidden className="count-in absolute inset-y-0 left-0 w-0.5 bg-accent" />}
         <button
           type="button"
           onClick={() => (wide ? onSelect() : setOpen((o) => !o))}
@@ -278,7 +278,7 @@ function Row({ rank, stat, showSubject, hasMarks, wide, selected, onSelect }: {
           <span className="hidden w-28 shrink-0 pl-3 sm:block">
             {when ? <Badge>{when}</Badge> : <span className="text-[13px] text-faint">—</span>}
           </span>
-          {!wide && <ChevronDown size={16} aria-hidden className={cn("w-4 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />}
+          {!wide && <ChevronDown size={16} aria-hidden className={cn("w-4 shrink-0 text-muted transition-transform duration-150 ease-snappy", open && "rotate-180")} />}
         </button>
         {/* Floats over the row's right end rather than holding a column, so the topic keeps the width. Shown on
             mouse hover, on keyboard focus anywhere in the row, and on the picked row, whose years the panel beside

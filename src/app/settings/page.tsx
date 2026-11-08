@@ -201,7 +201,7 @@ function ThemePicker({ value }: { value: ThemeChoice }) {
         <label
           key={o.value}
           className={cn(
-            "cursor-pointer rounded-xl border p-1.5 transition-colors duration-150 sm:p-2",
+            "press cursor-pointer rounded-xl border p-1.5 sm:p-2",
             "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent",
             value === o.value ? "border-accent bg-accent-soft ring-1 ring-accent" : "border-border hover:border-line-strong hover:bg-surface-2",
           )}

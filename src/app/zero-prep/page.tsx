@@ -313,7 +313,7 @@ function TimeStrip({ rows }: { rows: PrepRow[] }) {
                 <span key={r.topic.id} onPointerEnter={point(r)} className="flex h-6 min-w-px items-center" style={{ flexGrow: r.prep.mins, flexBasis: 0 }}>
                   <span
                     className={cn(
-                      "h-3 w-full rounded-[1px] transition-colors duration-300",
+                      "h-3 w-full rounded-[1px] transition-[background-color,box-shadow] duration-250 ease-snappy",
                       i === 0 && "rounded-l-[4px]",
                       i === run.rows.length - 1 && "rounded-r-[4px]",
                       r.topic.status === "not-started" ? "subj-dot" : "bg-surface-3 shadow-[inset_0_0_0_1px_var(--subj)]",
@@ -431,7 +431,7 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
               <span className="text-faint"><span aria-hidden>—</span><span className="sr-only">Not asked</span></span>
             )}
           </span>
-          <ChevronDown size={16} aria-hidden className={cn("w-5 shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
+          <ChevronDown size={16} aria-hidden className={cn("w-5 shrink-0 text-muted transition-transform duration-150 ease-snappy", open && "rotate-180")} />
         </button>
       </div>
       {open && (
@@ -469,7 +469,7 @@ function Row({ row, showSubject }: { row: PrepRow; showSubject: boolean }) {
 
 function RunStatus({ run }: { run: ReturnType<typeof usePrepRun> }) {
   return (
-    <div role="status" className="space-y-2 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sheet">
+    <div role="status" className="count-in space-y-2 rounded-2xl border border-border bg-surface px-5 py-4 shadow-sheet">
       <p className="flex justify-between gap-3 text-[13px] tabular-nums text-muted">
         <span>{run.message}</span>
         {run.total > 0 && <span>{run.done} of {run.total}</span>}

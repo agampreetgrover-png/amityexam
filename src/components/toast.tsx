@@ -7,6 +7,7 @@ interface ToastItem {
   id: number;
   message: string;
   action?: { label: string; onClick: () => void };
+  leaving?: boolean;
 }
 
 // A tiny module-level store so any component can raise a toast without a provider.
@@ -29,8 +30,10 @@ function hold(id: number) {
 
 function dismissToast(id: number) {
   hold(id);
-  items = items.filter((t) => t.id !== id);
+  // Sinks out (.toast-out, 150ms) before it leaves the list. A new toast() still replaces it at once.
+  items = items.map((t) => (t.id === id ? { ...t, leaving: true } : t));
   emit();
+  setTimeout(() => { items = items.filter((t) => t.id !== id); emit(); }, 150);
 }
 
 /**
@@ -74,6 +77,7 @@ export function Toaster() {
           className={cn(
             "toast-in pointer-events-auto flex max-w-md items-center gap-4 rounded-xl bg-text py-2 pl-4 pr-2 text-sm font-medium text-bg shadow-float",
             !t.action && "py-3 pr-4",
+            t.leaving && "toast-out pointer-events-none",
           )}
         >
           <span>{t.message}</span>

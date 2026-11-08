@@ -62,9 +62,9 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
 
   if (saved) {
     return (
-      <div className="space-y-4">
+      <div className="tab-in space-y-4">
         <div className="flex items-start gap-3">
-          <CalendarCheck size={18} className="mt-0.5 shrink-0 text-good" aria-hidden />
+          <CalendarCheck size={18} className="tick-done mt-0.5 shrink-0 text-good" aria-hidden />
           <p className="font-semibold">{savedSummary(saved)}</p>
         </div>
         <div className="flex justify-end">
@@ -100,6 +100,7 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
       </p>
       <Segmented label="Date sheet source" value={source} onChange={setSource} options={[{ value: "upload", label: "Upload a file" }, { value: "drive", label: "From Drive" }]} />
       <OfflineHint online={online}>You&apos;re offline. Reading a date sheet needs AI, so connect to the internet first.</OfflineHint>
+      <div key={source} className="tab-in">
       {source === "upload" ? (
         <label
           // The file input is visually hidden, so the zone itself draws the keyboard focus outline.
@@ -131,7 +132,8 @@ export function DatesheetImport({ draft, onDraft, onDone }: { draft: ImportDraft
           }
         }} />
       )}
-      {busy && <p className="flex items-center gap-2 text-sm font-medium"><Loader2 size={15} className="animate-spin text-accent" /> {busy}</p>}
+      </div>
+      {busy && <p className="count-in flex items-center gap-2 text-sm font-medium"><Loader2 size={15} className="animate-spin text-accent" /> {busy}</p>}
       <AiErrorBox error={error} />
     </div>
   );
@@ -167,7 +169,7 @@ function DrivePicker({ disabled, onPick }: { disabled: boolean; onPick: (s: Driv
   if (!sheets.length) return <p className="rounded-lg border border-dashed border-line-strong px-4 py-5 text-sm text-muted">No date sheets found in your Drive folders (files named like &ldquo;datesheet&rdquo; or &ldquo;examination schedule&rdquo;). Upload the file instead.</p>;
   return (
     // No overflow clipping here: it would cut off the focus ring around each row's button.
-    <ul className="divide-y divide-border rounded-xl border border-border">
+    <ul className="count-in divide-y divide-border rounded-xl border border-border">
       {sheets.map((s) => (
         <li key={s.id}>
           <button
@@ -256,7 +258,7 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
   };
 
   return (
-    <div className="space-y-4">
+    <div className="tab-in space-y-4">
       <p className="text-sm text-muted">
         Found {mine.length} exam{mine.length === 1 ? "" : "s"} for your subjects in <span className="font-medium text-text">{fileName}</span>. Check the dates, then save.
       </p>
@@ -271,7 +273,7 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
           const name = subjects.find((s) => s.id === r.subjectId)?.name ?? "unmatched exam";
           return (
           <li key={r.key} className="relative p-3">
-            {r.include && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
+            {r.include && <span aria-hidden className="count-in absolute inset-y-0 left-0 w-0.5 bg-accent" />}
             <div className="flex items-start gap-3">
               <input
                 type="checkbox"

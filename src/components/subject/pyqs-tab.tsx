@@ -113,6 +113,7 @@ export function PyqsTab({ subject, mode }: TabProps) {
         <div className="empty:hidden"><OfflineHint online={online} /></div>
       </div>
 
+      <div key={view} className="tab-in">
       {!scoped.length ? (
         <Empty icon={<FileQuestion />} title={`No ${modeShort(mode).toLowerCase()} papers yet`}>
           {unknown.length
@@ -134,6 +135,7 @@ export function PyqsTab({ subject, mode }: TabProps) {
           remapDisabled={!online || analysis.running || !modeTopics.length}
         />
       )}
+      </div>
 
       {unknown.length > 0 && <UnknownExamPapers papers={unknown} />}
     </div>
@@ -157,14 +159,14 @@ function UnknownExamPapers({ papers }: { papers: Material[] }) {
       title={
         <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex items-center gap-2 text-left">
           Exam type unknown <Badge tone="warn">{papers.length}</Badge>
-          <ChevronDown size={16} className={cn("text-muted transition-transform duration-150", open && "rotate-180")} />
+          <ChevronDown size={16} className={cn("text-muted transition-transform duration-150 ease-snappy", open && "rotate-180")} />
         </button>
       }
     >
       {!open ? (
         <p className="text-sm leading-relaxed text-muted">These papers don&apos;t say whether they were a mid-sem or a major, so they&apos;re hidden from both. Open to sort them.</p>
       ) : (
-        <List className="border-b-0">
+        <List className="tab-in border-b-0">
           {papers.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-2 py-3">
               <div className="min-w-0 flex-1 basis-48">
@@ -355,7 +357,7 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2 sm:px-5"
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 hover:bg-surface-2 active:bg-surface-3 sm:px-5"
       >
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
@@ -368,7 +370,7 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
           </p>
         </div>
         <Badge tone={hot ? "accent" : "neutral"} className="shrink-0">Asked {count}×</Badge>
-        <ChevronDown size={16} className={cn("shrink-0 text-muted transition-transform duration-150", open && "rotate-180")} />
+        <ChevronDown size={16} className={cn("shrink-0 text-muted transition-transform duration-150 ease-snappy", open && "rotate-180")} />
       </button>
       {open && (
         <ul className="tab-in mx-4 mb-3 divide-y divide-border border-l-2 border-accent/30 pl-4 sm:mx-5">

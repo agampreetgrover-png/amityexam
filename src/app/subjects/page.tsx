@@ -267,7 +267,7 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
               aria-label={`Colour ${i + 1}`}
               aria-checked={color === c}
               onClick={() => setColor(c)}
-              className="subj-dot h-7 w-7 rounded-full transition-shadow duration-150 pointer-coarse:h-9 pointer-coarse:w-9"
+              className="press subj-dot h-7 w-7 rounded-full pointer-coarse:h-9 pointer-coarse:w-9"
               // The chosen swatch gets a ring in its own colour, set off by a white gap. Both soften on the dark board like every subject dot.
               style={{
                 ...subjectStyle(c),

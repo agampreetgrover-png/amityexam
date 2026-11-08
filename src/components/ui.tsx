@@ -480,10 +480,11 @@ export function Menu({ label, items, className }: { label: string; items: MenuIt
     const onToggle = (e: Event) => {
       if ((e as ToggleEvent).newState !== "open" || !button.current) return;
       const b = button.current.getBoundingClientRect();
-      const { width, height } = el.getBoundingClientRect();
+      const width = el.offsetWidth, height = el.offsetHeight; // untransformed size: it opens at scale(0.97)
       const below = b.bottom + 4 + height <= window.innerHeight - 8;
       el.style.top = `${below ? b.bottom + 4 : Math.max(8, b.top - 4 - height)}px`;
       el.style.left = `${Math.max(8, Math.min(b.right - width, window.innerWidth - width - 8))}px`;
+      el.style.transformOrigin = below ? "top right" : "bottom right";
       el.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     };
     el.addEventListener("toggle", onToggle);
@@ -506,7 +507,7 @@ export function Menu({ label, items, className }: { label: string; items: MenuIt
         aria-haspopup="menu"
         title={label}
         className={cn(
-          "relative grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted hover:bg-surface-3 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']",
+          "press relative grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted hover:bg-surface-3 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-['']",
           className,
         )}
       >
@@ -520,7 +521,7 @@ export function Menu({ label, items, className }: { label: string; items: MenuIt
         aria-label={label}
         onKeyDown={onKeyDown}
         // Fixed and placed on open (see above); the browser's default popover centring is switched off.
-        className="fixed inset-auto m-0 w-44 rounded-lg border border-border bg-surface p-1 text-text shadow-float"
+        className="menu-pop fixed inset-auto m-0 w-44 rounded-lg border border-border bg-surface p-1 text-text shadow-float"
       >
         {items.map((it) => (
           <button

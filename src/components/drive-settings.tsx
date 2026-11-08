@@ -238,7 +238,7 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
             {[...linked].map((id) => (
               <li key={id} className="flex items-center justify-between gap-2 py-2">
                 <span className="truncate">{(groups !== "error" && groups?.flatMap((g) => g.folders).find((f) => f.id === id)?.name) || id}</span>
-                <button type="button" className="-mr-2 shrink-0 rounded-md px-2 py-1 text-xs text-muted transition-colors duration-150 hover:bg-bad/10 hover:text-bad" onClick={() => db.subjects.update(subject!.id, { driveFolderIds: [...linked].filter((x) => x !== id) }).catch(() => toast("Couldn't save that. Try again."))}>
+                <button type="button" className="press -mr-2 shrink-0 rounded-md px-2 py-1 text-xs text-muted hover:bg-bad/10 hover:text-bad" onClick={() => db.subjects.update(subject!.id, { driveFolderIds: [...linked].filter((x) => x !== id) }).catch(() => toast("Couldn't save that. Try again."))}>
                   Unlink
                 </button>
               </li>

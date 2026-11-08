@@ -375,7 +375,7 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
     // Count what save() will actually store: named topics under named units.
     const count = draft.reduce((a, u) => a + (u.title.trim() ? u.topics.filter((t) => t.title.trim()).length : 0), 0);
     return (
-      <div className="space-y-5">
+      <div className="tab-in space-y-5">
         <p className="text-sm text-muted">
           Check {draft.length} unit{draft.length === 1 ? "" : "s"} and {count} topic{count === 1 ? "" : "s"} before saving. Fix names and remove anything wrong.
           {mode === "mid-term" && " They'll count towards the mid-sem as well as the major. Remove any unit the mid-sem doesn't cover before you save."}

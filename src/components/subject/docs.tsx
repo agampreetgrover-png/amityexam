@@ -57,7 +57,7 @@ export function DraftCard({ gen, busyTitle, onSave }: { gen: ReturnType<typeof u
   return (
     <Card
       title={gen.busy ? busyTitle : "Unfinished draft"}
-      className="no-print"
+      className="no-print tab-in"
       action={canSave && (
         <Button
           size="sm"
@@ -94,9 +94,9 @@ export function DocList({ docs, selected, onSelect }: { docs: GeneratedDoc[]; se
             onClick={() => onSelect(d)}
             aria-current={selected === d.id ? "true" : undefined}
             className={cn(
-              "flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] transition-colors duration-150 hover:bg-surface-2 sm:px-5",
+              "flex w-full items-center gap-3 px-4 py-3 text-left text-[15px] transition-colors duration-150 hover:bg-surface-2 active:bg-surface-3 sm:px-5",
               // The open doc: a quiet fill like the nav's active item, with its icon in the accent.
-              selected === d.id && "bg-nav-active font-medium text-nav-active-ink hover:bg-nav-active",
+              selected === d.id && "bg-nav-active font-medium text-nav-active-ink hover:bg-nav-active active:bg-nav-active",
             )}
           >
             <FileText size={16} className={cn("shrink-0", selected === d.id ? "text-accent" : "text-faint")} aria-hidden />
@@ -121,6 +121,8 @@ export function DocViewer({ doc, onDeleted }: { doc: GeneratedDoc; onDeleted: ()
   return (
     <div ref={ref} className="scroll-mt-4">
     <Card
+      key={doc.id}
+      className="tab-in"
       // The open document gets a larger title than the Card's own section heading.
       title={<span className="block font-display text-[21px] leading-tight md:text-[24px]">{doc.title}</span>}
       action={

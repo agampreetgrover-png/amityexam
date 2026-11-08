@@ -107,7 +107,7 @@ export function MaterialsTab({ subject, mode }: TabProps) {
           PDFs are read in your browser and only the text is kept. Scanned PDFs and photos of notes are transcribed by AI. Upload past papers as
           &ldquo;Previous year paper&rdquo; to use them for predictions.
         </p>
-        {busy && <p className="mt-2 text-sm font-medium text-accent">{busy}</p>}
+        {busy && <p className="count-in mt-2 text-sm font-medium text-accent">{busy}</p>}
         <div className="mt-2"><AiErrorBox error={error} /></div>
       </Card>
 

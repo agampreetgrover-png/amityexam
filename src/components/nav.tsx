@@ -181,11 +181,11 @@ export function Nav() {
             onClick={onClick(href)}
             aria-current={active(href) ? "page" : undefined}
             className={cn(
-              "relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2 text-[11px] transition-colors duration-150",
+              "group relative flex flex-1 flex-col items-center gap-1 pb-2 pt-2 text-[11px] transition-colors duration-150",
               active(href) ? "font-semibold text-nav-active-ink" : "font-medium text-muted",
             )}
           >
-            <span className="flex h-7 items-center justify-center">
+            <span className="flex h-7 items-center justify-center transition-transform duration-150 ease-snappy group-active:scale-[0.92]">
               <Icon size={20} strokeWidth={active(href) ? 2.1 : 1.75} />
             </span>
             {label}

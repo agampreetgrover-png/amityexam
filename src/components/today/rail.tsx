@@ -57,7 +57,7 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
   const subject = (id: number) => subjects.find((s) => s.id === id);
   const inMonth = exams.filter((e) => isSameMonth(fromDay(e.date), month));
   const hasPractical = inMonth.some(isPractical);
-  const step = "grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-text";
+  const step = "press grid h-7 w-7 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-text";
 
   return (
     <RailCard
@@ -70,7 +70,7 @@ export function ExamCalendar({ today, exams, subjects }: { today: string; exams:
         </div>
       }
     >
-      <div className="grid grid-cols-7 gap-y-1.5 text-center" aria-hidden>
+      <div key={format(month, "yyyy-MM")} className="count-in grid grid-cols-7 gap-y-1.5 text-center" aria-hidden>
         {WEEKDAYS.map((d, i) => <span key={i} className={cn("pb-1 text-[11px] font-semibold", i > 4 ? "text-faint" : "text-muted")}>{d}</span>)}
         {days.map((d) => {
           const key = toDay(d);
@@ -148,7 +148,7 @@ export function QuickSheets({ subjects }: { subjects: Subject[] }) {
             <li key={d.id}>
               <Link
                 href={`/subjects/view?id=${d.subjectId}&tab=notes`}
-                className="flex items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-150 hover:bg-surface-2"
+                className="flex items-center gap-3 rounded-xl px-2 py-2 press press-card hover:bg-surface-2"
               >
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent"><FileText size={16} aria-hidden /></span>
                 <span className="min-w-0">

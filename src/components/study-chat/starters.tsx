@@ -32,16 +32,16 @@ export function Starters({ subjectName, grounding, tiles, disabled, onPick }: {
       <h2 className="mt-4 max-w-xl text-balance text-xl font-semibold tracking-[-0.02em] sm:text-2xl">What are we mastering in {subjectName} today?</h2>
       <p className="mt-2 max-w-md text-pretty text-sm leading-relaxed text-muted">{grounding}</p>
       <ul className="mt-7 grid w-full grid-cols-1 gap-3 text-left sm:mt-8 sm:grid-cols-2">
-        {tiles.map((t) => {
+        {tiles.map((t, i) => {
           const tile = TILES[t.kind];
           return (
-            <li key={t.kind} className="flex">
+            <li key={t.kind} className="tab-in flex" style={{ animationDelay: `${i * 40}ms` }}>
               {/* Lifts on hover: a stronger edge and a soft shadow in light; on dark, where shadows don't read, a step up. */}
               <button
                 type="button"
                 disabled={disabled}
                 onClick={() => onPick(t.prompt)}
-                className="press flex w-full flex-col gap-2 rounded-xl border border-border bg-surface p-4 shadow-sheet transition-[transform,border-color,box-shadow,background-color] duration-150 hover:-translate-y-0.5 hover:border-line-strong hover:bg-[color:light-dark(var(--surface),var(--surface-2))] hover:shadow-lift disabled:pointer-events-none disabled:opacity-45"
+                className="press flex w-full flex-col gap-2 rounded-xl border border-border bg-surface p-4 shadow-sheet hover:-translate-y-0.5 hover:border-line-strong hover:bg-[color:light-dark(var(--surface),var(--surface-2))] hover:shadow-lift disabled:pointer-events-none disabled:opacity-45"
               >
                 <span className="flex w-full items-center justify-between gap-2">
                   <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted [&_svg]:size-4">{tile.icon}</span>

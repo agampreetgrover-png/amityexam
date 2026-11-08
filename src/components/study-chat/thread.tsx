@@ -470,7 +470,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           ) : (
             <>
               {shown.map((m) => (
-                <Bubble key={m.id} role={m.role} content={m.content} images={m.images} sources={m.sources} onRegenerate={redo && m.id === last?.id ? () => send(asked!.content, { redo, images: asked!.images ?? [] }) : undefined} />
+                <Bubble key={m.id} role={m.role} content={m.content} images={m.images} sources={m.sources} enter={sent != null && m.id! >= sent} onRegenerate={redo && m.id === last?.id ? () => send(asked!.content, { redo, images: asked!.images ?? [] }) : undefined} />
               ))}
               {stranded && (
                 <div className="flex items-center justify-end gap-2 text-[13px] text-muted">
@@ -502,7 +502,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
           <OfflineHint online={online} />
           <AiErrorBox error={error} />
           {offSubject && (
-            <div role="alert" className="rounded-2xl border border-border bg-surface px-4 py-3 text-[14px] shadow-sheet">
+            <div role="alert" className="toast-in rounded-2xl border border-border bg-surface px-4 py-3 text-[14px] shadow-sheet">
               <p>
                 That sounds like <span className="font-semibold">{offSubject.subject.name}</span>. This chat answers from your{" "}
                 {subject?.name} notes.
@@ -528,7 +528,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
               (images.length > 0 || attaching) && (
                 <ul aria-label="Attached images" className="flex flex-wrap gap-2 px-3 pt-3">
                   {images.map((src, i) => (
-                    <li key={i} className="relative">
+                    <li key={i} className="count-in relative">
                       {/* eslint-disable-next-line @next/next/no-img-element -- a local data URL, nothing to optimise */}
                       <img src={src} alt={`Attached image ${i + 1}`} className="size-16 rounded-lg border border-border object-cover" />
                       <button
@@ -662,7 +662,7 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
           {busy ? (
             // A filled square: an outlined one read as an empty checkbox.
             <Button type="button" variant="secondary" size="icon" className={round} onClick={onStop} aria-label="Stop" title="Stop">
-              <Square size={11} className="fill-current" />
+              <Square size={11} className="tick-done fill-current" />
             </Button>
           ) : (
             // Neutral while there's nothing to send (the primary's disabled look), indigo once there is.
@@ -681,20 +681,21 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
  * on the page under it. `sources` are the notes files and past-paper questions an answer was given (study chat only);
  * `onRegenerate` asks its question again (the newest study-chat answer only).
  */
-export function Bubble({ role, content, images, live, sources, onRegenerate }: {
+export function Bubble({ role, content, images, live, enter, sources, onRegenerate }: {
   role: "user" | "assistant";
   content: string;
   images?: string[]; // photos sent with a question (study chat)
   live?: boolean;
   sources?: ChatSource[];
   onRegenerate?: () => void;
+  enter?: boolean; // asked or answered during this visit: settles in once, never when a chat is reopened
 }) {
   const [copied, setCopied] = useState(false);
   if (role === "user") {
     // Only data URLs of images: a restored backup could hold anything here.
     const pics = Array.isArray(images) ? images.filter((s) => typeof s === "string" && s.startsWith("data:image/")) : [];
     return (
-      <div className="flex flex-col items-end gap-2">
+      <div className={cn("flex flex-col items-end gap-2", enter && "tab-in")}>
         {pics.length > 0 && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-2">
             {pics.map((src, i) => (
@@ -719,18 +720,18 @@ export function Bubble({ role, content, images, live, sources, onRegenerate }: {
     }
   };
   // The ::before widens the tap target on touch screens to about 40px without changing the look.
-  const action = "relative inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted transition-colors duration-150 hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 pointer-coarse:before:inset-x-0 pointer-coarse:before:content-[''] [&_svg]:size-3.5";
+  const action = "relative inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted press hover:bg-surface-2 hover:text-text pointer-coarse:before:absolute pointer-coarse:before:-inset-y-1.5 pointer-coarse:before:inset-x-0 pointer-coarse:before:content-[''] [&_svg]:size-3.5";
   // The answer is set straight on the page, full column width, like a handout; only the question sits in a bubble.
   // A bubble around a long answer with tables and code was a box inside a box and narrowed every line.
   return (
     <div className="min-w-0">
-      <div aria-busy={live || undefined}>
+      <div aria-busy={live || undefined} className={live ? "count-in" : undefined}>
         <Markdown className="prose-wide">{content}</Markdown>
         {/* Once it's done: the files and papers it was given, as small tags rather than a list, then its actions. */}
         {!live && (
           <>
             {!!sources?.length && (
-              <ul aria-label="Sources" className="mt-4 flex min-w-0 flex-wrap gap-1.5">
+              <ul aria-label="Sources" className={cn("mt-4 flex min-w-0 flex-wrap gap-1.5", enter && "count-in")}>
                 {sources.map((s, i) => (
                   <li key={i} className="min-w-0 max-w-full">
                     <Badge className="max-w-[16rem]">
@@ -743,9 +744,9 @@ export function Bubble({ role, content, images, live, sources, onRegenerate }: {
                 ))}
               </ul>
             )}
-            <div className="-ml-2 mt-2 flex items-center gap-0.5">
+            <div className={cn("-ml-2 mt-2 flex items-center gap-0.5", enter && "count-in")}>
               <button type="button" onClick={copy} aria-label={copied ? "Copied" : "Copy answer"} title="Copy answer" className={action}>
-                {copied ? <Check aria-hidden /> : <Copy aria-hidden />}
+                {copied ? <Check aria-hidden className="tick-done" /> : <Copy aria-hidden />}
                 {copied ? "Copied" : "Copy"}
               </button>
               {onRegenerate && (

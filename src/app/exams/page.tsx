@@ -81,7 +81,7 @@ export default function ExamsPage() {
       <li
         key={e.id}
         style={subjectStyle(s?.color)}
-        className="grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sheet @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center"
+        className="tab-in grid grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sheet @2xl:grid-cols-[4.25rem_minmax(0,1fr)_auto] @2xl:items-center"
       >
         <div className={cn("flex h-[4.25rem] flex-col items-center justify-center rounded-lg border text-center", COUNTDOWN[u])}>
           {days < 0 ? (
@@ -118,7 +118,7 @@ export default function ExamsPage() {
             <Link
               href={`/subjects/view?id=${e.subjectId}&tab=syllabus`}
               title="Open the syllabus to tick topics off"
-              className="group -mx-1.5 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-surface-2"
+              className="group press -mx-1.5 rounded-md px-1.5 py-1 hover:bg-surface-2"
             >
               <span className="block text-[12px] tabular-nums text-muted group-hover:text-text">
                 <strong className="font-semibold text-text">{revised}/{scope.length}</strong> topics revised
@@ -311,7 +311,7 @@ function RoomField({ exam }: { exam: Exam }) {
     setOpen(true);
   };
   return exam.venue ? (
-    <button type="button" autoFocus={refocus} onClick={start} title="Change room" aria-label={`Room ${exam.venue}, change`} className="rounded-md transition-colors duration-150 hover:opacity-80">
+    <button type="button" autoFocus={refocus} onClick={start} title="Change room" aria-label={`Room ${exam.venue}, change`} className="press rounded-md hover:opacity-80">
       <Badge><MapPin aria-hidden /> {exam.venue}</Badge>
     </button>
   ) : (
@@ -319,7 +319,7 @@ function RoomField({ exam }: { exam: Exam }) {
       type="button"
       autoFocus={refocus}
       onClick={start}
-      className="inline-flex items-center gap-1 rounded-md border border-dashed border-line-strong px-2 py-0.5 text-xs font-medium text-muted transition-colors duration-150 hover:border-accent hover:text-accent"
+      className="inline-flex items-center gap-1 rounded-md border border-dashed border-line-strong px-2 py-0.5 text-xs font-medium text-muted press hover:border-accent hover:text-accent"
     >
       <Plus size={12} aria-hidden /> Add room
     </button>
@@ -437,7 +437,7 @@ function ExamForm({ initial, mode, onDone }: { initial: Exam | null; mode?: Exam
           />
         )}
       </fieldset>
-      {saveError && <p className="text-sm text-bad" role="alert">Couldn&apos;t save the exam. Try again.</p>}
+      {saveError && <p className="count-in text-sm text-bad" role="alert">Couldn&apos;t save the exam. Try again.</p>}
       <div className="flex justify-end pt-1"><Button type="submit" disabled={saving}>Save exam</Button></div>
     </form>
   );

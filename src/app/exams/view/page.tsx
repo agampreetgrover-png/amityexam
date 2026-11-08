@@ -188,7 +188,7 @@ function ExamKit({ id }: { id: number }) {
                 <button
                   // Always visible on touch screens (tablets included); with a mouse it appears on hover or keyboard focus.
                   // On touch an invisible ring widens it for a thumb.
-                  className="no-print relative ml-auto shrink-0 rounded-lg p-1.5 text-muted transition-[opacity,color,background-color] duration-150 hover:bg-bad/10 hover:text-bad pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-[''] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+                  className="press no-print relative ml-auto shrink-0 rounded-lg p-1.5 text-muted hover:bg-bad/10 hover:text-bad pointer-coarse:before:absolute pointer-coarse:before:-inset-2 pointer-coarse:before:content-[''] [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
                   aria-label={`Remove ${item.text}`}
                   onClick={async () => {
                     let removed = false;
