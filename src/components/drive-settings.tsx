@@ -12,6 +12,8 @@ import { toast } from "./toast";
 import { Button, Card, Field, Input, Modal, Select, Switch, cn } from "./ui";
 
 const folderUrl = (id: string) => `https://drive.google.com/drive/folders/${id}`;
+/** The sync route takes up to 10 linked folders per subject (src/app/api/drive/sync/route.ts). */
+const MAX_LINKED_FOLDERS = 10;
 
 /** Settings card: which Drive folders are synced, sync status, and manual subject ↔ folder links. */
 export function DriveSettings() {
@@ -142,7 +144,8 @@ export function DriveSettings() {
               <dd className="font-medium tabular-nums">{counts.skipped}</dd>
             </div>
           )}
-          {settings.lastDriveSync && (
+          {/* A bad value from an imported backup would make format() throw and take Settings (and its import button) down. */}
+          {!!settings.lastDriveSync && !Number.isNaN(new Date(settings.lastDriveSync).getTime()) && (
             <div className="flex items-baseline justify-between gap-3 px-4 py-2.5">
               <dt className="text-muted">Last synced</dt>
               <dd className="text-right tabular-nums">{format(new Date(settings.lastDriveSync), "d MMM, HH:mm")}</dd>
@@ -199,12 +202,20 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
   const sid = subjectId || subjects?.[0]?.id;
   const subject = subjects?.find((s) => s.id === sid);
   const linked = new Set(subject?.driveFolderIds ?? []);
+  const full = linked.size >= MAX_LINKED_FOLDERS;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subject || !folderId || saving) return;
+    if (!subject || !folderId || saving || full) return;
     setSaving(true);
-    await db.subjects.update(subject.id, { driveFolderIds: [...linked, folderId] });
+    try {
+      await db.subjects.update(subject.id, { driveFolderIds: [...linked, folderId] });
+    } catch {
+      toast("Couldn't save that. Try again.");
+      return;
+    } finally {
+      setSaving(false); // a failed write would otherwise leave "Link and sync" disabled for good
+    }
     onDone();
     runDriveSync();
   };
@@ -248,7 +259,8 @@ function LinkFolder({ onDone }: { onDone: () => void }) {
           </ul>
         </div>
       )}
-      <div className="flex justify-end"><Button type="submit" disabled={!folderId || saving}>Link and sync</Button></div>
+      {full && <p className="text-sm text-warn">Up to {MAX_LINKED_FOLDERS} folders can be linked to one subject. Unlink one to add another.</p>}
+      <div className="flex justify-end"><Button type="submit" disabled={!folderId || saving || full}>Link and sync</Button></div>
     </form>
   );
 }

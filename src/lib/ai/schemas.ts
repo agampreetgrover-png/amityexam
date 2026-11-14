@@ -16,9 +16,10 @@ export const QuizSchema = z.object({
     z.object({
       type: z.enum(["mcq", "short"]).catch("mcq"),
       question: z.string(),
-      options: z.array(z.string()).optional(),
+      // Models in JSON mode often write null for a field that doesn't apply; treat it as absent.
+      options: z.preprocess((v) => v ?? undefined, z.array(z.string()).optional()),
       answer: z.string(),
-      explanation: z.string().optional(),
+      explanation: z.preprocess((v) => v ?? undefined, z.string().optional()),
     }),
   ),
 });
@@ -30,7 +31,7 @@ const score = z.preprocess((v) => {
 }, z.number().min(0).max(1)).catch(0);
 
 export const GradeSchema = z.object({
-  results: z.array(z.object({ score, feedback: z.string() })),
+  results: z.array(z.object({ score, feedback: z.preprocess((v) => v ?? "", z.string()) })),
 });
 
 // Models return numbers as strings ("4 marks", "2021") or junk; coerce, and fall back to null.

@@ -6,6 +6,7 @@ import { ArrowUp, BookOpen, Check, Copy, FileText, History, ImagePlus, MessagesS
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { aiStream, imageToDataUrl } from "@/lib/ai/client";
 import type { AiRequest } from "@/lib/ai/schemas";
+import { STREAM_INTERRUPTED } from "@/lib/ai/stream";
 import { daysBetween } from "@/lib/dates";
 import { byWhen } from "@/lib/exams";
 import { db, deleteChat } from "@/lib/db";
@@ -76,6 +77,9 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
   const sending = useRef(false);
   const mounted = useRef(true);
   const bottom = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Follow the answer down only while the reader is already at the bottom; scrolling up to read stops the pull.
+  const follow = useRef(true);
   // On phones and tablets Enter adds a line (the keyboard has no Shift); the Send button sends.
   const [touch, setTouch] = useState(false);
   useEffect(() => setTouch(window.matchMedia("(pointer: coarse)").matches), []);
@@ -145,10 +149,26 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     return { topics, questions, notes, rawPapers, prep, exam, ownSeason: own.length > 0 };
   }, [material, subject, mode, base?.exams, today]);
 
-  // Braces matter: newer Chrome returns a Promise from scrollIntoView, and an effect that returns one crashes React.
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end" });
-  }, [messages?.length, streaming?.text]);
+    // Capture, since element scrolls don't bubble: phones scroll the page, wider screens the conversation box.
+    const onScroll = () => {
+      const b = bottom.current?.getBoundingClientRect();
+      const box = scroller.current?.getBoundingClientRect();
+      if (b && box) follow.current = b.top - Math.min(window.innerHeight, box.bottom) < 80;
+    };
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => window.removeEventListener("scroll", onScroll, { capture: true });
+  }, []);
+  // Braces matter: newer Chrome returns a Promise from scrollIntoView, and an effect that returns one crashes React.
+  // A question just sent always jumps down; a streaming answer only drags the view if the reader is following it.
+  // The question stays the last saved message while its answer streams, so only a new one forces the jump.
+  const lastId = messages?.at(-1)?.role === "user" ? messages.at(-1)!.id : undefined;
+  const jumpedFor = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (lastId !== undefined && lastId !== jumpedFor.current) follow.current = true;
+    jumpedFor.current = lastId;
+    if (follow.current) bottom.current?.scrollIntoView({ block: "end" });
+  }, [messages?.length, streaming?.text, lastId]);
 
   // Picked, pasted or dropped: only images, at most MAX_IMAGES in the box, each shrunk before it's kept.
   const addImages = async (files: File[]) => {
@@ -176,8 +196,8 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
     }
   };
 
-  // `retryOf`: a question left without an answer (the page was closed mid-answer). It's asked again as new and
-  // the old copy is deleted, so neither the history sent nor the thread has it twice.
+  // `retryOf`: a question left without an answer (the page was closed mid-answer). It's asked again as new; the old
+  // copy is hidden meanwhile and deleted with the answer's save, so a failed retry leaves it (and its photos) in place.
   // `redo`: the last question and its answer, asked again (Regenerate). They're hidden while the new answer comes
   // and deleted once it's saved; if none arrives they come back as they were.
   // `here`: ask in this chat's subject even if the question names another one.
@@ -225,15 +245,14 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
       content: `${had?.length ? `[${plural(had.length, "image")} attached]\n` : ""}${content}`.slice(0, MAX_HISTORY_CHARS),
     }));
     ctrl.current = new AbortController();
-    setStreaming({ text: "", sources, hide: redo });
+    const hide = retryOf != null ? [...(redo ?? []), retryOf] : redo;
+    setStreaming({ text: "", sources, hide });
     let reply = "";
     let chat = id;
     let created = false;
     let finished = false;
     let questionId: number | undefined;
     try {
-      // Deleted once `busy` is set, so the "No answer arrived" row doesn't flash back before the answer starts.
-      if (retryOf != null) await db.messages.delete(retryOf);
       const now = Date.now();
       let saved: number;
       if (chat == null) {
@@ -264,11 +283,14 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
         },
         (full) => {
           reply = full;
-          setStreaming({ text: full, sources, hide: redo });
+          setStreaming({ text: full, sources, hide });
         },
         ctrl.current.signal,
       );
-      finished = true;
+      // A dropped provider stream ends with a note rather than an error: the answer is cut off, so a regenerate
+      // keeps the full answer it would have replaced.
+      finished = !reply.endsWith(STREAM_INTERRUPTED);
+      if (!finished && redo) setError(new Error("The AI connection dropped, so the earlier answer was kept. Try again."));
     } catch (e) {
       if (!isAbort(e)) setError(e);
     } finally {
@@ -282,6 +304,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
             if (!(await db.chats.get(saved))) return;
             await db.messages.add({ subjectId: subject.id!, chatId: saved, role: "assistant", content: reply, createdAt: Date.now(), sources });
             if (redo) await db.messages.bulkDelete(redo);
+            if (retryOf != null) await db.messages.delete(retryOf);
             await db.chats.update(saved, { updatedAt: Date.now() });
           });
         } else {
@@ -292,8 +315,8 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
             // Only if still showing: after a switch to another chat this would unselect that one.
             if (mounted.current) onDiscarded();
           }
-          // A regenerated question is still in the thread, so the box stays as it was.
-          if (!redo) {
+          // A regenerated or retried question is still in the thread, so the box stays as it was.
+          if (!redo && retryOf == null) {
             setInput((cur) => cur || text);
             if (imgs.length) setImages((cur) => (cur.length ? cur : imgs));
           }
@@ -453,7 +476,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
 
       {/* The conversation, in a reading column. Phones scroll the page; from tablets up this scrolls on its own
           between the bar and the composer. Below md the page pads the sides itself, so only wider screens pad here. */}
-      <div className="flex-1 md:min-h-0 md:overflow-y-auto md:px-8">
+      <div ref={scroller} className="flex-1 md:min-h-0 md:overflow-y-auto md:px-8">
         <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-6 py-6 md:gap-8 md:py-8">
           {!shown ? null : shown.length === 0 && !busy ? (
             subject && scope && (
@@ -606,12 +629,13 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
 }) {
   const round = "h-9 w-9 rounded-full pointer-coarse:h-10 pointer-coarse:w-10";
   const [dragging, setDragging] = useState(false);
-  const dropProps = onFiles && !busy
+  // Kept while an answer streams: without a handler a dropped file opens in the tab, leaving the app mid-answer.
+  const dropProps = onFiles
     ? {
         onDragOver: (e: DragEvent) => {
           if (!e.dataTransfer.types.includes("Files")) return;
           e.preventDefault();
-          setDragging(true);
+          if (!busy) setDragging(true);
         },
         onDragLeave: (e: DragEvent) => {
           if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
@@ -620,6 +644,7 @@ export function Dock({ value, onChange, onSend, onStop, busy, canSend, touch, pl
           if (!e.dataTransfer.files.length) return;
           e.preventDefault();
           setDragging(false);
+          if (busy) return toast("Wait for the answer to finish, then drop the image again.");
           onFiles(Array.from(e.dataTransfer.files));
         },
       }

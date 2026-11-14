@@ -13,6 +13,8 @@ import { getLastProvider } from "@/lib/ai/client";
 import { MODES, modeLabel } from "@/lib/mode";
 import { setTheme, useTheme, type ThemeChoice } from "@/lib/theme";
 import { DriveSettings } from "@/components/drive-settings";
+import { useDriveSync } from "@/lib/drive/client";
+import { usePrepRun } from "@/lib/prep-run";
 import { Badge, Button, Card, PageHeader, Segmented, cn, Switch } from "@/components/ui";
 
 // Each group is its own card, one column of them, with the explanation tucked under the card's title.
@@ -29,6 +31,15 @@ export default function SettingsPage() {
   // Where the switch was just flipped to, shown while the permission prompt or the save is still out.
   const [flipping, setFlipping] = useState<boolean | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  // A running Drive sync or prep rating holds subject and topic ids from before an import or delete, and
+  // would keep writing to them: after a restore the same id can be a different subject.
+  const syncing = useDriveSync().running;
+  const rating = usePrepRun().running;
+  const busyMsg = syncing
+    ? "Wait for the Drive sync to finish, then try again."
+    : rating
+      ? "Wait for the topic ratings on Zero prep to finish, then try again."
+      : "";
   useEffect(() => {
     setPermission(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
   }, []);
@@ -75,6 +86,7 @@ export default function SettingsPage() {
   // The file is read and checked before asking, so a wrong file never gets as far as "Replace ALL".
   const restore = async (f: File) => {
     setDataMsg(null);
+    if (busyMsg) return setDataMsg({ text: busyMsg, bad: true });
     try {
       let backup: unknown;
       try {
@@ -167,6 +179,7 @@ export default function SettingsPage() {
               className="text-bad hover:border-bad/40 hover:bg-bad/10"
               onClick={async () => {
                 setDataMsg(null);
+                if (busyMsg) return setDataMsg({ text: busyMsg, bad: true });
                 // Settings go too, so the app returns to the "What are you preparing for?" screen; say so up front.
                 if (
                   confirm(

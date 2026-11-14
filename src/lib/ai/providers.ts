@@ -193,6 +193,8 @@ function openrouterError(e: unknown): AiProviderError {
     if (status === 404) return new AiProviderError(msg, 404, "config", undefined, "openrouter"); // model gone or no endpoint
     if (status === 413 || /context length|too many tokens/i.test(msg)) return new AiProviderError(msg, 413, "too-large", undefined, "openrouter");
     if (status === 408 || status >= 500) return new AiProviderError(msg, status, "unavailable", undefined, "openrouter");
+    // A model id it doesn't know or a free provider rejecting a parameter: OpenRouter's own problem, so Gemini gets a turn.
+    if (status === 400 || status === 422) return new AiProviderError(msg, status, "config", undefined, "openrouter");
     return new AiProviderError(msg, status, "other", undefined, "openrouter");
   }
   return networkError(e, "openrouter");
@@ -250,7 +252,9 @@ function openrouter(apiKey: string): Provider {
     name: "openrouter",
     async json(messages, opts) {
       try {
-        return (await complete({ models: model(opts?.fast), messages, response_format: { type: "json_object" }, temperature: 0.3, max_tokens: OUT_CAP.json })) ?? "";
+        // Same message shape and models as stream, so a prompt with photos is sent as image parts to models that take them.
+        const models = hasImages(messages) ? visionModels() : model(opts?.fast);
+        return (await complete({ models, messages: toOpenRouter(messages), response_format: { type: "json_object" }, temperature: 0.3, max_tokens: OUT_CAP.json })) ?? "";
       } catch (e) {
         throw openrouterError(e);
       }
@@ -410,5 +414,11 @@ function summarise(errors: AiProviderError[]): AiProviderError {
   const minute = errors.find((e) => e.kind === "minute");
   if (minute && errors.every((e) => e.kind === "minute" || e.kind === "day")) return minute;
   // A rejected key won't fix itself overnight, so it beats the other provider's limit or outage.
-  return errors.find((e) => e.kind === "too-large") ?? errors.find((e) => e.kind === "auth") ?? errors[errors.length - 1];
+  // A daily limit is only reported when every provider hit one; otherwise one still has quota and a retry may work.
+  return (
+    errors.find((e) => e.kind === "too-large") ??
+    errors.find((e) => e.kind === "auth") ??
+    errors.findLast((e) => e.kind !== "day") ??
+    errors[errors.length - 1]
+  );
 }

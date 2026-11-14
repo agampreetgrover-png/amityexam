@@ -56,6 +56,9 @@ function cleanPaper(r: PyqPaperResult): PyqPaperResult {
 /** Daily/minute limits (or no AI key at all) end the whole run; other failures only skip one paper. */
 const isLimit = (e: unknown) => e instanceof AiError && (!!e.retryAfter || /limit|quota|rate|no ai key|api_key/i.test(e.message));
 const offline = () => typeof navigator !== "undefined" && !navigator.onLine;
+/** The request never reached the AI (connection dropped, or the client saw it was offline): not the paper's fault. */
+const isConnection = (e: unknown) =>
+  (e instanceof AiError && /offline/i.test(e.message)) || (e instanceof TypeError && /fetch|network|load failed/i.test(e.message));
 
 // Papers the AI failed on this session (bad output, too long…), with why: not retried automatically until
 // the app is reopened, so one broken paper doesn't cost a request on every sync and tab visit.
@@ -100,7 +103,10 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
   let analysed = 0;
   set({ total: pending.length, done: 0 });
   for (const paper of pending) {
-    if (offline()) return { analysed, stopped: true };
+    if (offline()) {
+      set({ message: "You're offline. The remaining papers will be analysed later." });
+      return { analysed, stopped: true };
+    }
     set({ message: `Reading questions from ${paper.fileName}…` });
     let result: PyqPaperResult;
     try {
@@ -110,6 +116,11 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
     } catch (e) {
       if (isLimit(e)) {
         set({ message: e instanceof AiError && /key/i.test(e.message) ? e.message : "AI limit reached. The remaining papers will be analysed later." });
+        return { analysed, stopped: true };
+      }
+      // A dropped connection would fail every remaining paper in a row; stop and leave them for the next run.
+      if (isConnection(e)) {
+        set({ message: "Connection lost. The remaining papers will be analysed later." });
         return { analysed, stopped: true };
       }
       // Tried again next time the app opens, or when the student taps Retry.
@@ -123,18 +134,19 @@ async function analysePapersStep(subjectId: number | undefined, max: number): Pr
       set({ done: state.done + 1 });
       continue;
     }
-    await savePaper(paper, result);
-    analysed++;
+    if (await savePaper(paper, result)) analysed++;
     set({ done: state.done + 1 });
   }
   return { analysed, stopped: false };
 }
 
-async function savePaper(paper: Material, result: PyqPaperResult) {
+/** Saves the paper's questions; false when the paper changed while the AI was reading it. */
+async function savePaper(paper: Material, result: PyqPaperResult): Promise<boolean> {
   const year = result.year ?? paperYear(paper);
-  await db.transaction("rw", db.materials, db.pyqQuestions, async () => {
+  return db.transaction("rw", db.materials, db.pyqQuestions, async () => {
     const current = await db.materials.get(paper.id);
-    if (!current) return; // deleted while the AI was reading it
+    // Deleted, switched to notes/slides (which dropped its questions), or already analysed while the AI was reading it.
+    if (!current || current.kind !== "pyq" || current.analysedAt) return false;
     // Which exam: the tag (Drive or the student) wins, then what the paper itself says, then its file name.
     // It's written back to the paper so the major/mid-sem split stays put.
     const exam = current.pyqExam ?? result.exam ?? pyqMode(current.fileName);
@@ -156,6 +168,7 @@ async function savePaper(paper: Material, result: PyqPaperResult) {
       ...(result.year ? { paperYear: result.year } : {}),
       ...(!current.pyqExam && exam ? { pyqExam: exam } : {}),
     });
+    return true;
   });
 }
 
@@ -208,7 +221,10 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
       return (unit ? `${t.title} (${unit})` : t.title).slice(0, MAX_TOPIC_CHARS);
     });
     for (let i = 0; i < qs.length; i += MAP_BATCH) {
-      if (offline()) return { mapped, stopped: true, error };
+      if (offline()) {
+        set({ message: "You're offline. The remaining questions will be matched later." });
+        return { mapped, stopped: true, error };
+      }
       const batch = qs.slice(i, i + MAP_BATCH);
       set({ message: `Matching questions to your ${subject.name} syllabus…` });
       // The API takes so many topics a request, so a long syllabus goes in slices. A question takes the first
@@ -259,6 +275,7 @@ async function mapTopicsStep(subjectId: number): Promise<{ mapped: number; stopp
 
 let running = false;
 let allQueued = false; // analyseAll (or a re-tag) was asked for while another run was busy
+let subjectQueued: number | undefined; // the last subject asked for while another run was busy
 
 /** Run `fn` unless another analysis is already going; resets the status line when done. */
 async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
@@ -277,6 +294,12 @@ async function exclusive<T>(fn: () => Promise<T>): Promise<T | undefined> {
     if (allQueued) {
       allQueued = false;
       setTimeout(() => void analyseAll(), 0);
+    } else if (subjectQueued !== undefined) {
+      // Only queued when a run made progress (the tab asks again as its count drops), so a run stopped by a limit
+      // doesn't loop: it changes nothing, nothing asks again, and nothing is queued.
+      const s = subjectQueued;
+      subjectQueued = undefined;
+      setTimeout(() => void analyseSubject(s), 0);
     }
   }
 }
@@ -295,12 +318,14 @@ const finalMessage = (papers: number, mapped: number, stopped: boolean, mapError
   });
 
 /** Analyse a subject's new papers, then match their questions to topics. */
-export const analyseSubject = (subjectId: number, { max = 8 } = {}) =>
-  exclusive(async () => {
+export const analyseSubject = (subjectId: number, { max = 8 } = {}) => {
+  if (running) subjectQueued = subjectId; // a call while busy (a tab opened mid-run, papers left past `max`) goes next
+  return exclusive(async () => {
     const a = await analysePapersStep(subjectId, max);
     const m = a.stopped ? { mapped: 0, stopped: true, error: undefined } : await mapTopicsStep(subjectId);
     finalMessage(a.analysed, m.mapped, a.stopped || m.stopped, m.error);
   });
+};
 
 /** Every subject: new papers first (newest year first, capped per run), then topic matching. */
 export const analyseAll = async ({ max = 12 } = {}): Promise<void> => {

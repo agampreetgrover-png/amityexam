@@ -14,7 +14,12 @@ const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_SOURCES = 10; // same cap as the sync route; each source costs ~80 Drive requests
 
 type Candidate = CrawledFile & { source: string };
-const isSheet = (name: string) => NAME.test(name) && EXT.test(name) && !NOT_A_SHEET.test(name);
+// "_" is a word character, so \b misses "_PYQ_"; space names out first, as classify.ts does.
+const spaced = (name: string) => name.replace(/_/g, " ").replace(/([a-z])(?=\d)|(\d)(?=[a-z])/gi, "$1$2 ");
+const isSheet = (name: string) => {
+  const s = spaced(name);
+  return NAME.test(s) && EXT.test(name) && !NOT_A_SHEET.test(s);
+};
 
 // Listing means one request per folder (the library has ~80), so cache the result briefly;
 // the ?id= download re-checks against this same list.

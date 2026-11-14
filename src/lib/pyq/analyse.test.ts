@@ -48,12 +48,17 @@ vi.mock("../ai/client", () => ({
   aiJson: (action: string, body: AiRequest) => aiJson(action, body),
 }));
 
+// Read the status line outside React: the store's snapshot is returned as is.
+vi.mock("react", () => ({ useSyncExternalStore: (_sub: unknown, get: () => unknown) => get() }));
+
 // Node has a `navigator` without `onLine`, which would read as offline.
-vi.stubGlobal("navigator", { onLine: true });
-const { analyseSubject, remapSubject } = await import("./analyse");
+const nav = { onLine: true };
+vi.stubGlobal("navigator", nav);
+const { analyseSubject, remapSubject, usePyqAnalysis, usePaperFailures } = await import("./analyse");
 
 beforeEach(() => {
   aiJson.mockReset();
+  nav.onLine = true;
   tables.subjects = [{ id: 1, name: "DBMS" }];
   tables.units = [{ id: 1, subjectId: 1, title: "Unit 1", order: 0 }];
   // More topics than one request may carry, and one title longer than the route accepts.
@@ -99,5 +104,66 @@ describe("reading a paper", () => {
     expect(tables.materials[0].analysedAt).toBeUndefined();
     await analyseSubject(1); // not asked again this session
     expect(aiJson.mock.calls.filter(([a]) => a === "pyq")).toHaveLength(1);
+  });
+
+  it("leaves a paper alone when it stopped being a past paper while the AI was reading it", async () => {
+    tables.materials = [{ id: 9, subjectId: 1, kind: "pyq", fileName: "DBMS 2022.pdf", text: "Q1 ..." }];
+    tables.pyqQuestions = [];
+    aiJson.mockImplementation(async (action) => {
+      if (action !== "pyq") return { map: [] };
+      tables.materials[0].kind = "notes"; // the student switches its type in Materials meanwhile
+      return { year: 2022, exam: "end-term", questions: [{ number: "Q1", section: null, text: "Define a key.", marks: 5 }] };
+    });
+    await analyseSubject(1);
+    expect(tables.pyqQuestions).toEqual([]);
+    expect(tables.materials[0].analysedAt).toBeUndefined();
+  });
+
+  it("stops the run on a dropped connection instead of failing every paper", async () => {
+    tables.materials = [
+      { id: 10, subjectId: 1, kind: "pyq", fileName: "DBMS 2021.pdf", text: "Q1 ..." },
+      { id: 11, subjectId: 1, kind: "pyq", fileName: "DBMS 2020.pdf", text: "Q1 ..." },
+    ];
+    tables.pyqQuestions = [];
+    aiJson.mockRejectedValue(new TypeError("Failed to fetch"));
+    await analyseSubject(1);
+    expect(aiJson).toHaveBeenCalledTimes(1);
+    expect(usePaperFailures().has(10) || usePaperFailures().has(11)).toBe(false);
+    expect(usePyqAnalysis().message).toMatch(/connection lost/i);
+  });
+});
+
+describe("asked while busy", () => {
+  it("runs a subject asked for during another run once that run ends", async () => {
+    tables.materials.push({ id: 12, subjectId: 1, kind: "pyq", fileName: "DBMS 2019.pdf", pyqExam: "end-term", text: "Q1 ..." });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    aiJson.mockImplementation(async (action) => {
+      if (action === "pyq") return { year: 2019, exam: "end-term", questions: [{ number: "Q1", section: null, text: "Define a key.", marks: 5 }] };
+      await gate; // the first run (a re-tag) stays busy until released
+      return { map: [] };
+    });
+    const first = remapSubject(1);
+    await Promise.resolve();
+    await analyseSubject(1); // ignored for now: a run is busy
+    expect(aiJson.mock.calls.some(([a]) => a === "pyq")).toBe(false);
+    release();
+    await first;
+    await vi.waitFor(() => expect(tables.materials.find((m) => m.id === 12)?.analysedAt).toBeTruthy());
+  });
+});
+
+describe("going offline", () => {
+  it("replaces the progress text with an offline status when matching stops", async () => {
+    aiJson.mockImplementation(async () => {
+      nav.onLine = false; // drops after the first batch
+      return { map: [] };
+    });
+    tables.pyqQuestions = Array.from({ length: 50 }, (_, n) => ({ id: n + 1, subjectId: 1, materialId: 7, exam: "end-term", text: `Q${n}` }));
+    await remapSubject(1);
+    const s = usePyqAnalysis();
+    expect(s.running).toBe(false);
+    expect(s.message).toMatch(/offline/i);
+    expect(s.message).not.toMatch(/Matching questions/);
   });
 });

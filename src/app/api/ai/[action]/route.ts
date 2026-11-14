@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { buildJsonPrompt, buildTextPrompt } from "@/lib/ai/prompts";
 import { errorResponse, NO_KEYS, readJsonBody } from "@/lib/ai/errors";
 import { stripFence } from "@/lib/ai/json";
+import { STREAM_INTERRUPTED } from "@/lib/ai/stream";
 import { AiProviderError, getProviders, PROMPT_LIMITS, redact, runWithFallback, type ProviderName } from "@/lib/ai/providers";
 import {
   AiRequestSchema, DatesheetSchema, GradeSchema, JSON_ACTIONS, PrepSchema, PyqMapSchema, PyqPaperSchema, QuizSchema, SyllabusSchema, TEXT_ACTIONS,
@@ -85,7 +86,7 @@ function streamResponse(it: AsyncIterator<string>, first: IteratorResult<string>
         } catch (e) {
           if (cancelled) return; // the reader went away; enqueueing now would throw
           console.warn(`[ai] ${provider} stream failed: ${redact(e instanceof Error ? e.message : String(e)).slice(0, 200)}`);
-          controller.enqueue(enc.encode("\n\n[stream interrupted: the AI connection dropped. Try again.]"));
+          controller.enqueue(enc.encode(STREAM_INTERRUPTED));
         }
         if (!cancelled) controller.close();
       },

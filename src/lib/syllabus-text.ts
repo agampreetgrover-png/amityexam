@@ -36,7 +36,12 @@ const OTHER_SECTION = /^(?:text\s?books?|references?|suggested readings?|course 
 const LOAD = /[([]?\s*(?:weightage\s*[:-]?\s*)?\d{1,3}\s*(?:%|hours?|hrs?|lectures?)(?:\s*weightage)?\s*[)\]]?\s*$/i;
 // Label lines above the first unit, like "Course Contents/Syllabus:" or "Course Code: CSE101".
 const PREAMBLE = /:\s*$|^(?:course\s+(?:contents?|title|code|name)|(?:detailed\s+)?syllabus)\b/i;
-const TABLE_HEADER = /^(?:s\.?\s?no\.?|sr\.?\s?no\.?|modules?|units?|contents?|topics?|weightage|hours|syllabus|details?)$/i;
+const TABLE_HEADER = /^(?:s\.?\s?no\.?|sr\.?\s?no\.?|modules?|units?|contents?|topics?|descriptors?|weightage|hours|syllabus|details?)(?:\s?\(%\))?$/i;
+// A header cell may join header words with a slash, like "Descriptors/Topics".
+const isTableHeader = (cell: string) => cell.split("/").every((w) => TABLE_HEADER.test(w.trim()));
+// A cell or item that is only a serial number, hours or a weightage ("1", "20", "(8)", "20 %"). Up to three digits,
+// so a chip name like "8085" stays a topic.
+const NUMBER_ONLY = /^[([]?\d{1,3}(?:\.\d{1,2})?\s?%?[)\]]?$/;
 
 /** Splits "Paging, segmentation (with TLB); thrashing" on commas and semicolons outside brackets. */
 function splitList(line: string): string[] {
@@ -52,7 +57,7 @@ function splitList(line: string): string[] {
     } else cur += ch;
   }
   parts.push(cur);
-  return parts.map((p) => p.replace(MARKER, "").replace(/^(?:and|&)\s+/i, "").replace(/(?<![.:])[.:]+$/, "").trim()).filter(Boolean); // lookbehind: a dot leader is tried once, not from every dot
+  return parts.map((p) => p.replace(MARKER, "").replace(/^(?:and|&)\s+/i, "").replace(/(?<![.:])[.:]+$/, "").trim()).filter((p) => p && !NUMBER_ONLY.test(p)); // lookbehind: a dot leader is tried once, not from every dot
 }
 
 /**
@@ -75,8 +80,10 @@ export function parseSyllabus(text: string): SyllabusResult["units"] {
   for (const raw of text.replace(/[^\S\n]+/g, " ").split(/\r?\n/)) {
     if (/^[\s|:-]+$/.test(raw)) continue; // blank, or a Markdown table rule "|---|---|"
     // Photos and scans come back as Markdown tables: each cell is read like a line of its own.
-    const cells = raw.replace(/\*\*|^#+\s*/g, "").split("|").map((c) => c.replace(MARKER, "").trim().replace(LOAD, "").trim()).filter(Boolean);
-    if (cells.length > 1 && cells.every((c) => TABLE_HEADER.test(c))) continue;
+    const rawCells = raw.replace(/\*\*|^#+\s*/g, "").split("|").map((c) => c.trim()).filter(Boolean);
+    // Header test on the raw cell: MARKER would read the "S." of "S. No." as a list marker.
+    if (rawCells.length > 1 && rawCells.every(isTableHeader)) continue;
+    const cells = rawCells.map((c) => c.replace(MARKER, "").trim().replace(LOAD, "").trim()).filter(Boolean);
     for (const line of cells) {
       if (HEADING.test(line)) {
         skip = false;
@@ -88,7 +95,7 @@ export function parseSyllabus(text: string): SyllabusResult["units"] {
       } else if (OTHER_SECTION.test(line)) skip = true;
       else {
         const topics = splitList(line);
-        if (!started && (PREAMBLE.test(line) || TABLE_HEADER.test(line))) topics.forEach((t) => intro.add(t));
+        if (!started && (PREAMBLE.test(line) || isTableHeader(line))) topics.forEach((t) => intro.add(t));
         topics.forEach(add);
       }
     }

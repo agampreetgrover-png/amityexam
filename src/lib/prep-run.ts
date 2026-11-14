@@ -67,11 +67,14 @@ export async function ratePrep({ again = false, subjectId }: { again?: boolean; 
         set({ message: `Rating ${subject.name} topics…` });
         try {
           const res = await aiJson("prep", {
-            subject: subject.name,
-            // The AI route refuses a topic over 300 characters, which would fail this batch on every run.
+            // The AI route refuses a subject over 200 characters or a topic over 300, which would fail this batch on every run.
+            subject: subject.name.slice(0, 200),
             topics: batch.map((t) => (unitTitle.get(t.unitId) ? `${t.title} (${unitTitle.get(t.unitId)})` : t.title).slice(0, 300)),
           });
-          rated += await save(batch, res.topics);
+          const saved = await save(batch, res.topics);
+          rated += saved;
+          // A reply with no usable rating (every item malformed or out of range) counts as a skipped batch.
+          if (!saved) skipped += batch.length;
         } catch (e) {
           if (isLimit(e)) throw e;
           failure = e;
@@ -81,7 +84,7 @@ export async function ratePrep({ again = false, subjectId }: { again?: boolean; 
       }
     }
     // Nothing rated at all: show why, or the page just comes back with the same button and no word of it.
-    if (skipped && !rated) throw failure;
+    if (total && !rated) throw failure ?? new AiError("The AI didn't return usable ratings. Try again.");
     set({
       done: total,
       message: !total

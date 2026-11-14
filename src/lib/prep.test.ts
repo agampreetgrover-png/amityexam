@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterPrep, formatMins, prepRows, quickWin, sortPrep, type PrepFilters } from "./prep";
+import { crashPlan, filterPrep, formatMins, prepRows, quickWin, sortPrep, type PrepFilters } from "./prep";
 import type { PyqQuestion, Subject, Topic, TopicPrep } from "./types";
 
 const subject = (id: number, name: string): Subject => ({ id, name, color: "#000", createdAt: 0 });
@@ -60,5 +60,30 @@ describe("minutes", () => {
     expect(formatMins(45)).toBe("45 min");
     expect(formatMins(60)).toBe("1 h");
     expect(formatMins(150)).toBe("2 h 30 min");
+  });
+});
+
+describe("crash plan", () => {
+  const subjects = [subject(1, "DBMS")];
+  // Best value first: keys (asked twice), then ER, then the long groundwork topic.
+  const rows = prepRows(
+    [topic(1, "Keys", prep(0, 60, 3)), topic(2, "ER", prep(0, 90, 3)), topic(3, "Normalisation", prep(2, 300, 1)), topic(4, "Views", prep(0, 30, 1))],
+    subjects,
+    [asked(1, 1), asked(2, 1)],
+  );
+  const ids = (rs: { topic: Topic }[]) => rs.map((r) => r.topic.id);
+
+  it("packs best-value topics into each day without going over", () => {
+    const p = crashPlan(rows, 2, 120);
+    expect(p.days.map(ids)).toEqual([[1, 4], [2]]);
+    expect(ids(p.skipped)).toEqual([3]);
+  });
+
+  it("gives a topic longer than a day an empty day of its own", () => {
+    expect(crashPlan(rows, 4, 120).days.map(ids)).toEqual([[1, 4], [2], [3], []]);
+  });
+
+  it("plans at least one day, even on exam day", () => {
+    expect(crashPlan(rows, 0, 60).days).toHaveLength(1);
   });
 });

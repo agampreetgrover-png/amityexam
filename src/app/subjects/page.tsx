@@ -13,6 +13,7 @@ import { Badge, Button, CoverageBar, Empty, Field, Input, Menu, Modal, PageHeade
 import { SubjectPicker, subjectKey } from "@/components/subject-picker";
 import { findCode } from "@/lib/drive/catalog";
 import { runDriveSync } from "@/lib/drive/client";
+import { toast } from "@/components/toast";
 import { useCourseCatalog } from "@/lib/drive/use-catalog";
 
 export default function SubjectsPage() {
@@ -238,7 +239,10 @@ function SubjectForm({ initial, used, taken, onDone }: { initial: Subject | null
       else await db.subjects.add({ ...data, createdAt: Date.now() });
       onDone();
       // Fetch this subject's notes and past papers right away instead of on the next app open.
-      if (!initial || initial.name !== data.name || initial.code !== data.code) runDriveSync().catch(() => {});
+      if (!initial || initial.name !== data.name || initial.code !== data.code) {
+        toast(`Looking in Google Drive for ${data.name}'s notes and past papers…`);
+        runDriveSync().catch(() => {});
+      }
     } catch {
       setSaving(false);
       setSaveError(true);

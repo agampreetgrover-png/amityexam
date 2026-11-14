@@ -49,6 +49,7 @@ export interface ImportRow {
   date: string;
   time: string;
   durationMins?: number;
+  venue?: string; // room or hall printed on the sheet
   type: ExamType;
   clash?: Exam; // existing exam for the same subject and type on a different date
   duplicate: boolean; // identical exam already saved
@@ -84,6 +85,7 @@ export function planImport(found: DatesheetResult["exams"], subjects: Subject[],
       date: e.date,
       time: e.time ?? "",
       durationMins: e.durationMins ?? undefined,
+      venue: e.venue ?? undefined,
       type: e.type,
       ...match,
     });

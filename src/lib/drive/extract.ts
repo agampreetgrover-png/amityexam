@@ -171,6 +171,8 @@ export async function fileText(
         await sleep(4000);
         ocr = await read();
       }
+      // A blank reply (a safety or recitation stop, or out of tokens) may well work next time; skipping would be for good.
+      if (!ocr.trim()) throw new DeferFile("scanned PDF: AI returned nothing, will retry on a later sync");
       return { text: clip(ocr.trim()), ocr: true };
     } catch (e) {
       if (e instanceof AiProviderError) {

@@ -9,6 +9,15 @@ import { AiErrorBox } from "./ai-error";
 import { Button, Input, Textarea } from "./ui";
 
 /**
+ * The textarea's validity message while it holds topics not yet added, so the exam form's
+ * "Save exam" stops and points here instead of saving the exam and throwing the topics away.
+ */
+function pendingTopicsMessage(text: string): string {
+  const n = parseTopics(text).length;
+  return n ? `Click "Add ${n} topic${n === 1 ? "" : "s"}" to save ${n === 1 ? "this topic" : "these topics"} first, or clear the box.` : "";
+}
+
+/**
  * Lets the student type or paste an exam's syllabus right in the exam form.
  * The topics go into the subject's syllabus for the exam's season, so the subject page sees them too.
  */
@@ -81,7 +90,11 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
       />
       <Textarea
         value={text}
-        onChange={(e) => setText(e.target.value)}
+        onChange={(e) => {
+          setText(e.target.value);
+          // Blocks the surrounding form's submit while topics are pending. Adding or cancelling unmounts the box, clearing it.
+          e.target.setCustomValidity(pendingTopicsMessage(e.target.value));
+        }}
         placeholder={"One topic per line, e.g.\nER model\nNormalization\nSQL joins"}
         aria-label="Topics, one per line"
         className="min-h-28 bg-surface"
@@ -90,11 +103,11 @@ export function ExamSyllabusInput({ subjectId, season, defaultOpen, onAdded }: {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs tabular-nums text-muted">
           {titles.length
-            ? `${titles.length} topic${titles.length === 1 ? "" : "s"}, added to the subject's syllabus${season === "mid-term" ? " as mid-sem" : ""}`
+            ? `${titles.length} topic${titles.length === 1 ? "" : "s"} ready, not saved until you click Add${season === "mid-term" ? " (goes in as mid-sem)" : ""}`
             : `Added to the subject's syllabus too${season === "mid-term" ? ", marked as mid-sem" : ""}`}
         </p>
         <div className="flex gap-2">
-          <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); setError(""); }}>Cancel</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); setError(""); setUnit(""); setText(""); }}>Cancel</Button>
           <Button type="button" size="sm" onClick={add} disabled={!titles.length || saving}>
             {saving ? "Adding…" : titles.length ? `Add ${titles.length} topic${titles.length === 1 ? "" : "s"}` : "Add topics"}
           </Button>

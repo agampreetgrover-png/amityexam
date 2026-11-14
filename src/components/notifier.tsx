@@ -29,7 +29,7 @@ export function Notifier() {
       running = true;
       try {
         const settings = await getSettings();
-        if (!settings.notifications || Notification.permission !== "granted") return;
+        if (!settings.notifications || typeof Notification === "undefined" || Notification.permission !== "granted") return;
         const d = today();
         // Remember which exams were announced today, not just the day: one added this evening still gets its alert.
         let sent: { day: string; ids: number[] } = { day: d, ids: [] };

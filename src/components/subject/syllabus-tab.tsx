@@ -41,6 +41,8 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
   // Kept here, not in the dialog: the dialog's content unmounts on close, and a reviewed draft cost an AI call.
   const [importText, setImportText] = useState("");
   const [importDraft, setImportDraft] = useState<Draft | null>(null);
+  // Here too: an AI request can't be aborted, so a reopened dialog must still know one is pending.
+  const [importBusy, setImportBusy] = useState(false);
   const [newUnit, setNewUnit] = useState("");
   const [adding, setAdding] = useState(false);
   const mid = mode === "mid-term";
@@ -101,6 +103,8 @@ export function SyllabusTab({ subject, units, topics, mode }: TabProps) {
           setText={setImportText}
           draft={importDraft}
           setDraft={setImportDraft}
+          busy={importBusy}
+          setBusy={setImportBusy}
           onDone={() => { setImportOpen(false); setImportText(""); setImportDraft(null); }}
         />
       </Modal>
@@ -292,7 +296,7 @@ function TopicRow({ topic }: { topic: Topic }) {
 
 type Draft = SyllabusResult["units"];
 
-function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text, setText, draft, setDraft }: {
+function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text, setText, draft, setDraft, busy, setBusy }: {
   subjectId: number;
   subjectName: string;
   firstOrder: number;
@@ -303,9 +307,11 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
   setText: (t: string) => void;
   draft: Draft | null;
   setDraft: React.Dispatch<React.SetStateAction<Draft | null>>;
+  // Also held by SyllabusTab: an AI request outlives the dialog, and a reopened one must not start a second.
+  busy: boolean;
+  setBusy: (b: boolean) => void;
 }) {
   const online = useOnline();
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [reading, setReading] = useState("");
   const [saving, setSaving] = useState(false);
@@ -329,7 +335,8 @@ function ImportSyllabus({ subjectId, subjectName, firstOrder, mode, onDone, text
     setError(null);
     try {
       const res = await aiJson("syllabus", { subject: subjectName, text: text.slice(0, MAX_TEXT) });
-      setDraft(res.units);
+      // Never replace a draft that's already under review.
+      setDraft((d) => d ?? res.units);
     } catch (e) {
       setError(e);
     } finally {

@@ -160,6 +160,15 @@ const STUDY_NAME = /\b(ppts?|slides?|notes?|modules?|mod|units?|chapters?|lectur
 const PAPER_NAME = /\b(pyqs?|question ?papers?|qp|papers?|exam)\b/i;
 const MINOR = /\b(minor|mid[ -]?sem|mid[ -]?term|midsem|internal)\b/i;
 const MAJOR = /\b(major|end[ -]?sem|end[ -]?term|endsem|final)\b/i;
+const examOf = (s: string): PyqExam | undefined => (MINOR.test(s) ? "mid-term" : MAJOR.test(s) ? "end-term" : undefined);
+const FOLDER_FILLER = /\b(pyqs?|papers?|questions?|qp|exams?|examinations?|sem(ester)?s?|previous|years?|sets?|and|of|the|i{1,3}|iv|\d+)\b/gi;
+// A folder names an exam only when that's all it says: "Major Project" or "Internal Combustion Engines" don't.
+function examFolder(folder: string): PyqExam | undefined {
+  const s = spaced(folder);
+  if (MINOR.test(s) === MAJOR.test(s)) return undefined; // neither, or both ("Minor and Major")
+  const rest = s.replace(new RegExp(MINOR.source, "gi"), " ").replace(new RegExp(MAJOR.source, "gi"), " ").replace(FOLDER_FILLER, " ");
+  return /[a-z]/i.test(rest) ? undefined : examOf(s);
+}
 
 const ext = (name: string) => name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? "";
 const SUPPORTED_EXT = new Set(["pdf", "docx", "pptx", "txt", "md"]);
@@ -178,7 +187,9 @@ export function classify(fileName: string, path: string[], type: string): { kind
   // over an exam word unless the name also says it's a paper.
   const studyMaterial = STUDY_NAME.test(name) && !PAPER_NAME.test(name);
   if (!isSlides && (inPyqFolder || (PYQ_NAME.test(name) && !studyMaterial))) {
-    const pyqExam: PyqExam | undefined = MINOR.test(name) ? "mid-term" : MAJOR.test(name) ? "end-term" : undefined;
+    // The name decides; else the nearest folder that's only an exam's name ("PYQs/Mid Term/2022.pdf").
+    let pyqExam = examOf(name);
+    for (let i = path.length - 1; !pyqExam && i >= 0; i--) pyqExam = examFolder(path[i]);
     return { kind: "pyq", pyqExam };
   }
   return { kind: isSlides ? "ppt" : "notes" };

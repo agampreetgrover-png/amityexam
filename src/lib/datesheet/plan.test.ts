@@ -86,4 +86,17 @@ describe("planImport", () => {
     expect(ada).toMatchObject({ subjectId: 2, include: false, duplicate: true });
     expect(other).toMatchObject({ subjectId: null, include: false });
   });
+
+  it("keeps the venue printed on the sheet", () => {
+    const [withRoom, withoutRoom] = planImport(
+      [
+        { subject: 0, date: "2025-09-24", time: "10:00", durationMins: null, type: "mid-term", venue: "Block E3-204" },
+        { subject: 1, date: "2025-09-25", time: null, durationMins: null, type: "mid-term", venue: null },
+      ],
+      subjects,
+      [],
+    );
+    expect(withRoom.venue).toBe("Block E3-204");
+    expect(withoutRoom.venue).toBeUndefined();
+  });
 });

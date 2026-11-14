@@ -3,6 +3,8 @@ export const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 // Strips list markers like "B)", "(b)", "2." and trailing full stops. The lookbehind starts the trailing match only
 // at the start of a run: without it a long run of dots mid-answer is retried from every dot (quadratic).
 const bare = (s: string) => norm(s).replace(/^\(?[a-d1-4][).:]\s*/, "").replace(/(?<![.\s])[.\s]+$/, "");
+// Trailing full stops only: "4." is the option text "4", not the marker for option 4.
+const trimDots = (s: string) => norm(s).replace(/(?<![.\s])[.\s]+$/, "");
 
 /**
  * Models often answer "B", "B) foo" or a paraphrase instead of the exact option text.
@@ -10,7 +12,10 @@ const bare = (s: string) => norm(s).replace(/^\(?[a-d1-4][).:]\s*/, "").replace(
  */
 export function matchOption(answer: string, options: string[]): string | null {
   const a = norm(answer);
-  const exact = options.find((o) => norm(o) === a) ?? options.find((o) => bare(o) === bare(answer));
+  const exact =
+    options.find((o) => norm(o) === a) ??
+    options.find((o) => trimDots(o) === trimDots(answer)) ??
+    options.find((o) => bare(o) === bare(answer));
   if (exact) return exact;
   // A lone letter or number ("b", "2"), a marked one ("b)", "(2)") or "option b". Not a word like "a stack".
   const m = a.match(/^option\s*\(?([a-d1-4])\)?\b|^\(?([a-d1-4])(?:[).:]|$)/);

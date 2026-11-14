@@ -35,6 +35,13 @@ describe("classify", () => {
     expect(classify("DBMS Major 2021.pdf", ["DBMS"], "file")).toEqual({ kind: "pyq", pyqExam: "end-term" });
     expect(classify("Minor Exam QP DBMS 2025-1.pdf", ["DBMS"], "file")).toEqual({ kind: "pyq", pyqExam: "mid-term" });
     expect(classify("Set-1 [AIML202].pdf", ["PYQs"], "file")).toEqual({ kind: "pyq", pyqExam: undefined });
+    // A folder that only names an exam tags the papers in it; one that only mentions an exam word doesn't.
+    expect(classify("2022.pdf", ["DBMS", "PYQs", "Mid Term"], "file")).toEqual({ kind: "pyq", pyqExam: "mid-term" });
+    expect(classify("2022.pdf", ["DBMS", "End Sem Papers"], "file")).toEqual({ kind: "pyq", pyqExam: "end-term" });
+    expect(classify("2022.pdf", ["DBMS", "PYQs", "End_Sem 2023"], "file")).toEqual({ kind: "pyq", pyqExam: "end-term" });
+    expect(classify("2022.pdf", ["Major Project", "PYQs"], "file")).toEqual({ kind: "pyq", pyqExam: undefined });
+    expect(classify("2022.pdf", ["Internal Combustion Engines", "PYQs"], "file")).toEqual({ kind: "pyq", pyqExam: undefined });
+    expect(classify("Minor 2022.pdf", ["PYQs", "End Term"], "file")).toEqual({ kind: "pyq", pyqExam: "mid-term" }); // the name wins
     expect(classify("2019.pdf", ["CSE201 - DBMS", "PYQs"], "file")?.kind).toBe("pyq");
   });
 

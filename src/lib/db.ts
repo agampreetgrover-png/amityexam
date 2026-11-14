@@ -80,10 +80,13 @@ export async function deleteExam(examId: number) {
   await db.exams.delete(examId);
 }
 
-/** Full JSON backup of every table. */
+/** Full JSON backup of every table, read as one snapshot: Drive sync writes a material and its driveFiles row together,
+ * and a backup holding the row without the material would make every later sync skip that file for good. */
 export async function exportAll() {
   const out: Record<string, unknown[]> = {};
-  for (const t of db.tables) out[t.name] = await t.toArray();
+  await db.transaction("r", db.tables, async () => {
+    for (const t of db.tables) out[t.name] = await t.toArray();
+  });
   return { app: "amityexams", version: 1, exportedAt: new Date().toISOString(), data: out };
 }
 
@@ -175,19 +178,36 @@ export function validateBackup(backup: unknown): Record<string, Record<string, u
   return data as Record<string, Record<string, unknown>[]>;
 }
 
+/**
+ * Replace every table with `data`, then reload. Drive sync, PYQ analysis and topic rating may be running with subject
+ * and topic ids read before, and restored rows keep their ids, so their next write would land on unrelated rows.
+ * Closing `db` first makes those writes fail (a transaction they had already started runs before the swap and is
+ * wiped by it); the swap goes through its own connection, and the reload ends the runs and shows the new data.
+ */
+async function replaceAll(data: Record<string, Record<string, unknown>[]>) {
+  db.close();
+  const fresh = new ExamDB();
+  try {
+    await fresh.transaction("rw", fresh.tables, async () => {
+      for (const t of fresh.tables) {
+        await t.clear();
+        const rows = data[t.name];
+        if (rows?.length) await t.bulkAdd(rows);
+      }
+    });
+  } catch (e) {
+    await db.open(); // rolled back, nothing changed: the app carries on
+    throw e;
+  } finally {
+    fresh.close();
+  }
+  location.reload();
+}
+
 export async function importAll(backup: unknown) {
-  const data = validateBackup(backup); // throws before any existing data is touched
-  await db.transaction("rw", db.tables, async () => {
-    for (const t of db.tables) {
-      await t.clear();
-      const rows = data[t.name];
-      if (rows?.length) await t.bulkAdd(rows);
-    }
-  });
+  await replaceAll(validateBackup(backup)); // throws before any existing data is touched
 }
 
 export async function clearAll() {
-  await db.transaction("rw", db.tables, async () => {
-    for (const t of db.tables) await t.clear();
-  });
+  await replaceAll({});
 }

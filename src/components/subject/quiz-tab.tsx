@@ -50,6 +50,8 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 
   const materials = useMaterials(subjectId);
   const attempts = useLiveQuery(() => db.quizzes.where({ subjectId }).reverse().sortBy("createdAt"), [subjectId]);
+  // Past attempts span every mode, but `topics` is only this mode's; names come from the whole subject so they still show.
+  const allTopics = useLiveQuery(() => db.topics.where({ subjectId }).toArray(), [subjectId]) ?? topics;
 
   const toggle = (id: number) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
@@ -124,7 +126,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
 
   // ---- Reviewing a past attempt
   if (reviewing && !questions) {
-    return <AttemptReview attempt={reviewing} topics={topics} onBack={() => setReviewing(null)} />;
+    return <AttemptReview attempt={reviewing} topics={allTopics} onBack={() => setReviewing(null)} />;
   }
 
   // ---- Results view
@@ -313,7 +315,7 @@ export function QuizTab({ subject, units, topics, mode }: TabProps) {
                   {/* Phones: the count and date go under the topics, so the topics get the row's width. */}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">
-                      {a.topicIds.map((id) => topics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
+                      {a.topicIds.map((id) => allTopics.find((t) => t.id === id)?.title).filter(Boolean).join(", ") || <span className="text-muted">Topics removed</span>}
                     </span>
                     <span className="mt-1 flex items-center gap-2 text-[13px] tabular-nums text-muted sm:hidden"><AttemptMeta a={a} /></span>
                   </span>

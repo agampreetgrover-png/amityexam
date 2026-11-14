@@ -50,6 +50,17 @@ describe("parseSyllabus", () => {
     ]);
   });
 
+  it("skips S. No. and Amity-style header rows and bare number cells", () => {
+    expect(titles("| S. No. | Unit | Topics | Hours |\n|---|---|---|---|\n| 1 | Unit 1: Intro | OS functions | 8 |\n| 2 | Unit 2: Memory | Paging | 10 |")).toEqual([
+      ["Unit 1: Intro", ["OS functions"]],
+      ["Unit 2: Memory", ["Paging"]],
+    ]);
+    expect(titles("| Module | Descriptors/Topics | Weightage (%) |\n|---|---|---|\n| Module I: Introduction | OS functions, system calls | 20 |")).toEqual([
+      ["Module I: Introduction", ["OS functions", "system calls"]],
+    ]);
+    expect(titles("Unit 1\n8085, 8086 architecture")).toEqual([["Unit 1", ["8085", "8086 architecture"]]]);
+  });
+
   it("drops label lines above the first unit and weightage after the title", () => {
     expect(titles("Course Contents/Syllabus:\nModule I: Introduction (20% Weightage)\nTopic a, topic b; topic c\nModule II: Deadlocks (25% Weightage)\nPrevention, avoidance")).toEqual([
       ["Module I: Introduction", ["Topic a", "topic b", "topic c"]],

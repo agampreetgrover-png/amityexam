@@ -20,7 +20,9 @@ export async function extractAny(file: File, { onStatus }: { onStatus?: (s: stri
   } catch (e) {
     if (!(e instanceof Error) || !e.message.startsWith(SCANNED)) throw e;
     onStatus?.("Reading scanned pages with AI…");
-    return extractWithAi(file);
+    // A short but real text PDF (a one-page notice) keeps its own text if the AI can't read it.
+    const sparse = (e as Error & { text?: string }).text;
+    return sparse ? extractWithAi(file).catch(() => sparse) : extractWithAi(file);
   }
 }
 
@@ -54,7 +56,11 @@ async function extractText(file: File): Promise<string> {
       await task.destroy();
     }
     const text = pages.join("\n\n").replace(/[^\S\n]+/g, " ").trim();
-    if (!text) throw new Error(`${SCANNED} Paste the text instead.`);
+    // Same rule as the Drive sync (drive/extract.ts): under ~40 characters per page means scanned images,
+    // even when a typed cover line or page numbers carry a little real text.
+    if (text.length < Math.max(200, pages.length * 40)) {
+      throw Object.assign(new Error(`${SCANNED} Paste the text instead.`), { text });
+    }
     return text;
   }
   if (file.type.startsWith("text/") || /\.(txt|md|csv)$/i.test(file.name)) return (await file.text()).trim();

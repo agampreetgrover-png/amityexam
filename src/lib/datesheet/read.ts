@@ -16,7 +16,9 @@ async function sheetText(data: ArrayBuffer): Promise<string> {
   // sheet_to_json it's ignored, since the cells already carry their text, so 3 Oct read as "10/3/25".
   // Rows and columns are capped far above any real date sheet: with defval every row is padded out to the
   // sheet's last column, so a cell in column XFD on each row would otherwise fill hundreds of millions of slots.
-  const wb = XLSX.read(data, { type: "array", cellDates: true, dense: true, dateNF: "yyyy-mm-dd", sheetRows: MAX_ROWS });
+  // raw keeps CSV text as typed: otherwise SheetJS guesses dates US-style ("03/10/2025" → 2025-03-10) and turns
+  // times like "10:00 AM" into "1900-01-00". It doesn't touch real date cells in xlsx/xls/ods.
+  const wb = XLSX.read(data, { type: "array", cellDates: true, dense: true, dateNF: "yyyy-mm-dd", sheetRows: MAX_ROWS, raw: true });
   const parts: string[] = [];
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];

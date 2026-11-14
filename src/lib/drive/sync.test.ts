@@ -56,4 +56,25 @@ describe("syncDrive", () => {
     }
     expect(events.find((e) => e.type === "plan")).toEqual({ type: "plan", total: 2, remaining: 0 });
   });
+
+  it("keeps same-named files in different subfolders of a hand-linked folder", async () => {
+    const tree: Record<string, { id: string; name: string; folder?: boolean }[]> = {
+      linkedAaaaa: [{ id: "minorAaaaaa", name: "Minor", folder: true }, { id: "majorAaaaaa", name: "Major", folder: true }],
+      minorAaaaaa: [{ id: "fileMinorAa", name: "2023.pdf" }],
+      majorAaaaaa: [{ id: "fileMajorAa", name: "2023.pdf" }],
+    };
+    vi.stubGlobal("fetch", async (url: string) => new Response(page(tree[new URL(url).searchParams.get("id")!] ?? [])));
+
+    const events: SyncEvent[] = [];
+    for await (const ev of syncDrive({
+      subjects: [{ id: 1, name: "English" }],
+      known: ["fileMinorAa"],
+      sources: [],
+      links: [{ subjectId: 1, folderIds: ["linkedAaaaa"] }],
+    })) {
+      events.push(ev);
+      if (ev.type === "plan") break;
+    }
+    expect(events.find((e) => e.type === "plan")).toEqual({ type: "plan", total: 1, remaining: 0 });
+  });
 });

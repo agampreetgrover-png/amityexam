@@ -14,7 +14,7 @@ import { QuestionLine } from "../pyq-question-line";
 import { Badge, Button, Card, Empty, Input, List, Panel, Section, Segmented, cn } from "../ui";
 import { isDriveUrl, OfflineHint, useOnline, type TabProps } from "./shared";
 
-type View = "year" | "topic";
+type View = "year" | "topic" | "module";
 
 // Stable fallbacks while loading, so memoised groupings don't recompute every render.
 const NO_QUESTIONS: PyqQuestion[] = [];
@@ -104,7 +104,7 @@ export function PyqsTab({ subject, mode }: TabProps) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-          <Segmented label="Sort questions" value={view} onChange={setView} options={[{ value: "year", label: "Year-wise" }, { value: "topic", label: "Topic-wise" }]} />
+          <Segmented label="Sort questions" value={view} onChange={setView} options={[{ value: "year", label: "Year-wise" }, { value: "topic", label: "Topic-wise" }, { value: "module", label: "Module-wise" }]} />
           <div className="relative min-w-0 flex-1 basis-48 sm:max-w-sm">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search questions" className="pl-9" aria-label="Search questions" />
@@ -124,7 +124,10 @@ export function PyqsTab({ subject, mode }: TabProps) {
         <p className="py-6 text-sm text-muted">No questions match &ldquo;{query.trim()}&rdquo;.</p>
       ) : view === "year" ? (
         <YearView papers={scoped} questions={shown} topicById={topicById} searching={!!query.trim()} />
+      ) : view === "module" && modeTopics.length ? (
+        <ModuleView questions={shown} units={modeUnits} topics={modeTopics} papers={scoped} searching={!!query.trim()} />
       ) : (
+        // Also Module-wise with no syllabus yet: TopicView explains how to add one.
         <TopicView
           questions={shown}
           units={modeUnits}
@@ -308,7 +311,9 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
       {g.units.map(({ unit, topics: stats }) => (
         <Section key={unit.id} title={unit.title}>
           <Panel as="ul" className="divide-y divide-border">
-            {stats.map((s) => <TopicRow key={s.topic.id} stat={s} paperName={paperName} />)}
+            {stats.map((s) => (
+              <AskedRow key={s.topic.id} title={s.topic.title} count={s.count} years={s.years} marks={s.marks} hot={s.hot} questions={s.questions} paperName={paperName} />
+            ))}
           </Panel>
         </Section>
       ))}
@@ -348,9 +353,66 @@ function TopicView({ questions, units, topics, papers, searching, onRemap, remap
   );
 }
 
-function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number, string> }) {
+/** Each module of this exam's syllabus with every question asked on it, in syllabus order, the busiest flagged. */
+function ModuleView({ questions, units, topics, papers, searching }: {
+  questions: PyqQuestion[];
+  units: Unit[];
+  topics: Topic[];
+  papers: Material[];
+  searching: boolean;
+}) {
+  const g = groupByTopic(questions, units, topics);
+  const paperName = new Map(papers.map((p) => [p.id!, p.fileName]));
+  const topicById = new Map(topics.map((t) => [t.id!, t]));
+  const mods = g.units.map(({ unit, topics: stats }) => {
+    const qs = stats.flatMap((s) => s.questions).sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+    const years = qs.map((q) => q.year).filter((y): y is number => !!y);
+    return { unit, qs, years: years.length ? ([Math.min(...years), Math.max(...years)] as [number, number]) : null };
+  });
+  const top = Math.max(0, ...mods.map((m) => m.qs.length));
+  const loose = g.unmatched.length + g.notInSyllabus.length;
+  const never = units.filter((u) => !mods.some((m) => m.unit.id === u.id));
+  return (
+    <div className="space-y-4">
+      {mods.length ? (
+        <Panel as="ul" className="divide-y divide-border">
+          {mods.map(({ unit, qs, years }) => (
+            <AskedRow
+              key={unit.id}
+              title={unit.title}
+              count={qs.length}
+              years={years}
+              marks={marksOf(qs)}
+              hot={mods.length > 1 && qs.length === top}
+              questions={qs}
+              paperName={paperName}
+              topicById={topicById}
+            />
+          ))}
+        </Panel>
+      ) : (
+        <p className="py-6 text-sm text-muted">No questions are matched to a module yet.</p>
+      )}
+      {loose > 0 && (
+        <p className="text-sm text-muted">{loose} question{loose === 1 ? " isn't" : "s aren't"} matched to a module. See Topic-wise.</p>
+      )}
+      {/* While searching, every module without a hit would look "never asked". */}
+      {!searching && never.length > 0 && (
+        <p className="max-w-prose text-sm leading-relaxed text-muted">
+          <span className="font-medium text-text">Never asked so far:</span> {never.map((u) => u.title).join(", ")}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A topic or module that past papers asked about: its record, opening to the questions themselves. */
+function AskedRow({ title, count, years, marks, hot, questions, paperName, topicById }: Omit<TopicStat, "topic"> & {
+  title: string;
+  paperName: Map<number, string>;
+  topicById?: Map<number, Topic>; // set in Module-wise, so each question says which topic it's on
+}) {
   const [open, setOpen] = useState(false);
-  const { topic, count, years, marks, hot, questions } = stat;
   return (
     <li>
       <button
@@ -361,7 +423,7 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
       >
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-medium">
-            <span className="min-w-0 break-words">{topic.title}</span>
+            <span className="min-w-0 break-words">{title}</span>
             {hot && <Badge tone="warn"><Flame aria-hidden />Most asked</Badge>}
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] tabular-nums text-muted empty:hidden">
@@ -374,7 +436,9 @@ function TopicRow({ stat, paperName }: { stat: TopicStat; paperName: Map<number,
       </button>
       {open && (
         <ul className="tab-in mx-4 mb-3 divide-y divide-border border-l-2 border-accent/30 pl-4 sm:mx-5">
-          {questions.map((q) => <QuestionLine key={q.id} q={q} paperName={paperName.get(q.materialId)} />)}
+          {questions.map((q) => (
+            <QuestionLine key={q.id} q={q} paperName={paperName.get(q.materialId)} topic={q.topicId ? topicById?.get(q.topicId) : undefined} />
+          ))}
         </ul>
       )}
     </li>

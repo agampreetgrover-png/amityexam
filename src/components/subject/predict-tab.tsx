@@ -5,11 +5,24 @@ import { useState } from "react";
 import { Sparkles, TrendingUp } from "lucide-react";
 import { db } from "@/lib/db";
 import { aiModeFields, modeShort, pyqMatchesMode } from "@/lib/mode";
-import type { GeneratedDoc } from "@/lib/types";
+import { newestFirst } from "@/lib/pyq/group";
+import type { GeneratedDoc, Material } from "@/lib/types";
 import { AiErrorBox } from "../ai-error";
 import { Button, Empty, Section } from "../ui";
 import { DocList, DocViewer, DraftCard, saveDoc, StopButton, useStreamDoc } from "./docs";
-import { MAX_CONTEXT, OfflineHint, topicTitles, useOnline, type TabProps } from "./shared";
+import { OfflineHint, topicTitles, useOnline, type TabProps } from "./shared";
+
+// The server clips prompt material at 200k characters (PROMPT_LIMITS.maxChars), and a real paper is well under 60k
+// (the analyser's cap). Giving each paper an equal share, newest first, means one long scan or a multi-year
+// compilation can't crowd every other paper out of the prompt.
+const PROMPT_BUDGET = 200_000;
+const MAX_PAPER_CHARS = 60_000;
+
+/** Every paper's text, labelled so the model can count repeats across years, each cut to its share of the budget. */
+export function predictContext(papers: Pick<Material, "fileName" | "text" | "paperYear">[]): string {
+  const share = Math.max(0, Math.min(MAX_PAPER_CHARS, Math.floor(PROMPT_BUDGET / Math.max(papers.length, 1)) - 300));
+  return newestFirst(papers).map((p) => `=== ${p.fileName} ===\n${p.text.slice(0, share)}`).join("\n\n").slice(0, PROMPT_BUDGET);
+}
 
 export function PredictTab({ subject, units, topics, mode }: TabProps) {
   const subjectId = subject.id!;
@@ -31,8 +44,7 @@ export function PredictTab({ subject, units, topics, mode }: TabProps) {
     if (!allPyqs) return;
     setViewing(null);
     setReady("");
-    // Label each paper so the model can count repeats across years.
-    const context = pyqs.map((p) => `=== ${p.fileName} ===\n${p.text}`).join("\n\n").slice(0, MAX_CONTEXT);
+    const context = predictContext(pyqs);
     const title = `Prediction: ${subject.name}, ${modeShort(mode).toLowerCase()} (${pyqs.length} paper${pyqs.length === 1 ? "" : "s"})`;
     setPendingTitle(title);
     const content = await gen.run("predict", { subject: subject.name, topics: topicTitles(topics), context: context || undefined, ...aiModeFields(mode, units) });

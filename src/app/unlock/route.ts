@@ -24,7 +24,8 @@ function bucket(key: string, now: number) {
   let f = failures.get(key);
   if (!f || f.reset < now) {
     f = { n: 0, reset: now + WINDOW_MS };
-    if (failures.size > 10_000) failures.clear(); // never grows without bound
+    // Never grows without bound, but the shared bucket is kept: wiping it would reset the cap on everyone.
+    if (failures.size > 10_000) for (const k of failures.keys()) if (k !== EVERYONE) failures.delete(k);
     failures.set(key, f);
   }
   return f;
@@ -49,9 +50,12 @@ export async function POST(req: Request) {
   // Best effort (per server instance): enough to make guessing slow.
   const now = Date.now();
   const key = clientKey(req);
-  const mine = bucket(key, now);
+  const tooMany = () => unlockPage(next, "Too many wrong passwords. Try again in 15 minutes.", 429);
+  // The shared cap first, so a refused request doesn't add an entry for its address.
   const all = bucket(EVERYONE, now);
-  if (mine.n >= ATTEMPTS || all.n >= ATTEMPTS_ALL) return unlockPage(next, "Too many wrong passwords. Try again in 15 minutes.", 429);
+  if (all.n >= ATTEMPTS_ALL) return tooMany();
+  const mine = bucket(key, now);
+  if (mine.n >= ATTEMPTS) return tooMany();
   // Counted before checking, synchronously: guesses sent all at once each see the ones ahead of them, so a
   // burst can't all pass the limit while the first is still being checked. A right password gives its try back.
   mine.n++;

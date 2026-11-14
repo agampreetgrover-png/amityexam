@@ -14,7 +14,10 @@ import { Badge, Button, Input, Menu, cn, subjectStyle } from "../ui";
 const GROUPS = ["Pinned", "Today", "Yesterday", "Previous 7 days", "Older"] as const;
 const groupOf = (c: Chat, age: number) => (c.pinned ? "Pinned" : GROUPS[age <= 0 ? 1 : age === 1 ? 2 : age <= 7 ? 3 : 4]);
 /** "2 hours ago"; a chat touched within the minute is "Just now" rather than "12 seconds ago". */
-const ago = (t: number) => (Date.now() - t < 60_000 ? "Just now" : formatDistanceToNowStrict(t, { addSuffix: true }));
+const ago = (t: number | null) => (t === null ? "" : Date.now() - t < 60_000 ? "Just now" : formatDistanceToNowStrict(t, { addSuffix: true }));
+/** A chat's last-used time, or null when it isn't a usable date (e.g. a hand-edited backup), so one bad row can't crash the list. */
+const chatTime = (c: Pick<Chat, "updatedAt">): number | null =>
+  typeof c.updatedAt === "number" && Number.isFinite(new Date(c.updatedAt).getTime()) ? c.updatedAt : null;
 
 /** The whole conversation as Markdown, for pasting into notes. */
 async function copyChat(c: Chat) {
@@ -69,7 +72,8 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
   });
   const grouped = new Map<string, Chat[]>();
   for (const c of shown) {
-    const g = groupOf(c, daysBetween(format(new Date(c.updatedAt), "yyyy-MM-dd"), today));
+    const t = chatTime(c);
+    const g = groupOf(c, t === null ? Infinity : daysBetween(format(t, "yyyy-MM-dd"), today));
     grouped.set(g, [...(grouped.get(g) ?? []), c]);
   }
 
@@ -141,7 +145,7 @@ export function ChatHistory({ selected, onOpen, onNew, onClose, onCollapse }: {
                             <Badge className="min-w-0 px-1.5 py-0 text-[11px]">
                               <span className="truncate">{subject?.code || subject?.name || "Subject"}</span>
                             </Badge>
-                            <span className="shrink-0 tabular-nums">{ago(c.updatedAt)}</span>
+                            <span className="shrink-0 tabular-nums">{ago(chatTime(c))}</span>
                           </span>
                         </button>
                       )}

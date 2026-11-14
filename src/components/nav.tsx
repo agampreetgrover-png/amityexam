@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { BookOpen, Flame, GraduationCap, House, MessagesSquare, Moon, Search, Settings, Sprout, Sun } from "lucide-react";
+import { BookOpen, Compass, Flame, GraduationCap, House, MessagesSquare, Moon, Search, Settings, Sprout, Sun } from "lucide-react";
 import { openCommandPalette } from "./command-palette-loader";
 import { setTheme, useTheme } from "@/lib/theme";
 import { DevWarmup } from "./dev-warmup";
@@ -11,6 +11,7 @@ import { cn } from "./ui";
 
 const primary = [
   { href: "/", label: "Today", icon: House },
+  { href: "/start", label: "Start", icon: Compass },
   { href: "/subjects", label: "Subjects", icon: BookOpen },
   { href: "/chat", label: "Chat", icon: MessagesSquare },
   { href: "/important", label: "Important", icon: Flame },
@@ -22,7 +23,7 @@ const settings = { href: "/settings", label: "Settings", icon: Settings };
 // Settings sits on its own at the foot. The mobile bar still shows only the primary ones.
 const byPath = (h: string) => primary.find((p) => p.href === h)!;
 const groups = [
-  { label: "Revision", items: [byPath("/"), byPath("/subjects"), byPath("/exams"), byPath("/zero-prep")] },
+  { label: "Revision", items: [byPath("/"), byPath("/start"), byPath("/subjects"), byPath("/exams"), byPath("/zero-prep")] },
   { label: "Study tools", items: [byPath("/chat"), byPath("/important")] },
 ];
 const ROUTES = [...primary, settings].map((i) => i.href);

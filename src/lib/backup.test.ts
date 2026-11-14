@@ -1,5 +1,63 @@
-import { describe, expect, it } from "vitest";
-import { validateBackup } from "./db";
+import Dexie from "dexie";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { db, exportAll, importAll, validateBackup } from "./db";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("exportAll", () => {
+  it("reads every table inside one read transaction, so a sync write can't land between two table reads", async () => {
+    const log: string[] = [];
+    let open = false;
+    vi.spyOn(db, "transaction").mockImplementation((async (mode: string, tables: unknown, fn: () => Promise<void>) => {
+      log.push(`tx ${mode} ${(tables as { name: string }[]).length}`);
+      open = true;
+      await fn();
+      open = false;
+    }) as never);
+    for (const t of db.tables) {
+      vi.spyOn(t, "toArray").mockImplementation((async () => {
+        log.push(`${t.name}${open ? "" : " OUTSIDE"}`);
+        return [{ from: t.name }];
+      }) as never);
+    }
+    const out = await exportAll();
+    expect(log[0]).toBe(`tx r ${db.tables.length}`);
+    expect(log.filter((l) => l.endsWith("OUTSIDE"))).toEqual([]);
+    expect(out.data.materials).toEqual([{ from: "materials" }]);
+    expect(out.data.driveFiles).toEqual([{ from: "driveFiles" }]);
+  });
+});
+
+describe("importAll", () => {
+  const good = { app: "amityexams", version: 1, data: { subjects: [{ id: 3, name: "Physics", color: "#000", createdAt: 1 }] } };
+
+  it("closes the app's connection before swapping the data, swaps on its own connection, then reloads", async () => {
+    const log: string[] = [];
+    vi.spyOn(db, "close").mockImplementation(() => void log.push("close db"));
+    vi.spyOn(Dexie.prototype, "transaction").mockImplementation((async function (this: Dexie) {
+      log.push(this === db ? "swap on db" : "swap on fresh");
+    }) as never);
+    vi.stubGlobal("location", { reload: () => log.push("reload") });
+    await importAll(good);
+    expect(log).toEqual(["close db", "swap on fresh", "reload"]);
+  });
+
+  it("reopens the app's connection and doesn't reload when the swap fails", async () => {
+    const reload = vi.fn();
+    vi.spyOn(db, "close").mockImplementation(() => {});
+    const reopen = vi.spyOn(db, "open").mockImplementation((async () => db) as never);
+    vi.spyOn(Dexie.prototype, "transaction").mockImplementation((async () => {
+      throw new Error("ConstraintError");
+    }) as never);
+    vi.stubGlobal("location", { reload });
+    await expect(importAll(good)).rejects.toThrow("ConstraintError");
+    expect(reopen).toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+});
 
 const backup = (data: Record<string, unknown[]>) => ({ app: "amityexams", version: 1, data });
 

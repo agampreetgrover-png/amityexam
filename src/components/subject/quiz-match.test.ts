@@ -15,6 +15,14 @@ describe("matchOption", () => {
     expect(matchOption("b) Stack", opts)).toBe("Stack");
   });
 
+  it("reads a numeric answer with a full stop as the option text, not an option number", () => {
+    const nums = ["4", "5", "6", "7"];
+    expect(matchOption("4.", nums)).toBe("4");
+    expect(matchOption("5 .", nums)).toBe("5");
+    expect(matchOption("4", ["4.", "5.", "6.", "7."])).toBe("4.");
+    expect(matchOption("2.", opts)).toBe("Stack");
+  });
+
   it("does not read a leading article as a letter", () => {
     expect(matchOption("a stack", opts)).toBe("Stack");
   });

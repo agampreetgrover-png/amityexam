@@ -86,3 +86,23 @@ export function formatMins(mins: number): string {
   const r = m % 60;
   return r ? `${h} h ${r} min` : `${h} h`;
 }
+
+/**
+ * Start here: the best-value topics still to learn, packed into the days left. Each topic goes on the first day
+ * with room, so quick topics fill gaps; one longer than a whole day gets an empty day to itself. Topics never
+ * split across days, and what doesn't fit anywhere is skipped.
+ */
+export function crashPlan(rows: PrepRow[], days: number, minsPerDay: number): { days: PrepRow[][]; skipped: PrepRow[] } {
+  const plan: PrepRow[][] = Array.from({ length: Math.max(1, days) }, () => []);
+  const used = plan.map(() => 0);
+  const skipped: PrepRow[] = [];
+  for (const r of sortPrep(rows, "wins")) {
+    const d = used.findIndex((u, i) => u + r.prep.mins <= minsPerDay || !plan[i].length);
+    if (d < 0) skipped.push(r);
+    else {
+      plan[d].push(r);
+      used[d] += r.prep.mins;
+    }
+  }
+  return { days: plan, skipped };
+}

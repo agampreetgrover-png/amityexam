@@ -243,11 +243,17 @@ function Review({ rows, setRows, subjects, fileName, showSkipped, setShowSkipped
       // updates it; the rest are added, or the second update would silently overwrite the first.
       const updatedIds = new Set<number>();
       await db.transaction("rw", db.exams, async () => {
+        // The draft outlives the dialog, so the review's clash/duplicate checks may be stale: an exam it
+        // would update can since have been deleted, or the same exam added by hand. Re-check against what's saved now.
+        const live = await db.exams.toArray();
         for (const r of chosen) {
-          const data = { subjectId: r.subjectId!, type: r.type, date: r.date, time: r.time || undefined, durationMins: r.durationMins };
-          if (r.clash?.id && r.action === "update" && !updatedIds.has(r.clash.id)) {
-            updatedIds.add(r.clash.id);
-            await db.exams.update(r.clash.id, data);
+          const now = clashFor(live, r.subjectId, r.type, r.date);
+          if (now.duplicate) continue; // already saved, adding it would make a second copy
+          const data = { subjectId: r.subjectId!, type: r.type, date: r.date, time: r.time || undefined, durationMins: r.durationMins, ...(r.venue ? { venue: r.venue } : {}) }; // no venue on the sheet keeps a room typed by hand
+          const target = r.action === "update" ? now.clash?.id : undefined;
+          if (target && !updatedIds.has(target)) {
+            updatedIds.add(target);
+            await db.exams.update(target, data);
             updated++;
           } else {
             await db.exams.add({ ...data, topicIds: [], checklist: DEFAULT_CHECKLIST });

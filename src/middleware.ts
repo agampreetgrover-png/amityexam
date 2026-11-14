@@ -35,12 +35,32 @@ function crossSite(req: NextRequest, host: string): boolean {
 
 const deny = (error: string, status: number) => NextResponse.json({ error }, { status });
 
+// localhost and 127.0.0.1 are different origins with separate IndexedDB, and the scripts bind 127.0.0.1, so a page
+// load on localhost would open an empty app. Sent across with a Refresh header, not a 307: Next makes a middleware
+// Location on its own bind address relative, which would bounce localhost to itself. Only the exact name matches.
+function toLoopbackIp(req: NextRequest, host: string): Response | null {
+  const local = /^localhost(?::(\d+))?$/i.exec(host);
+  if (!local) return null;
+  const to = new URL(req.nextUrl.pathname + req.nextUrl.search, "http://127.0.0.1");
+  to.port = local[1] ?? "";
+  const href = to.toString();
+  const safe = href.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  return new Response(`<!doctype html><meta charset="utf-8"><title>Amity Exams</title><p>Your data is on <a href="${safe}">127.0.0.1</a>. Opening it&hellip;</p>`, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", Refresh: `0;url=${href}` },
+  });
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
   const api = pathname.startsWith("/api/");
   const password = appPassword();
+  const navigation = req.headers.get("sec-fetch-mode") === "navigate" || (req.method === "GET" && !!req.headers.get("accept")?.includes("text/html"));
 
+  if (navigation && !api && (req.method === "GET" || req.method === "HEAD")) {
+    const moved = toLoopbackIp(req, host);
+    if (moved) return moved;
+  }
   if ((api || (pathname === "/unlock" && req.method === "POST")) && crossSite(req, host)) {
     return deny("Cross-site requests aren't allowed.", 403);
   }
@@ -57,7 +77,6 @@ export async function middleware(req: NextRequest) {
 
   if (!password || pathname === "/unlock") return NextResponse.next();
   const ok = await isValidSession(req.cookies.get(SESSION_COOKIE)?.value);
-  const navigation = req.headers.get("sec-fetch-mode") === "navigate" || (req.method === "GET" && !!req.headers.get("accept")?.includes("text/html"));
   if (!ok) {
     // API calls and the service worker's precaching get a plain 401. A page load gets the password form right
     // here, not a redirect: Next turns a middleware redirect into an absolute "localhost" URL, and 127.0.0.1 and

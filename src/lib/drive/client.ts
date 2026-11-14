@@ -36,6 +36,9 @@ export function useDriveSync(): DriveSyncState {
 const AUTO_INTERVAL = 30 * 60_000; // don't re-sync on every reload
 const MAX_ROUNDS = 4; // each round fetches up to 60 files
 const OCR_PER_OPEN = 10; // scanned papers read by AI per app open
+// The sync route's limits (api/drive/sync/route.ts); one subject or linked folder over them would fail every sync.
+const MAX_SYNC_SUBJECTS = 50;
+const MAX_LINKED_FOLDERS = 10;
 
 let inFlight = false; // set synchronously, so two calls in the same tick can't both start a sync
 let rerun = false; // a manual sync was asked for while one was running (e.g. a subject was just added)
@@ -87,6 +90,8 @@ async function sync(auto: boolean) {
   // Files deferred or failed in this sync aren't asked for again in its later rounds, so a batch full of
   // queued scans can't crowd out the notes and slides behind it.
   const tried = new Set<string>();
+  // The newest subjects (this semester's) when there are more than the route takes; ids grow with each one added.
+  const sent = subjects.slice(-MAX_SYNC_SUBJECTS);
   try {
     for (let round = 0; round < MAX_ROUNDS; round++) {
       const known = [...((await db.driveFiles.toCollection().primaryKeys()) as string[]), ...tried];
@@ -95,10 +100,12 @@ async function sync(auto: boolean) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           // Clipped to the route's limits: one long code saved before the form capped it would fail every sync.
-          subjects: subjects.map((s) => ({ id: s.id!, name: s.name.slice(0, 200), code: s.code?.slice(0, 20) })),
+          subjects: sent.map((s) => ({ id: s.id!, name: s.name.slice(0, 200), code: s.code?.slice(0, 20) })),
           known,
           sources,
-          links: subjects.filter((s) => s.driveFolderIds?.length).map((s) => ({ subjectId: s.id!, folderIds: s.driveFolderIds! })),
+          links: sent
+            .filter((s) => s.driveFolderIds?.length)
+            .map((s) => ({ subjectId: s.id!, folderIds: s.driveFolderIds!.slice(-MAX_LINKED_FOLDERS) })), // the latest links
           maxOcr: round === 0 ? OCR_PER_OPEN : 0,
         }),
       });
@@ -135,21 +142,26 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Syn
   const reader = body.getReader();
   const dec = new TextDecoder();
   let buf = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    buf += done ? dec.decode() + "\n" : dec.decode(value, { stream: true }); // at the end, flush a split character and the last line
-    let nl;
-    while ((nl = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, nl).trim();
-      buf = buf.slice(nl + 1);
-      if (!line) continue;
-      try {
-        yield JSON.parse(line) as SyncEvent;
-      } catch {
-        // a garbled line (e.g. the connection dropped mid-write) shouldn't end the whole sync
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      buf += done ? dec.decode() + "\n" : dec.decode(value, { stream: true }); // at the end, flush a split character and the last line
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          yield JSON.parse(line) as SyncEvent;
+        } catch {
+          // a garbled line (e.g. the connection dropped mid-write) shouldn't end the whole sync
+        }
       }
+      if (done) return;
     }
-    if (done) return;
+  } finally {
+    // Leaving early (an event failed to save) closes the response, so the server stops fetching and OCR-ing files.
+    reader.cancel().catch(() => {});
   }
 }
 

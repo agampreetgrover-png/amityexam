@@ -1,7 +1,7 @@
 "use client";
 
 import { useLiveQuery } from "dexie-react-hooks";
-import { ArrowLeftRight, BookOpen, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
+import { ArrowLeftRight, BookOpen, Compass, CornerDownLeft, Flame, GraduationCap, House, MessagesSquare, Search, Settings, Sprout } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { db } from "@/lib/db";
@@ -82,6 +82,7 @@ export function CommandPalette({ initialOpen = false }: { initialOpen?: boolean 
     const go = (href: string) => () => router.push(href);
     const list: Command[] = [
       { id: "p-today", group: "Go to", label: "Today", icon: <House size={16} />, run: go("/") },
+      { id: "p-start", group: "Go to", label: "Start here", icon: <Compass size={16} />, keywords: "where to begin nothing studied crash plan days left", run: go("/start") },
       { id: "p-subjects", group: "Go to", label: "Subjects", icon: <BookOpen size={16} />, keywords: "syllabus notes", run: go("/subjects") },
       { id: "p-chat", group: "Go to", label: "Chat", icon: <MessagesSquare size={16} />, keywords: "ask doubt pyq notes history", run: go("/chat") },
       { id: "p-important", group: "Go to", label: "Important", icon: <Flame size={16} />, keywords: "topics most asked pyq", run: go("/important") },

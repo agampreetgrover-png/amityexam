@@ -59,12 +59,16 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   };
   // Every folder is listed at most once this run, and the run lists a bounded number of folders (see CrawlRun).
   const run = newCrawlRun();
+  // Files from hand-linked folders: crawled from inside the folder, so their path has no subject-folder segment.
+  const linked = new WeakSet<CrawledFile>();
 
   // Folders linked by hand come first, so their files go to that subject even if another one also matches.
   for (const link of req.links ?? []) {
     for (const folderId of link.folderIds) {
       try {
-        add(link.subjectId, await crawl(folderId, { skipFolder, signal, run }));
+        const files = await crawl(folderId, { skipFolder, signal, run });
+        for (const f of files) linked.add(f);
+        add(link.subjectId, files);
       } catch (e) {
         yield { type: "error", subjectId: link.subjectId, message: `Linked folder: ${e instanceof Error ? e.message : "unavailable"}` };
       }
@@ -126,7 +130,9 @@ export async function* syncDrive(req: SyncRequest, signal?: AbortSignal): AsyncG
   const seen = new Set<string>();
   // A copy has the same name in the same place inside the subject's folder. The folder itself (path[0]) may be
   // named differently in each drive; below it, PYQs/2022/Major.pdf and PYQs/2023/Major.pdf are two papers.
-  const copyKey = (subjectId: number, f: CrawledFile) => `${subjectId}:${f.path.slice(1).map(sameName).join("/")}/${sameName(f.name)}`;
+  // A linked folder's path already starts below the folder, so nothing is dropped (Minor/2023.pdf ≠ Major/2023.pdf).
+  const copyKey = (subjectId: number, f: CrawledFile) =>
+    `${subjectId}:${f.path.slice(linked.has(f) ? 0 : 1).map(sameName).join("/")}/${sameName(f.name)}`;
   // Names of files imported on an earlier round count too, or the copy in the other drive would come in next time.
   for (const [subjectId, files] of found) for (const f of files) if (known.has(f.id)) seen.add(copyKey(subjectId, f));
   for (const [subjectId, files] of found) {
