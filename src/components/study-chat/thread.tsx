@@ -476,7 +476,7 @@ export function ChatThread({ chatId, onCreated, onDiscarded, onGone, onShowHisto
 
       {/* The conversation, in a reading column. Phones scroll the page; from tablets up this scrolls on its own
           between the bar and the composer. Below md the page pads the sides itself, so only wider screens pad here. */}
-      <div ref={scroller} className="flex-1 md:min-h-0 md:overflow-y-auto md:px-8">
+      <div ref={scroller} className="relative flex-1 md:min-h-0 md:overflow-y-auto md:px-8">
         <div className="mx-auto flex min-h-full max-w-3xl flex-col gap-6 py-6 md:gap-8 md:py-8">
           {!shown ? null : shown.length === 0 && !busy ? (
             subject && scope && (
